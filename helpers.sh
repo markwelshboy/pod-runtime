@@ -132,52 +132,59 @@ ensure_dirs(){
 copy_hearmeman_assets_if_any() {
   local repo="${HEARMEMAN_REPO:-}"
   if [[ -z "$repo" ]]; then
-    echo "[hearmeman] HEARMEMAN_REPO not set; skipping assets sync."
     return 0
   fi
 
-  if ! command -v git >/dev/null 2>&1; then
-    echo "[hearmeman] git not available; skipping assets sync." >&2
+  local tmp="${CACHE_DIR}/.hearmeman.$$"
+  rm -rf "$tmp"
+
+  echo "[hearmeman] Syncing assets from: ${repo}"
+  echo "[hearmeman] Temp clone dir:      ${tmp}"
+
+  if ! git clone "$repo" "$tmp" >/dev/null 2>&1; then
+    echo "[hearmeman] ❌ Failed to clone repo; skipping asset sync." >&2
+    rm -rf "$tmp"
     return 0
   fi
 
-  local comfy_home="${COMFY_HOME:-/workspace/ComfyUI}"
-  local cache_dir="${CACHE_DIR:-${comfy_home}/cache}"
-  local tmp="${cache_dir}/.hearmeman.$$"
-
-  echo "[hearmeman] Syncing assets from: $repo"
-  echo "[hearmeman] Temp clone dir:      $tmp"
-
-  rm -rf -- "$tmp"
-
-  if ! git clone --depth 1 "$repo" "$tmp" >/dev/null 2>&1; then
-    echo "[hearmeman] ⚠️ git clone failed; skipping assets import." >&2
-    rm -rf -- "$tmp"
-    return 0
-  fi
-
-  # --- Workflows ---
+  # ---- Workflows ----
+  local wf_src=""
   if [[ -d "$tmp/src/workflows" ]]; then
-    echo "[hearmeman] Copying workflows → ${comfy_home}/workflows"
-    mkdir -p "${comfy_home}/workflows"
-    # -r to keep dirs, -f to overwrite if necessary
-    cp -rf "$tmp/src/workflows/"* "${comfy_home}/workflows/" 2>/dev/null || true
-  else
-    echo "[hearmeman] No workflows found under src/workflows."
+    wf_src="$tmp/src/workflows"
+  elif [[ -d "$tmp/workflows" ]]; then
+    wf_src="$tmp/workflows"
   fi
 
-  # --- Icons / assets ---
+  if [[ -n "$wf_src" ]]; then
+    local wf_dst="${COMFY_HOME}/workflows"
+    echo "[hearmeman] Workflows source: ${wf_src}"
+    echo "[hearmeman] Workflows dest:   ${wf_dst}"
+    mkdir -p "$wf_dst"
+    cp -rf "${wf_src}/"* "$wf_dst"/ 2>/dev/null || true
+  else
+    echo "[hearmeman] No workflows found under src/workflows or workflows." >&2
+  fi
+
+  # ---- Assets ----
+  local assets_src=""
   if [[ -d "$tmp/src/assets" ]]; then
-    echo "[hearmeman] Copying assets → ${comfy_home}/assets"
-    mkdir -p "${comfy_home}/assets"
-    cp -rf "$tmp/src/assets/"* "${comfy_home}/assets/" 2>/dev/null || true
-  else
-    echo "[hearmeman] No assets found under src/assets."
+    assets_src="$tmp/src/assets"
+  elif [[ -d "$tmp/assets" ]]; then
+    assets_src="$tmp/assets"
   fi
 
-  rm -rf -- "$tmp"
+  if [[ -n "$assets_src" ]]; then
+    local assets_dst="${COMFY_HOME}/assets"
+    echo "[hearmeman] Assets source: ${assets_src}"
+    echo "[hearmeman] Assets dest:   ${assets_dst}"
+    mkdir -p "$assets_dst"
+    cp -rf "${assets_src}/"* "$assets_dst"/ 2>/dev/null || true
+  else
+    echo "[hearmeman] No assets found under src/assets or assets." >&2
+  fi
+
+  rm -rf "$tmp"
   echo "[hearmeman] Asset sync complete."
-  return 0
 }
 
 # ======================================================================
@@ -773,16 +780,18 @@ install_custom_nodes_set() {
 
 hf_ensure_local_repo() {
   local repo="${HF_LOCAL_REPO:-${CACHE_DIR}/.hf_repo}"
-  local url
+  local url display_url
 
   url="$(hf_remote_url 2>/dev/null || true)"
   if [[ -z "$url" ]]; then
     echo "[hf-ensure-local-repo] hf_ensure_local_repo: hf_remote_url unresolved" >&2
     return 1
-  else
-    local display_url="${$url/https:\/\/oauth2:[^@]*@/https:\/\/oauth2:***@}"
-    echo "[hf-ensure-local-repo] Master repo url=${display_url}" >&2
   fi
+
+  # Redact token just for logging:
+  # transforms: https://oauth2:<TOKEN>@huggingface.co/...  ->  https://oauth2:***@huggingface.co/...
+  display_url="$(printf '%s\n' "$url" | sed -E 's#(https://oauth2:)[^@]*@#\1***@#')"
+  echo "[hf-ensure-local-repo] Master repo url=${display_url}" >&2
 
   echo "[hf-ensure-local-repo] Using local repo=${repo}" >&2
 
@@ -794,13 +803,13 @@ hf_ensure_local_repo() {
   else
     echo "[hf-ensure-local-repo] Cloning HF repo into $repo…" >&2
     mkdir -p "$(dirname "$repo")"
-    git clone --depth=1 "$url" "$repo" >/dev/null 2>&1 || {
+    if ! git clone --depth=1 "$url" "$repo" >/dev/null 2>&1; then
       echo "[hf-ensure-local-repo] ❌ Failed to clone HF repo into $repo" >&2
       return 1
-    }
+    fi
   fi
 
-  echo "$repo"
+  printf '%s\n' "$repo"
 }
 
 # hf_remote_url: builds authenticated HTTPS remote for model/dataset repos
