@@ -16,7 +16,7 @@ health() {
     sleep 2; t=$((t+2))
     [ $t -ge 60 ] && echo "WARN: ${name} on ${port} not 200 after 60s." && exit 1
   done
-  echo "OK: ${name} is UP on :${port}"
+  echo "🚀: ${name} is UP on :${port}"
 }
 
 start_one() {

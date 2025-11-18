@@ -177,21 +177,18 @@ aria2_clear_results >/dev/null 2>&1 || true
 # --------------------------------------------------
 
 if [[ "${LAUNCH_JUPYTER:-0}" == "1" ]]; then
-  echo "Launching Jupyter. Trying from port 8888"
+  echo "Launching Jupyter. Trying from port 8888..."
   jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace &
 else
   echo "LAUNCH_JUPYTER=0 → skipping Jupyter launch..."
 fi
 
 # --------------------------------------------------
-# 8) Start ComfyUI
+# 8) Relocate and Start ComfyUI
 # --------------------------------------------------
 
-if [ ! -d "$COMFY_HOME" ]; then
-  mv /ComfyUI "$COMFY_HOME"
-else
-  echo "Directory already exists, skipping move."
-fi
+echo "Copying ComfyUI to network volume..."
+rsync -aivu --progress /ComfyUI $COMFY_HOME
 
 cd "${COMFY_HOME:-/workspace/ComfyUI}"
 
