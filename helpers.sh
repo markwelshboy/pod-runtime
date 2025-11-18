@@ -540,6 +540,45 @@ rewrite_custom_nodes_requirements() {
   done
 }
 
+# -------------------------------------------------------------------
+# Snapshot custom_nodes state: name, git SHA, branch, remote URL
+# Writes to ${COMFY_LOGS}/custom_nodes.snapshot
+# -------------------------------------------------------------------
+snapshot_custom_nodes_state() {
+  local root="${CUSTOM_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/custom_nodes}"
+  local out="${COMFY_LOGS:-/workspace/logs}/custom_nodes.snapshot"
+
+  mkdir -p "$(dirname "$out")"
+
+  {
+    echo "=== Custom Nodes Snapshot @ $(date -Is) ==="
+    echo "Root: $root"
+    echo
+
+    if [[ ! -d "$root" ]]; then
+      echo "(no custom_nodes directory yet)"
+      exit 0
+    fi
+
+    # For each directory under custom_nodes, try to pull Git info
+    for d in "$root"/*; do
+      [[ -d "$d" ]] || continue
+
+      local name sha branch remote
+      name="$(basename "$d")"
+
+      if [[ -d "$d/.git" ]] && command -v git >/dev/null 2>&1; then
+        sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+        branch="$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
+        remote="$(git -C "$d" config --get remote.origin.url 2>/dev/null || echo "unknown")"
+        printf '%-32s  %s  (%s)  [%s]\n' "$name" "$sha" "$branch" "$remote"
+      else
+        printf '%-32s  %s\n' "$name" "<not a git repo>"
+      fi
+    done
+  } >"$out"
+}
+
 # install_custom_nodes:
 #   - Optional arg: manifest source (file path or URL)
 #   - If no arg, falls back to CUSTOM_NODES_MANIFEST_URL
@@ -3551,45 +3590,6 @@ setup_ssh() {
   # Start sshd in the background, logging to stdout
   /usr/sbin/sshd -D -e &
   echo "[ssh] sshd started."
-}
-
-# -------------------------------------------------------------------
-# Snapshot custom_nodes state: name, git SHA, branch, remote URL
-# Writes to ${COMFY_LOGS}/custom_nodes.snapshot
-# -------------------------------------------------------------------
-snapshot_custom_nodes_state() {
-  local root="${CUSTOM_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/custom_nodes}"
-  local out="${COMFY_LOGS:-/workspace/logs}/custom_nodes.snapshot"
-
-  mkdir -p "$(dirname "$out")"
-
-  {
-    echo "=== Custom Nodes Snapshot @ $(date -Is) ==="
-    echo "Root: $root"
-    echo
-
-    if [[ ! -d "$root" ]]; then
-      echo "(no custom_nodes directory yet)"
-      exit 0
-    fi
-
-    # For each directory under custom_nodes, try to pull Git info
-    for d in "$root"/*; do
-      [[ -d "$d" ]] || continue
-
-      local name sha branch remote
-      name="$(basename "$d")"
-
-      if [[ -d "$d/.git" ]] && command -v git >/dev/null 2>&1; then
-        sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
-        branch="$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
-        remote="$(git -C "$d" config --get remote.origin.url 2>/dev/null || echo "unknown")"
-        printf '%-32s  %s  (%s)  [%s]\n' "$name" "$sha" "$branch" "$remote"
-      else
-        printf '%-32s  %s\n' "$name" "<not a git repo>"
-      fi
-    done
-  } >"$out"
 }
 
 change_latent_preview_method() {
