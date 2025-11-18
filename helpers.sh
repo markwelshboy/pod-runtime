@@ -545,7 +545,7 @@ install_custom_nodes() {
 
   local max_jobs="${MAX_NODE_JOBS:-8}"
   local job_count=0
-  local line url dst rest
+  local line url dst rest name
 
   echo "[custom-nodes] Using manifest: $src"
   echo "[custom-nodes] Installing into: $custom_dir"
@@ -582,6 +582,16 @@ install_custom_nodes() {
       echo "[custom-nodes] → $dst  (from $url ${extra[*]:+${extra[*]}})"
       # clone_or_pull must already exist in helpers.sh and accept: url name [clone_args...]
       clone_or_pull "$url" "$dst" "${extra[@]}"
+      
+      name="$(basename "$dst")"
+
+      if ! build_node "$dst"; then
+        echo "[custom-nodes] ❌ Install ERROR $name (see ${CUSTOM_LOG_DIR}/${name}.log)" >&2
+        exit 1
+      fi
+
+      echo "[custom-nodes] ✅ Completed install for: $name" >&2
+
     ) &
 
     ((job_count++))

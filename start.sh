@@ -134,6 +134,12 @@ fi
 # 8) Start ComfyUI
 # --------------------------------------------------
 
+if [ ! -d "$COMFY_HOME" ]; then
+  mv /ComfyUI "$COMFY_HOME"
+else
+  echo "Directory already exists, skipping move."
+fi
+
 cd "${COMFY_HOME:-/workspace/ComfyUI}"
 
 echo "▶️  Starting ComfyUI"
