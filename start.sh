@@ -85,6 +85,12 @@ fi
 source "$HELPERS"
 
 # --------------------------------------------------
+# 1.5) Pretty boot banner for Vast / RunPod logs
+# --------------------------------------------------
+
+on_start_banner
+
+# --------------------------------------------------
 # 2) Ensure ComfyUI lives on the network volume
 #      /ComfyUI  →  $COMFY_HOME (/workspace/ComfyUI)
 # --------------------------------------------------

@@ -3379,3 +3379,71 @@ show_env () {
   echo "======================================="
 
 }
+
+# --------------------------------------------------
+# Pretty boot banner for Vast / RunPod logs
+# --------------------------------------------------
+on_start_banner() {
+  local logfile="${COMFY_LOGS:-/workspace/logs}/startup_banner.log"
+  mkdir -p "$(dirname "$logfile")"
+
+  # --- Gather info safely ---
+  local pyver torchver cudaver gpustr arch comfyver
+  local gpu_cc gpu_label
+
+  pyver="$($PY -c 'import sys; print(".".join(map(str, sys.version_info[:3])))' 2>/dev/null || echo "?")"
+  torchver="$($PY -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "not-importable")"
+  cudaver="$($PY -c 'import torch; print(torch.version.cuda)' 2>/dev/null || echo "?")"
+
+  gpustr="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 || echo "no-gpu")"
+  gpu_cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || echo "?")"
+  arch="${gpu_cc//./}"   # "12.0" → "120"
+
+  comfyver="$(grep -Eo '"version": *"[^"]+"' "${COMFY_HOME:-/workspace/ComfyUI}/package.json" 2>/dev/null \
+               | sed -E 's/.*"([^"]+)"/\1/' || echo "?")"
+
+  # --- ASCII GPU header ---
+  gpu_label="GPU: ${gpustr}"
+  if [[ -n "$arch" && "$arch" != "?" ]]; then
+    gpu_label+="  (sm_${arch})"
+  fi
+  local width=${#gpu_label}
+  local border
+  border="$(printf '─%.0s' $(seq 1 "$width"))"
+
+  {
+    echo ""
+    echo "┌─${border}─┐"
+    printf "│ %-${width}s │\n" "$gpu_label"
+    echo "└─${border}─┘"
+    echo ""
+    echo "============================================================"
+    echo "   🚀 COMFYUI BOOTSTRAP START (Vast) — $(date -Is)"
+    echo "============================================================"
+    echo " Image Tag:          ${IMAGE_TAG:-unknown}"
+    echo " Build Git SHA:      ${BUILD_GIT_SHA:-unknown}"
+    echo ""
+    echo " Repo Root:          ${REPO_ROOT:-?}"
+    echo " Runtime Directory:  ${SCRIPT_DIR:-?}"
+    echo ""
+    echo " Python:             ${pyver}"
+    echo " Torch:              ${torchver}"
+    echo " CUDA (Torch):       ${cudaver}"
+    echo ""
+    echo " ComfyUI Path:       ${COMFY_HOME:-/workspace/ComfyUI}"
+    echo " ComfyUI Version:    ${comfyver}"
+    echo ""
+    echo " Model Manifest:     ${MODEL_MANIFEST_URL:-unset}"
+    echo " Node Manifest:      ${CUSTOM_NODES_MANIFEST_URL:-unset}"
+    echo ""
+    echo " ENABLE_MODEL_MANIFEST_DOWNLOAD = ${ENABLE_MODEL_MANIFEST_DOWNLOAD:-1}"
+    echo " ENABLE_CIVITAI_DOWNLOAD        = ${ENABLE_CIVITAI_DOWNLOAD:-1}"
+    echo " ENABLE_SAGE                    = ${ENABLE_SAGE:-1}"
+    echo " INSTALL_EXTRA_CUSTOM_NODES     = ${INSTALL_EXTRA_CUSTOM_NODES:-1}"
+    echo " LAUNCH_JUPYTER                 = ${LAUNCH_JUPYTER:-0}"
+    echo ""
+    echo " Log Directory:      ${COMFY_LOGS:-/workspace/logs}"
+    echo "============================================================"
+    echo ""
+  } | tee "$logfile"
+}
