@@ -24,8 +24,13 @@ umask 077
 # Vars to persist
 VARS=(
   HF_TOKEN CIVITAI_TOKEN LORAS_IDS_TO_DOWNLOAD CHECKPOINT_IDS_TO_DOWNLOAD
-  HF_REPO HF_REPO_TYPE HF_REMOTE_URL
-  GPU_ARCH GPU_NAME
+  HF_REPO_ID HF_REPO_TYPE HF_REMOTE_URL
+  MODEL_MANIFEST_URL CUSTOM_NODES_MANIFEST_URL
+  ENABLE_MODEL_MANIFEST_DOWNLOAD ENABLE_CIVITAI_DOWNLOAD ENABLE_SAGE 
+  INSTALL_EXTRA_CUSTOM_NODES LAUNCH_JUPYTER
+  native_480p native_720p download_wan22 download_wan22_lightning download_vae
+  download_wan_animate download_detection download_optimization_loras
+  wan_fun_and_sdxl_helper
 )
 
 {
@@ -38,6 +43,8 @@ VARS=(
     fi
   done
 } > "$SESSION_ENV"
+
+umask 0022
 
 # Optional: non-secret summary for logs
 mkdir -p /workspace/logs
@@ -78,13 +85,36 @@ fi
 source "$HELPERS"
 
 # --------------------------------------------------
-# 0) Sanity: make sure dirs exist (Comfy home, models, logs, etc.)
+# 2) Ensure ComfyUI lives on the network volume
+#      /ComfyUI  →  $COMFY_HOME (/workspace/ComfyUI)
+# --------------------------------------------------
+
+if [[ -d /ComfyUI ]]; then
+  mkdir -p "$(dirname "$COMFY_HOME")"
+
+  if [[ ! -d "$COMFY_HOME" || -z "$(ls -A "$COMFY_HOME" 2>/dev/null)" ]]; then
+    echo "[comfy-relocate] [mv] First run: moving /ComfyUI → $COMFY_HOME"
+    mv /ComfyUI "$COMFY_HOME"
+  else
+    echo "[comfy-relocate] [rsync] Merging base /ComfyUI into existing $COMFY_HOME (no overwrite)"
+    # Trailing slashes are important: copy contents, not the dir itself
+    rsync -a --ignore-existing /ComfyUI/ "$COMFY_HOME"/
+    # Optional: once you trust it, you can remove the original to avoid confusion
+    # rm -rf /ComfyUI
+  fi
+else
+  echo "[comfy-relocate] ❌ Comfy not installed."
+fi
+
+# --------------------------------------------------
+# 3) Sanity: make sure dirs exist 
+#      (Comfy home, models, logs, etc.)
 # --------------------------------------------------
 
 ensure_dirs
 
 # --------------------------------------------------
-# 1) Move 4xLSDIR.pth into upscale_models if present
+# 4) Move 4xLSDIR.pth into upscale_models if present
 # --------------------------------------------------
 
 if [[ -f "/4xLSDIR.pth" && ! -f "$UPSCALE_DIR/4xLSDIR.pth" ]]; then
@@ -97,7 +127,7 @@ else
 fi
 
 # --------------------------------------------------
-# 2) Models via model_manifest.json + aria2
+# 5) Models via model_manifest.json + aria2
 # --------------------------------------------------
 
 helpers_have_aria2_rpc || aria2_start_daemon
@@ -125,7 +155,7 @@ fi
 aria2_show_download_snapshot || true
 
 # --------------------------------------------------
-# 3) SageAttention (bundle or build)
+# 6) SageAttention (bundle or build)
 # --------------------------------------------------
 
 if [[ "${ENABLE_SAGE:-1}" == "1" ]]; then
@@ -140,7 +170,7 @@ fi
 aria2_show_download_snapshot || true
 
 # --------------------------------------------------
-# 4) Extra custom nodes on top of baked-in ones
+# 7) Extra custom nodes on top of baked-in ones
 # --------------------------------------------------
 if [[ "${INSTALL_EXTRA_CUSTOM_NODES:-1}" == "1" ]]; then
   echo "Installing extra custom nodes. Trying ${CUSTOM_NODES_MANIFEST_URL}..."
@@ -154,13 +184,13 @@ fi
 aria2_show_download_snapshot || true
 
 # --------------------------------------------------
-# 5) Optional Hearmeman workflows/assets sync
+# 8) Optional Hearmeman workflows/assets sync
 # --------------------------------------------------
 
 copy_hearmeman_assets_if_any || true
 
 # --------------------------------------------------
-# 6) Wait for all downloads to complete
+# 9) Wait for all downloads to complete
 # --------------------------------------------------
 
 echo "[aria2-downloads-progress] Checking download progress..."
@@ -173,29 +203,26 @@ aria2_monitor_progress \
 aria2_clear_results >/dev/null 2>&1 || true
 
 # --------------------------------------------------
-# 7) Start Jupyter
+# 10) Start Jupyter
 # --------------------------------------------------
 
 if [[ "${LAUNCH_JUPYTER:-0}" == "1" ]]; then
   echo "Launching Jupyter. Trying from port 8888..."
-  jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace &
+  jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace   jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace &>/workspace/logs/jupyter.log &
 else
   echo "LAUNCH_JUPYTER=0 → skipping Jupyter launch..."
 fi
 
 # --------------------------------------------------
-# 8) Relocate and Start ComfyUI
+# 11) Start ComfyUI
 # --------------------------------------------------
-
-echo "Copying ComfyUI to network volume..."
-rsync -aivu --progress /ComfyUI $COMFY_HOME
 
 cd "${COMFY_HOME:-/workspace/ComfyUI}"
 
 echo "▶️  Starting ComfyUI"
 
 if ${SCRIPT_DIR}/run_comfy_mux.sh; then
-  tg "✅ ComfyUI up on 8188, 8288 (GPU0), 8388 (GPU1 if present)."
+  tg "🚀 ComfyUI is UP on 8188, 8288 (GPU0), 8388 (GPU1 if present)."
 else
   tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}."
 fi
