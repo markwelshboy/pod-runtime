@@ -226,8 +226,21 @@ else
 fi
 
 # --------------------------------------------------
-# 11) Start ComfyUI
+# 11) Specific Hearmeman methodologies / setups
+#       Copy Hearmeman's workflows to ComfyUI & 
+#       configure sensible defaults
 # --------------------------------------------------
+
+copy_workflows_to_comfyui || true
+
+change_latent_preview_method || true
+
+# --------------------------------------------------
+# 12) Start ComfyUI
+# --------------------------------------------------
+
+# Final snapshot of custom_nodes before ComfyUI launch
+snapshot_custom_nodes_state || true
 
 cd "${COMFY_HOME:-/workspace/ComfyUI}"
 

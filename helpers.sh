@@ -129,23 +129,55 @@ ensure_dirs(){
 # ------------------------- #
 #  Workflows / Icons import #
 # ------------------------- #
-copy_hearmeman_assets_if_any(){
+copy_hearmeman_assets_if_any() {
   local repo="${HEARMEMAN_REPO:-}"
-  if [ -z "$repo" ]; then return 0; fi
-  local tmp="${CACHE_DIR}/.hearmeman.$$"
-  rm -rf "$tmp"
-  git clone "$repo" "$tmp" || return 0
-  # Workflows
-  if [ -d "$tmp/src/workflows" ]; then
-    mkdir -p "${COMFY_HOME}/workflows"
-    cp -rf "$tmp/src/workflows/"* "${COMFY_HOME}/workflows/" || true
+  if [[ -z "$repo" ]]; then
+    echo "[hearmeman] HEARMEMAN_REPO not set; skipping assets sync."
+    return 0
   fi
-  # Icons / scripts (e.g., start.sh images)
-  if [ -d "$tmp/src/assets" ]; then
-    mkdir -p "${COMFY_HOME}/assets"
-    cp -rf "$tmp/src/assets/"* "${COMFY_HOME}/assets/" || true
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "[hearmeman] git not available; skipping assets sync." >&2
+    return 0
   fi
-  rm -rf "$tmp"
+
+  local comfy_home="${COMFY_HOME:-/workspace/ComfyUI}"
+  local cache_dir="${CACHE_DIR:-${comfy_home}/cache}"
+  local tmp="${cache_dir}/.hearmeman.$$"
+
+  echo "[hearmeman] Syncing assets from: $repo"
+  echo "[hearmeman] Temp clone dir:      $tmp"
+
+  rm -rf -- "$tmp"
+
+  if ! git clone --depth 1 "$repo" "$tmp" >/dev/null 2>&1; then
+    echo "[hearmeman] ⚠️ git clone failed; skipping assets import." >&2
+    rm -rf -- "$tmp"
+    return 0
+  fi
+
+  # --- Workflows ---
+  if [[ -d "$tmp/src/workflows" ]]; then
+    echo "[hearmeman] Copying workflows → ${comfy_home}/workflows"
+    mkdir -p "${comfy_home}/workflows"
+    # -r to keep dirs, -f to overwrite if necessary
+    cp -rf "$tmp/src/workflows/"* "${comfy_home}/workflows/" 2>/dev/null || true
+  else
+    echo "[hearmeman] No workflows found under src/workflows."
+  fi
+
+  # --- Icons / assets ---
+  if [[ -d "$tmp/src/assets" ]]; then
+    echo "[hearmeman] Copying assets → ${comfy_home}/assets"
+    mkdir -p "${comfy_home}/assets"
+    cp -rf "$tmp/src/assets/"* "${comfy_home}/assets/" 2>/dev/null || true
+  else
+    echo "[hearmeman] No assets found under src/assets."
+  fi
+
+  rm -rf -- "$tmp"
+  echo "[hearmeman] Asset sync complete."
+  return 0
 }
 
 # ======================================================================
@@ -614,6 +646,9 @@ install_custom_nodes() {
   fi
 
   echo "[custom-nodes] Manifest install completed successfully."
+
+  snapshot_custom_nodes_state || true
+
   return 0
 }
 
@@ -3516,4 +3551,154 @@ setup_ssh() {
   # Start sshd in the background, logging to stdout
   /usr/sbin/sshd -D -e &
   echo "[ssh] sshd started."
+}
+
+# -------------------------------------------------------------------
+# Snapshot custom_nodes state: name, git SHA, branch, remote URL
+# Writes to ${COMFY_LOGS}/custom_nodes.snapshot
+# -------------------------------------------------------------------
+snapshot_custom_nodes_state() {
+  local root="${CUSTOM_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/custom_nodes}"
+  local out="${COMFY_LOGS:-/workspace/logs}/custom_nodes.snapshot"
+
+  mkdir -p "$(dirname "$out")"
+
+  {
+    echo "=== Custom Nodes Snapshot @ $(date -Is) ==="
+    echo "Root: $root"
+    echo
+
+    if [[ ! -d "$root" ]]; then
+      echo "(no custom_nodes directory yet)"
+      exit 0
+    fi
+
+    # For each directory under custom_nodes, try to pull Git info
+    for d in "$root"/*; do
+      [[ -d "$d" ]] || continue
+
+      local name sha branch remote
+      name="$(basename "$d")"
+
+      if [[ -d "$d/.git" ]] && command -v git >/dev/null 2>&1; then
+        sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+        branch="$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
+        remote="$(git -C "$d" config --get remote.origin.url 2>/dev/null || echo "unknown")"
+        printf '%-32s  %s  (%s)  [%s]\n' "$name" "$sha" "$branch" "$remote"
+      else
+        printf '%-32s  %s\n' "$name" "<not a git repo>"
+      fi
+    done
+  } >"$out"
+}
+
+change_latent_preview_method() {
+  # Honour env toggle, but be robust under set -u
+  local do_change="${change_preview_method:-true}"
+  if [[ "$do_change" != "true" ]]; then
+    echo "[preview] Skipping preview method update (change_preview_method != 'true')."
+    return 0
+  fi
+
+  local comfy_home="${COMFY_HOME:-/workspace/ComfyUI}"
+  local root="${CUSTOM_DIR:-${comfy_home}/custom_nodes}"
+  local js="${root}/ComfyUI-VideoHelperSuite/web/js/VHS.core.js"
+
+  echo "[preview] Attempting to enable VHS.LatentPreview + configure ComfyUI-Manager…"
+
+  # --- Patch VHS.core.js if present ---
+  if [[ -f "$js" ]]; then
+    echo "[preview] Found VHS JS at: $js"
+    # If sed fails for any reason, don't kill whole bootstrap
+    if ! sed -i "/id: *'VHS.LatentPreview'/,/defaultValue:/s/defaultValue: false/defaultValue: true/" "$js"; then
+      echo "[preview] ⚠️ Failed to patch $js; leaving as-is." >&2
+    else
+      echo "[preview] Patched VHS.LatentPreview defaultValue → true."
+    fi
+  else
+    echo "[preview] VHS.core.js not found at $js; skipping JS patch."
+  fi
+
+  # --- Configure ComfyUI-Manager config.ini ---
+  local cfg_dir="${comfy_home}/user/default/ComfyUI-Manager"
+  local cfg="${cfg_dir}/config.ini"
+
+  mkdir -p "$cfg_dir"
+
+  if [[ ! -f "$cfg" ]]; then
+    echo "[preview] Creating new ComfyUI-Manager config.ini at: $cfg"
+    cat >"$cfg" <<'INI'
+[default]
+preview_method = auto
+git_exe =
+use_uv = False
+channel_url = https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main
+share_option = all
+bypass_ssl = False
+file_logging = True
+component_policy = workflow
+update_policy = stable-comfyui
+windows_selector_event_loop_policy = False
+model_download_by_agent = False
+downgrade_blacklist =
+security_level = normal
+skip_migration_check = False
+always_lazy_install = False
+network_mode = public
+db_mode = cache
+INI
+  else
+    echo "[preview] config.ini already exists. Updating preview_method → auto…"
+    if ! sed -i 's/^preview_method[[:space:]]*=.*/preview_method = auto/' "$cfg"; then
+      echo "[preview] ⚠️ Failed to update preview_method in $cfg; leaving as-is." >&2
+    fi
+  fi
+
+  echo "[preview] Config file setup complete; default preview method is 'auto'."
+  return 0
+}
+
+copy_workflows_to_comfyui() {
+  local comfy_home="${COMFY_HOME:-/workspace/ComfyUI}"
+  local source_dir="${comfy_home}/workflows"
+  local dest_root="${WORKFLOW_DIR:-${comfy_home}/user/default/workflows}"
+
+  echo "[workflows] Source:      $source_dir"
+  echo "[workflows] Destination: $dest_root"
+
+  # If source doesn’t exist or is empty, nothing to do
+  if [[ ! -d "$source_dir" ]]; then
+    echo "[workflows] No source workflows directory found; skipping."
+    return 0
+  fi
+
+  mkdir -p "$dest_root"
+
+  shopt -s nullglob
+  local moved_any=0
+  for dir in "$source_dir"/*/; do
+    [[ -d "$dir" ]] || continue
+
+    local dir_name dest_dir
+    dir_name="$(basename "$dir")"
+    dest_dir="${dest_root}/${dir_name}"
+
+    if [[ -e "$dest_dir" ]]; then
+      echo "[workflows] Destination already has '$dir_name'. Removing source: $dir"
+      rm -rf -- "$dir"
+    else
+      echo "[workflows] Moving: $dir → $dest_root"
+      mv -- "$dir" "$dest_root/"
+      moved_any=1
+    fi
+  done
+  shopt -u nullglob
+
+  if (( moved_any == 0 )); then
+    echo "[workflows] No new workflow directories to move."
+  else
+    echo "[workflows] Workflow sync complete."
+  fi
+
+  return 0
 }
