@@ -51,20 +51,17 @@ helpers_have_aria2_rpc || aria2_start_daemon
 aria2_clear_results >/dev/null 2>&1 || true
 
 if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD:-1}" == "1" ]]; then
-  if [[ -f "$MANIFEST_PATH" ]]; then
-    echo "Using model manifest: $MANIFEST_PATH"
-    if ! $(aria2_download_from_manifest "$MANIFEST_PATH"); then
-      echo "⚠️ aria2_download_from_manifest failed; see logs."
-    fi
-  else
-    echo "No manifest json found at $MANIFEST_PATH, skipping manifest-based downloads."
+  echo "Using model manifest: $MODEL_MANIFEST_URL"
+  if ! aria2_download_from_manifest; then
+    echo "⚠️ aria2_download_from_manifest failed; see logs."
   fi
 else
   echo "ENABLE_MODEL_MANIFEST_DOWNLOAD=0 → skipping model downloader."
 fi
 
 if [[ "${ENABLE_CIVITAI_DOWNLOAD:-1}" == "1" ]]; then
-  echo "Downloading CivitAI assets from env IDs..."
+  echo "Attempting to download CivitAI assets from env IDs... "
+  echo "LORAS:${LORAS_IDS_TO_DOWNLOAD}, CHECKPOINTS:${CHECKPOINT_IDS_TO_DOWNLOAD}"
   if ! aria2_download_civitai_from_environment_vars; then
     echo "⚠️ aria2_download_civitai_from_environment_vars reported issues; see CivitAI log."
   fi
@@ -93,7 +90,7 @@ aria2_show_download_snapshot || true
 # 4) Extra custom nodes on top of baked-in ones
 # --------------------------------------------------
 if [[ "${INSTALL_EXTRA_CUSTOM_NODES:-1}" == "1" ]]; then
-  echo "Installing extra custom nodes (if any manifest is found)..."
+  echo "Installing extra custom nodes. Trying ${CUSTOM_NODES_MANIFEST_URL}..."
   if ! install_custom_nodes; then
     echo "⚠️ install_custom_nodes reported errors; custom-node extras may be incomplete."
   fi
@@ -127,16 +124,22 @@ aria2_clear_results >/dev/null 2>&1 || true
 # --------------------------------------------------
 cd "${COMFY_HOME:-/workspace/ComfyUI}"
 
-LOG_DIR="${COMFY_LOGS:-/workspace/logs}"
-mkdir -p "$LOG_DIR"
-LOGFILE="${LOG_DIR}/comfyui_nohup.log"
+#===============================================================================================
+#
+#  14 ) Launch ComfyUI instances (8188 main, 8288 GPU0, 8388 GPU1)
+#
+#===============================================================================================
 
-echo "▶️  Starting ComfyUI (log: $LOGFILE)"
-nohup "${PY:-python}" main.py --listen 0.0.0.0 --port 8188 --use-sage-attention \
-  >"$LOGFILE" 2>&1 &
+echo "▶️  Starting ComfyUI"
+
+if ${SCRIPT_DIR}/run_comfy_mux.sh; then
+  tg "✅ ComfyUI up on 8188, 8288 (GPU0), 8388 (GPU1 if present)."
+else
+  tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}."
+fi
 
 echo "ComfyUI launched on 0.0.0.0:8188"
-echo "Bootstrap complete. General logs: ${LOG_DIR}"
+echo "Bootstrap complete. General logs: ${COMFY_LOGS}"
 echo "=== Bootstrap done: $(date) ==="
 
 sleep infinity

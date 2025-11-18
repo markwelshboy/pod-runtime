@@ -352,19 +352,77 @@ needs_recursive() {
 }
 
 # clone_or_pull: shallow clone or fast-forward reset
+# Usage (old / compatible):
+#   clone_or_pull <repo> <dst> true|false
+#
+# New / extended:
+#   clone_or_pull <repo> <dst> [true|false] [extra git clone args...]
+#
+# Examples:
+#   clone_or_pull URL dir true (equivalent to git pull --recursive ...)
+#   clone_or_pull URL dir --recursive --branch dev
+#   clone_or_pull URL dir true --branch dev
 clone_or_pull() {
-  local repo="$1" dst="$2" recursive="$3"
+  local repo="$1" dst="$2"
+  shift 2
+
+  local recursive_flag=""        # "true" or "false" if provided
+  local args=()
+
+  # Backward-compat: third arg "true"/"false" = recursive flag
+  if [[ "$#" -gt 0 && ( "$1" == "true" || "$1" == "false" ) ]]; then
+    recursive_flag="$1"
+    shift
+  fi
+
+  if (( "$#" > 0 )); then
+    args=("$@")                  # extra git clone args from manifest
+  fi
+
   if [[ -d "$dst/.git" ]]; then
-    git -C "$dst" fetch --all --prune --tags --depth="${GIT_DEPTH}" || true
+    # Existing repo → fast-forward-ish update
+    echo "[clone-or-pull] Custom Node $dst exists. Updating."
+    git -C "$dst" fetch --all --prune --tags ${GIT_DEPTH:+--depth "$GIT_DEPTH"} || true
     git -C "$dst" reset --hard origin/main 2>/dev/null \
       || git -C "$dst" reset --hard origin/master 2>/dev/null || true
   else
     mkdir -p "$(dirname "$dst")"
-    if [[ "$recursive" == "true" ]]; then
-      git clone --recursive ${GIT_DEPTH:+--depth "$GIT_DEPTH"} "$repo" "$dst"
-    else
-      git clone ${GIT_DEPTH:+--depth "$GIT_DEPTH"} "$repo" "$dst"
+
+    local clone_cmd=(git clone)
+
+    # Add depth if configured and not already specified
+    if [[ -n "${GIT_DEPTH:-}" ]]; then
+      local has_depth=0
+      for a in "${args[@]}"; do
+        if [[ "$a" == "--depth" ]]; then
+          has_depth=1
+          break
+        fi
+      done
+      if (( has_depth == 0 )); then
+        clone_cmd+=(--depth "$GIT_DEPTH")
+      fi
     fi
+
+    # Handle recursive_flag if set AND not already in args
+    if [[ "$recursive_flag" == "true" ]]; then
+      local has_rec=0
+      for a in "${args[@]}"; do
+        if [[ "$a" == "--recursive" || "$a" == "--recurse-submodules" ]]; then
+          has_rec=1
+          break
+        fi
+      done
+      if (( has_rec == 0 )); then
+        clone_cmd+=(--recursive)
+      fi
+    fi
+
+    # Append any extra args from manifest, then repo + dst
+    clone_cmd+=("${args[@]}" "$repo" "$dst")
+    
+    echo "[clone-or-pull] Performing: ${clone_cmd[@]}"
+    "${clone_cmd[@]}"
   fi
 }
 
@@ -451,32 +509,96 @@ rewrite_custom_nodes_requirements() {
 }
 
 # install_custom_nodes:
-#   - Try HF manifest (<TAG>.manifest or default_custom_nodes.manifest)
-#   - If found, use it as the node list and run install_custom_nodes_set in parallel
-#   - If not found, fall back to normal resolve_nodes_list + DEFAULT_NODES
+#   - Optional arg: manifest source (file path or URL)
+#   - If no arg, falls back to CUSTOM_NODES_MANIFEST_URL
+#   - Manifest format (plain text, one entry per line):
+#       <git_url> <target_dir> [optional git clone args...]
+#     Lines starting with # or empty are ignored.
+#   - Uses clone_or_pull as the core, in parallel up to MAX_NODE_JOBS.
 install_custom_nodes() {
-  local manifest
-  manifest="$(hf_fetch_nodes_manifest || true)"
+  _helpers_need curl
 
-  local -a EXTRA_NODES=()
+  local src="${1:-${CUSTOM_NODES_MANIFEST_URL:-}}"
 
-  if [[ -n "$manifest" && -s "$manifest" ]]; then
-    echo "[custom-nodes] Using HF manifest: $manifest"
-    # same format as DEFAULT_NODES/custom_nodes.txt: one repo URL per line, #-comments allowed
-    mapfile -t EXTRA_NODES < <(grep -vE '^\s*(#|$)' "$manifest" || true)
-    if ((${#EXTRA_NODES[@]} > 0)); then
-      echo "[custom-nodes] Installing ${#EXTRA_NODES[@]} nodes from manifest…"
-      install_custom_nodes_set EXTRA_NODES
-      return $?
-    else
-      echo "[custom-nodes] Manifest is empty after filtering comments; falling back to DEFAULT_NODES." >&2
-    fi
-  else
-    echo "[custom-nodes] No HF manifest found; falling back to DEFAULT_NODES / CUSTOM_NODE_LIST." >&2
+  if [[ -z "$src" ]]; then
+    echo "[custom-nodes] No manifest source and CUSTOM_NODES_MANIFEST_URL not set; nothing to install." >&2
+    return 0
   fi
 
-  # Fallback: use whatever resolve_nodes_list finds (CUSTOM_NODE_LIST_FILE → CUSTOM_NODE_LIST → DEFAULT_NODES)
-  install_custom_nodes_set
+  local man tmp=""
+  if [[ -f "$src" ]]; then
+    # Local file
+    man="$src"
+  else
+    # Treat as URL
+    man="$(mktemp -p "${CACHE_DIR:-/tmp}" custom_nodes_manifest.XXXXXX)"
+    tmp="$man"
+    if ! curl -fsSL "$src" -o "$man"; then
+      echo "[custom-nodes] Failed to fetch manifest: $src" >&2
+      [[ -n "$tmp" ]] && rm -f "$tmp"
+      return 1
+    fi
+  fi
+
+  local custom_dir="${CUSTOM_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/custom_nodes}"
+  mkdir -p "$custom_dir" "${CUSTOM_LOG_DIR:-${COMFY_LOGS:-/workspace/logs}/custom_nodes}"
+
+  local max_jobs="${MAX_NODE_JOBS:-8}"
+  local job_count=0
+  local line url dst rest
+
+  echo "[custom-nodes] Using manifest: $src"
+  echo "[custom-nodes] Installing into: $custom_dir"
+  cd "$custom_dir"
+
+  # Read manifest line-by-line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # Skip comments / empty lines
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+    # Split: url dst [rest...]
+    # NOTE: we do this in two steps so "rest" can contain spaces
+    url=""
+    dst=""
+    rest=""
+    # shellcheck disable=SC2086
+    read -r url dst rest <<<"$line"
+
+    if [[ -z "$url" || -z "$dst" ]]; then
+      echo "[custom-nodes] Skipping malformed line: $line" >&2
+      continue
+    fi
+
+    # Turn "rest" into an array of extra git args (if any)
+    local -a extra=()
+    if [[ -n "${rest:-}" ]]; then
+      # word-split on spaces in rest
+      # shellcheck disable=SC2206
+      extra=($rest)
+    fi
+
+    (
+      echo "[custom-nodes] → $dst  (from $url ${extra[*]:+${extra[*]}})"
+      # clone_or_pull must already exist in helpers.sh and accept: url name [clone_args...]
+      clone_or_pull "$url" "$dst" "${extra[@]}"
+    ) &
+
+    ((job_count++))
+    if (( job_count >= max_jobs )); then
+      # Wait for one job to finish before launching more
+      wait -n || true
+      ((job_count--))
+    fi
+  done <"$man"
+
+  # Wait for any remaining jobs
+  wait || true
+
+  [[ -n "$tmp" ]] && rm -f "$tmp"
+
+  echo "[custom-nodes] Manifest install completed."
+  return 0
 }
 
 # install_custom_nodes_set: bounded parallel installer (wait -n throttle, no FIFOs)
