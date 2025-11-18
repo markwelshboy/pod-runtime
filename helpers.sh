@@ -3447,3 +3447,40 @@ on_start_banner() {
     echo ""
   } | tee "$logfile"
 }
+
+# --------------------------------------------------
+# SSH setup: authorized_keys from env, start sshd
+# --------------------------------------------------
+setup_ssh() {
+  # Support a few env var names for the public key
+  local pub="${SSH_AUTHORIZED_KEY:-${SSH_PUBKEY:-${VAST_SSH_PUBKEY:-}}}"
+
+  if [[ -z "$pub" ]]; then
+    echo "[ssh] No SSH_AUTHORIZED_KEY/SSH_PUBKEY/VAST_SSH_PUBKEY set; skipping sshd."
+    return 0
+  fi
+
+  if ! command -v sshd >/dev/null 2>&1; then
+    echo "[ssh] openssh-server not installed in image; cannot start sshd."
+    return 0
+  fi
+
+  echo "[ssh] Setting up sshd with provided public key..."
+
+  mkdir -p /var/run/sshd
+
+  mkdir -p /root/.ssh
+  chmod 700 /root/.ssh
+  printf '%s\n' "$pub" > /root/.ssh/authorized_keys
+  chmod 600 /root/.ssh/authorized_keys
+
+  # Harden a bit: disable password auth, allow root only with keys
+  if [[ -f /etc/ssh/sshd_config ]]; then
+    sed -ri 's/^#?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
+    sed -ri 's/^#?PermitRootLogin .*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+  fi
+
+  # Start sshd in the background, logging to stdout
+  /usr/sbin/sshd -D -e &
+  echo "[ssh] sshd started."
+}

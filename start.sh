@@ -91,6 +91,12 @@ source "$HELPERS"
 on_start_banner
 
 # --------------------------------------------------
+# 1.75) Configure SSH
+# --------------------------------------------------
+
+setup_ssh
+
+# --------------------------------------------------
 # 2) Ensure ComfyUI lives on the network volume
 #      /ComfyUI  →  $COMFY_HOME (/workspace/ComfyUI)
 # --------------------------------------------------
