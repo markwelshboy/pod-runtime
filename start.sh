@@ -120,15 +120,21 @@ aria2_monitor_progress \
 aria2_clear_results >/dev/null 2>&1 || true
 
 # --------------------------------------------------
-# 7) Start ComfyUI
+# 7) Start Jupyter
 # --------------------------------------------------
-cd "${COMFY_HOME:-/workspace/ComfyUI}"
 
-#===============================================================================================
-#
-#  14 ) Launch ComfyUI instances (8188 main, 8288 GPU0, 8388 GPU1)
-#
-#===============================================================================================
+if [[ "${LAUNCH_JUPYTER:-0}" == "1" ]]; then
+  echo "Launching Jupyter. Trying from port 8888"
+  jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace &
+else
+  echo "LAUNCH_JUPYTER=0 → skipping Jupyter launch..."
+fi
+
+# --------------------------------------------------
+# 8) Start ComfyUI
+# --------------------------------------------------
+
+cd "${COMFY_HOME:-/workspace/ComfyUI}"
 
 echo "▶️  Starting ComfyUI"
 
@@ -138,7 +144,6 @@ else
   tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}."
 fi
 
-echo "ComfyUI launched on 0.0.0.0:8188"
 echo "Bootstrap complete. General logs: ${COMFY_LOGS}"
 echo "=== Bootstrap done: $(date) ==="
 
