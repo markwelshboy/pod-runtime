@@ -94,10 +94,6 @@ on_start_banner
 # 1.75) Configure SSH
 # --------------------------------------------------
 
-echo "SSH_AUTHORIZED_KEY=${SSH_AUTHORIZED_KEY:-}"
-echo "SSH_PUBKEY=${SSH_PUBKEY:-}"
-echo "SSH_KEY=${SSH_PUBKEY:-}"
-
 setup_ssh
 
 # --------------------------------------------------

@@ -3453,10 +3453,10 @@ on_start_banner() {
 # --------------------------------------------------
 setup_ssh() {
   # Support a few env var names for the public key
-  local pub="${SSH_AUTHORIZED_KEY:-${SSH_PUBKEY:-${VAST_SSH_PUBKEY:-}}}"
+  local pub="${SSH_PUBLIC_KEY:-${PUBLIC_KEY:-}}"
 
   if [[ -z "$pub" ]]; then
-    echo "[ssh] No SSH_AUTHORIZED_KEY/SSH_PUBKEY/VAST_SSH_PUBKEY set; skipping sshd."
+    echo "[ssh] No SSH_PUBLIC_KEY/PUBLIC_KEY set; skipping sshd."
     return 0
   fi
 
