@@ -706,7 +706,8 @@ hf_ensure_local_repo() {
     echo "[hf-ensure-local-repo] hf_ensure_local_repo: hf_remote_url unresolved" >&2
     return 1
   else
-    echo "[hf-ensure-local-repo] Master repo url=${url}" >&2
+    local display_url="${$url/https:\/\/oauth2:[^@]*@/https:\/\/oauth2:***@}"
+    echo "[hf-ensure-local-repo] Master repo url=${display_url}" >&2
   fi
 
   echo "[hf-ensure-local-repo] Using local repo=${repo}" >&2
@@ -3380,6 +3381,39 @@ show_env () {
 
 }
 
+# Probe ComfyUI version for logging
+probe_comfy_version() {
+  local dir="${COMFY_HOME:-/workspace/ComfyUI}"
+  local ver="unknown"
+
+  # Prefer git describe if this is a git clone
+  if [[ -d "$dir/.git" ]] && command -v git >/dev/null 2>&1; then
+    ver="$(git -C "$dir" describe --tags --always 2>/dev/null \
+          || git -C "$dir" rev-parse --short HEAD 2>/dev/null \
+          || echo "unknown")"
+    echo "$ver"
+    return 0
+  fi
+
+  # Fallback: try a version.py next to main.py (not guaranteed to exist)
+  if [[ -f "$dir/version.py" ]]; then
+    ver="$("$PY" - <<'PY'
+import importlib.util, sys, pathlib
+root = pathlib.Path(sys.argv[1])
+vp = root / "version.py"
+spec = importlib.util.spec_from_file_location("comfy_version", vp)
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+print(getattr(m, "__version__", "unknown"))
+PY
+"$dir" 2>/dev/null || echo "unknown")"
+    echo "$ver"
+    return 0
+  fi
+
+  echo "$ver"
+}
+
 # --------------------------------------------------
 # Pretty boot banner for Vast / RunPod logs
 # --------------------------------------------------
@@ -3399,8 +3433,7 @@ on_start_banner() {
   gpu_cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || echo "?")"
   arch="${gpu_cc//./}"   # "12.0" → "120"
 
-  comfyver="$(grep -Eo '"version": *"[^"]+"' "${COMFY_HOME:-/workspace/ComfyUI}/package.json" 2>/dev/null \
-               | sed -E 's/.*"([^"]+)"/\1/' || echo "?")"
+  comfyver=$(probe_comfy_version)
 
   # --- ASCII GPU header ---
   gpu_label="GPU: ${gpustr}"
