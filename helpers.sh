@@ -646,6 +646,7 @@ snapshot_custom_nodes_state() {
       if [[ "$count" -eq 0 ]]; then
         echo "(no subdirectories under custom_nodes)"
       else
+        printf '%-32s  %-10s  %-13s  %s\n' "Custom Node Name/Dir" "SHA" "Branch" "GIT Remote"
         for d in "${dirs[@]}"; do
           local name sha branch remote
           name="$(basename "$d")"
@@ -654,7 +655,7 @@ snapshot_custom_nodes_state() {
             sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
             branch="$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
             remote="$(git -C "$d" config --get remote.origin.url 2>/dev/null || echo "unknown")"
-            printf '%-32s  %s  (%s)  [%s]\n' "$name" "$sha" "$branch" "$remote"
+            printf '%-32s  %-10s  ( %-10s )  [%s]\n' "$name" "$sha" "$branch" "$remote"
           else
             printf '%-32s  %s\n' "$name" "<not a git repo>"
           fi
