@@ -189,6 +189,7 @@ if [[ "${INSTALL_EXTRA_CUSTOM_NODES:-1}" == "1" ]]; then
   if ! install_custom_nodes; then
     echo "⚠️ install_custom_nodes reported errors; custom-node extras may be incomplete."
   fi
+  snapshot_custom_nodes_state "after-install_custom_nodes" || true
 else
   echo "INSTALL_EXTRA_CUSTOM_NODES=0 → skipping extra custom node installation."
 fi
@@ -240,7 +241,7 @@ change_latent_preview_method || true
 # --------------------------------------------------
 
 # Final snapshot of custom_nodes before ComfyUI launch
-snapshot_custom_nodes_state || true
+snapshot_custom_nodes_state --summary "before-comfy-launch" || true
 
 cd "${COMFY_HOME:-/workspace/ComfyUI}"
 

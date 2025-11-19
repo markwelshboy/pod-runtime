@@ -552,38 +552,117 @@ rewrite_custom_nodes_requirements() {
 # Writes to ${COMFY_LOGS}/custom_nodes.snapshot
 # -------------------------------------------------------------------
 snapshot_custom_nodes_state() {
+  local mode="full"
+  local stage=""
+
+  # ----------------------------
+  # Parse arguments:
+  #   snapshot_custom_nodes_state [--summary] [--stage STAGE] [STAGE]
+  # ----------------------------
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --summary)
+        mode="summary"
+        shift
+        ;;
+      --stage)
+        stage="${2:-}"
+        shift 2
+        ;;
+      --stage=*)
+        stage="${1#--stage=}"
+        shift
+        ;;
+      *)
+        # Bare positional becomes the stage/tag if not already set
+        if [[ -z "$stage" ]]; then
+          stage="$1"
+        fi
+        shift
+        ;;
+    esac
+  done
+
   local root="${CUSTOM_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/custom_nodes}"
-  local out="${COMFY_LOGS:-/workspace/logs}/custom_nodes.snapshot"
+  local logs_root="${COMFY_LOGS:-/workspace/logs}"
+  local out="${logs_root}/custom_nodes.snapshot"
 
-  mkdir -p "$(dirname "$out")"
+  mkdir -p "$logs_root"
 
-  {
-    echo "=== Custom Nodes Snapshot @ $(date -Is) ==="
-    echo "Root: $root"
-    echo
+  # Small helper to format the header line
+  local now; now="$(date -Is)"
+  local stage_suffix=""
+  if [[ -n "$stage" ]]; then
+    stage_suffix=" [stage: ${stage}]"
+  fi
 
-    if [[ ! -d "$root" ]]; then
-      echo "(no custom_nodes directory yet)"
-      exit 0
+  if [[ ! -d "$root" ]]; then
+    local msg="[custom-nodes] Snapshot${stage_suffix}: no custom_nodes dir at ${root}"
+    if [[ "$mode" == "summary" ]]; then
+      echo "$msg" | tee -a "$out"
+    else
+      echo "$msg" | tee -a "$out"
     fi
+    return 0
+  fi
 
-    # For each directory under custom_nodes, try to pull Git info
-    for d in "$root"/*; do
-      [[ -d "$d" ]] || continue
+  # Collect entries once so we can count and iterate
+  local -a dirs=()
+  while IFS= read -r d; do
+    dirs+=("$d")
+  done < <(find "$root" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort)
 
-      local name sha branch remote
-      name="$(basename "$d")"
+  local count="${#dirs[@]}"
 
-      if [[ -d "$d/.git" ]] && command -v git >/dev/null 2>&1; then
-        sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
-        branch="$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
-        remote="$(git -C "$d" config --get remote.origin.url 2>/dev/null || echo "unknown")"
-        printf '%-32s  %s  (%s)  [%s]\n' "$name" "$sha" "$branch" "$remote"
+  if [[ "$mode" == "summary" ]]; then
+    # ----------------------------
+    # Summary mode:
+    #   - One-line summary to screen
+    #   - Full list to the snapshot file only
+    # ----------------------------
+    {
+      echo "============================================================"
+      echo "  Custom Nodes Snapshot @ ${now}${stage_suffix}"
+      echo "  Root: ${root}"
+      echo "  Total nodes: ${count}"
+      echo "============================================================"
+      for d in "${dirs[@]}"; do
+        printf '%s\n' "$(basename "$d")"
+      done
+      echo
+    } >> "$out"
+
+    echo "[custom-nodes] Snapshot${stage_suffix}: ${count} node(s); details: ${out}"
+  else
+    # ----------------------------
+    # Full mode:
+    #   - Detailed git info to BOTH screen and file (via tee)
+    # ----------------------------
+    {
+      echo "============================================================"
+      echo "  Custom Nodes Snapshot @ ${now}${stage_suffix}"
+      echo "  Root: ${root}"
+      echo "============================================================"
+      if [[ "$count" -eq 0 ]]; then
+        echo "(no subdirectories under custom_nodes)"
       else
-        printf '%-32s  %s\n' "$name" "<not a git repo>"
+        for d in "${dirs[@]}"; do
+          local name sha branch remote
+          name="$(basename "$d")"
+
+          if [[ -d "$d/.git" ]] && command -v git >/dev/null 2>&1; then
+            sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+            branch="$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
+            remote="$(git -C "$d" config --get remote.origin.url 2>/dev/null || echo "unknown")"
+            printf '%-32s  %s  (%s)  [%s]\n' "$name" "$sha" "$branch" "$remote"
+          else
+            printf '%-32s  %s\n' "$name" "<not a git repo>"
+          fi
+        done
       fi
-    done
-  } >"$out"
+      echo
+    } | tee -a "$out"
+  fi
 }
 
 # install_custom_nodes:
