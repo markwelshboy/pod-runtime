@@ -288,7 +288,7 @@ else
 fi
 
 echo "Bootstrap complete. Bootstrap log: ${COMFY_LOGS}/startup.log"
-echo "General logs: ${COMFY_LOGS}/startup.log
+echo "General logs: ${COMFY_LOGS}" 
 
 echo "=== Bootstrap done: $(date) ==="
 
