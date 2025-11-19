@@ -7,7 +7,7 @@ umask 0022
 echo "=== ComfyUI bootstrap: $(date) ==="
 
 # --------------------------------------------------
-# 0) Capture the environment so we can recreate it 
+# -2) Capture the environment so we can recreate it 
 #    in a bash shell
 # --------------------------------------------------
 
@@ -63,7 +63,7 @@ SUMMARY="/workspace/logs/env.summary"
 echo "Saved session env to $SESSION_ENV; summary at $SUMMARY"
 
 # --------------------------------------------------
-# 1) Wire up .env and helpers
+# -1) Wire up .env and helpers
 # --------------------------------------------------
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -85,19 +85,32 @@ fi
 source "$HELPERS"
 
 # --------------------------------------------------
-# 1.5) Pretty boot banner for Vast / RunPod logs
+# 0) Create startup log
+# --------------------------------------------------
+
+LOG_DIR="${COMFY_LOGS:-/workspace/logs}"
+mkdir -p "$LOG_DIR"
+STARTUP_LOG="${LOG_DIR}/startup.log"
+
+# Duplicate all further stdout/stderr to both Vast log and a file
+exec > >(tee -a "$STARTUP_LOG") 2>&1
+
+echo "[bootstrap] Logging to: ${STARTUP_LOG}"
+
+# --------------------------------------------------
+# 1) Pretty boot banner for Vast / RunPod logs
 # --------------------------------------------------
 
 on_start_banner
 
 # --------------------------------------------------
-# 1.75) Configure SSH
+# 2) Configure SSH
 # --------------------------------------------------
 
 setup_ssh
 
 # --------------------------------------------------
-# 2) Ensure ComfyUI lives on the network volume
+# 3) Ensure ComfyUI lives on the network volume
 #      /ComfyUI  →  $COMFY_HOME (/workspace/ComfyUI)
 # --------------------------------------------------
 

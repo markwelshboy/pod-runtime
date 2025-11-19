@@ -772,8 +772,6 @@ install_custom_nodes() {
 
   echo "[custom-nodes] Manifest install completed successfully."
 
-  snapshot_custom_nodes_state || true
-
   return 0
 }
 
@@ -3576,6 +3574,35 @@ PY
   echo "$ver"
 }
 
+detect_comfy_version() {
+  local dir="${COMFY_HOME:-/workspace/ComfyUI}"
+  local ver="unknown"
+
+  if [[ -d "$dir/.git" ]] && command -v git >/dev/null 2>&1; then
+    local desc
+    desc="$(git -C "$dir" describe --tags --dirty --always 2>/dev/null || true)"
+
+    # Match vX.Y.Z-N-gSHA
+    if [[ "$desc" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+)-g[0-9a-f]+ ]]; then
+      local base="${BASH_REMATCH[1]}"
+      local extra="${BASH_REMATCH[2]}"
+      if [[ "$extra" -eq 0 ]]; then
+        ver="v${base}"
+      else
+        ver="v${base}+${extra}"
+      fi
+    # Pure tag (vX.Y.Z)
+    elif [[ "$desc" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      ver="$desc"
+    # Fallback: just use whatever describe gave us
+    elif [[ -n "$desc" ]]; then
+      ver="$desc"
+    fi
+  fi
+
+  echo "$ver"
+}
+
 # --------------------------------------------------
 # Pretty boot banner for Vast / RunPod logs
 # --------------------------------------------------
@@ -3595,7 +3622,7 @@ on_start_banner() {
   gpu_cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || echo "?")"
   arch="${gpu_cc//./}"   # "12.0" → "120"
 
-  comfyver=$(probe_comfy_version)
+  comfyver="$(detect_comfy_version || echo unknown)"
 
   # --- ASCII GPU header ---
   gpu_label="GPU: ${gpustr}"
@@ -3615,21 +3642,21 @@ on_start_banner() {
     echo "============================================================"
     echo "   🚀 COMFYUI BOOTSTRAP START (Vast) — $(date -Is)"
     echo "============================================================"
-    echo " Image Tag:          ${IMAGE_TAG:-unknown}"
-    echo " Build Git SHA:      ${BUILD_GIT_SHA:-unknown}"
+    echo " Image Tag:              ${IMAGE_TAG:-unknown}"
+    echo " Build Git SHA:          ${BUILD_GIT_SHA:-unknown}"
     echo ""
-    echo " Repo Root:          ${REPO_ROOT:-?}"
-    echo " Runtime Directory:  ${SCRIPT_DIR:-?}"
+    echo " Repo Root:              ${REPO_ROOT:-?}"
+    echo " Runtime Directory:      ${SCRIPT_DIR:-?}"
     echo ""
-    echo " Python:             ${pyver}"
-    echo " Torch:              ${torchver}"
-    echo " CUDA (Torch):       ${cudaver}"
+    echo " Python:                 ${pyver}"
+    echo " Torch:                  ${torchver}"
+    echo " CUDA (Torch):           ${cudaver}"
     echo ""
-    echo " ComfyUI Path:       ${COMFY_HOME:-/workspace/ComfyUI}"
-    echo " ComfyUI Version:    ${comfyver}"
+    echo " ComfyUI Path:           ${COMFY_HOME:-/workspace/ComfyUI}"
+    echo " ComfyUI Version:        ${comfyver}"
     echo ""
-    echo " Model Manifest:     ${MODEL_MANIFEST_URL:-unset}"
-    echo " Node Manifest:      ${CUSTOM_NODES_MANIFEST_URL:-unset}"
+    echo " Model Manifest:         ${MODEL_MANIFEST_URL:-unset}"
+    echo " Custom Node Manifest:   ${CUSTOM_NODES_MANIFEST_URL:-unset}"
     echo ""
     echo " ENABLE_MODEL_MANIFEST_DOWNLOAD = ${ENABLE_MODEL_MANIFEST_DOWNLOAD:-1}"
     echo " ENABLE_CIVITAI_DOWNLOAD        = ${ENABLE_CIVITAI_DOWNLOAD:-1}"
@@ -3637,7 +3664,7 @@ on_start_banner() {
     echo " INSTALL_EXTRA_CUSTOM_NODES     = ${INSTALL_EXTRA_CUSTOM_NODES:-1}"
     echo " LAUNCH_JUPYTER                 = ${LAUNCH_JUPYTER:-0}"
     echo ""
-    echo " Log Directory:      ${COMFY_LOGS:-/workspace/logs}"
+    echo " Log Directory:          ${COMFY_LOGS:-/workspace/logs}"
     echo "============================================================"
     echo ""
   } | tee "$logfile"
