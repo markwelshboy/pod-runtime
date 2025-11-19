@@ -1701,7 +1701,7 @@ PY
   git clone https://github.com/thu-ml/SageAttention.git /tmp/SageAttention
 
   if env -u PIP_REQUIRE_HASHES -u PIP_BUILD_CONSTRAINT $PIP install --no-build-isolation -e /tmp/SageAttention 2>&1 | tee /workspace/logs/sage_build.log; then
-    echo "[sage-bundle] [install_sage_from_source] SageAttention built OK"
+    echo "[sage-bundle] [install_sage_from_source] ✅ SageAttention built OK"
     return 0
   else
     echo "[sage-bundle] [install_sage_from_source] SageAttention build FAILED — see /workspace/logs/sage_build.log" >&2
@@ -1841,13 +1841,13 @@ hf_fetch_sage_bundle() {
   echo "[sage-bundle] [hf_fetch_sage_bundle] Looking for matching bundle $(basename $patt)." >&2
 
   if [[ ! -f "$patt" ]]; then
-    echo "[sage-bundle] [hf_fetch_sage_bundle] ❌ Exact bundle not found for key=${key}." >&2
+    echo "[sage-bundle] [hf_fetch_sage_bundle] Exact bundle not found for key=${key}." >&2
     return 1
   fi
 
   mkdir -p "$CACHE_DIR"
   local_tgz="${CACHE_DIR}/$(basename "$patt")"
-  echo "[sage-bundle] [hf_fetch_sage_bundle] Found bundle. Copying → ${local_tgz}." >&2
+  echo "[sage-bundle] [hf_fetch_sage_bundle] ✅ Found SageAttention bundle. Copying → ${local_tgz}." >&2
   cp -f "$patt" "$local_tgz"
 
   echo "$local_tgz"
@@ -1888,7 +1888,7 @@ hf_fetch_pip_cache() {
 
   local local_tgz="${CACHE_DIR}/pip_cache_${key}.tgz"
   mkdir -p "${CACHE_DIR:-/workspace/ComfyUI/cache}"
-  echo "[pip-cache] [hf_fetch_pip_cache] Found bundle. Copying → ${local_tgz}." >&2
+  echo "[pip-cache] [hf_fetch_pip_cache] ✅ Found bundle. Copying → ${local_tgz}." >&2
   cp -f "$patt" "$local_tgz"
 
   echo "$local_tgz"
@@ -1923,7 +1923,7 @@ push_pip_cache_if_requested() {
   }
 
   hf_push_files "pip_cache ${key}" "$tgz"
-  echo "[pip-cache] [push_pip_cache_if_requested] Uploaded pip_cache_${key}.tgz" >&2
+  echo "[pip-cache] [push_pip_cache_if_requested] ✅ Uploaded pip_cache_${key}.tgz" >&2
 }
 
 # ensure_pip_cache_for_custom_nodes:
@@ -1953,7 +1953,7 @@ ensure_pip_cache_for_custom_nodes() {
       tar -xzf "$tgz" -C "$cache" || {
         echo "[pip-cache] [ensure_pip_cache_for_custom_nodes] ⚠️ Failed to extract pip cache archive; continuing without it." >&2
       }
-      echo "[pip-cache] [ensure_pip_cache_for_custom_nodes] Restored pip cache from tar file." >&2
+      echo "[pip-cache] [ensure_pip_cache_for_custom_nodes] ✅ Restored pip cache from tar file." >&2
     fi
   fi
 }
@@ -1984,7 +1984,7 @@ import sys
 print("[sage-bundle] [restore_sage_from_tar] sys.executable:", sys.executable)
 try:
     import sageattention
-    print("[sage-bundle] [restore_sage_from_tar] SAGE imported sucessfully from tar bundle:", sageattention, getattr(sageattention, "__file__", None))
+    print("[sage-bundle] [restore_sage_from_tar] ✅ SAGE imported sucessfully from tar bundle:", sageattention, getattr(sageattention, "__file__", None))
 except Exception as e:
     print("[sage-bundle] [restore_sage_from_tar] SAGE IMPORT ERROR:", repr(e))
 PY
@@ -2047,7 +2047,7 @@ hf_fetch_latest_custom_nodes_bundle() {
   local repo patt best
 
   repo="$(hf_ensure_local_repo)" || {
-    echo "[custom-nodes] hf_fetch_latest_custom_nodes_bundle: no local repo" >&2
+    echo "[custom-nodes] Could not initialize local repo" >&2
     return 1
   }
 
@@ -2072,7 +2072,7 @@ hf_fetch_custom_nodes_requirements_for_tag() {
   local repo req_src req_dst
 
   repo="$(hf_ensure_local_repo)" || {
-    echo "[custom-nodes] hf_fetch_latest_custom_nodes_bundle: no local repo" >&2
+    echo "[custom-nodes] hf_fetch_latest_custom_nodes_bundle: Could not initialize local repo" >&2
     return 1
   }
 
@@ -2098,7 +2098,7 @@ install_custom_nodes_requirements() {
 
   local repo req_src req_work
   repo="$(hf_ensure_local_repo)" || {
-    echo "[custom-nodes] hf_fetch_latest_custom_nodes_bundle: no local repo" >&2
+    echo "[custom-nodes] hf_fetch_latest_custom_nodes_bundle: Could not initialize local repo" >&2
     return 1
   }
 
@@ -2254,7 +2254,7 @@ build_custom_nodes_bundle() {
   fi
   tar -C "$(dirname "$CUSTOM_DIR")" -czf "$tarpath" "$(basename "$CUSTOM_DIR")"
   sha256sum "$tarpath" > "$sha"
-  echo "[custom-nodes] [build_custom_nodes_bundle] Built manifest, reqs, tar, sha256 bundle for HF upload." >&2
+  echo "[custom-nodes] [build_custom_nodes_bundle] ✅ Built manifest, reqs, tar, sha256 bundle for HF upload." >&2
   echo "$tarpath"
 }
 
@@ -2299,7 +2299,7 @@ ensure_custom_nodes_from_bundle_or_build() {
       rm -rf "$CUSTOM_DIR"
       mkdir -p "$(dirname "$CUSTOM_DIR")"
       tar -xzf "$tgz" -C "$(dirname "$CUSTOM_DIR")"
-      echo "[custom-nodes] [ensure_custom_nodes_from_bundle_or_build] Restored custom nodes from HF bundle."
+      echo "[custom-nodes] [ensure_custom_nodes_from_bundle_or_build] ✅ Restored custom nodes from HF bundle."
 
       if install_custom_nodes_requirements "$tag"; then
         push_bundle_if_requested || true
@@ -3847,11 +3847,13 @@ section() {
   echo
   echo "$border"
   if [[ -n "$msg" ]]; then
-    printf "# SECTION %s [%s]\n" "$num" "$ts"
+    printf "# SECTION %s [@ %s]\n" "$num" "$ts"
+    echo "#"
     printf "#   %s\n" "$msg"
   else
-    printf "# SECTION %s [%s]\n" "$num" "$ts"
+    printf "# SECTION %s [@ %s]\n" "$num" "$ts"
   fi
+  echo "#"
   echo "$border"
   echo
 }

@@ -102,7 +102,7 @@ exec > >(tee -a "$STARTUP_LOG") 2>&1
 echo "[bootstrap] Logging to: ${STARTUP_LOG}"
 
 #------------------------------------------------------------------------
-section 1 "Print Status/Configuration Overview"
+section 1 "Status/Configuration Overview"
 #----------------------------------------------
 # Pretty boot banner for Vast / RunPod logs
 #----------------------------------------------
@@ -183,7 +183,7 @@ fi
 aria2_show_download_snapshot || true
 
 #------------------------------------------------------------------------
-section 6 "Pull (if available) or Build SageAttention"
+section 6 "SageAttention: Pull (if available) or Build from Source"
 #----------------------------------------------
 # Prefer pull of SageAttention for speed. Build
 #   if not.
