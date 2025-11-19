@@ -31,7 +31,7 @@ shopt -s extglob
 # Optional (misc tooling):
 #   COMFY_REPO_URL       - ComfyUI repo URL (default comfyanonymous/ComfyUI)
 #   GIT_DEPTH            - default 1
-#   MAX_NODE_JOBS        - default 6..8
+#   MAX_CUSTOM_NODE_JOBS        - default 6..8
 # Hugging Face:
 #   HF_REPO_ID           - e.g. user/comfyui-bundles
 #   HF_REPO_TYPE         - dataset | model (default dataset)
@@ -45,7 +45,7 @@ shopt -s extglob
 # Provide reasonable fallbacks if .env forgot any
 : "${COMFY_REPO_URL:=https://github.com/comfyanonymous/ComfyUI}"
 : "${GIT_DEPTH:=1}"
-: "${MAX_NODE_JOBS:=8}"
+: "${MAX_CUSTOM_NODE_JOBS:=8}"
 : "${HF_API_BASE:=https://huggingface.co}"
 : "${CN_BRANCH:=main}"
 : "${CACHE_DIR:=${COMFY_HOME:-/tmp}/cache}"
@@ -673,7 +673,7 @@ snapshot_custom_nodes_state() {
 #   - Manifest format (plain text, one entry per line):
 #       <git_url> <target_dir> [optional git clone args...]
 #     Lines starting with # or empty are ignored.
-#   - Uses clone_or_pull/build_node as the core, in parallel up to MAX_NODE_JOBS.
+#   - Uses clone_or_pull/build_node as the core, in parallel up to MAX_CUSTOM_NODE_JOBS.
 install_custom_nodes() {
   _helpers_need curl
 
@@ -701,12 +701,13 @@ install_custom_nodes() {
   local log_dir="${CUSTOM_LOG_DIR:-${COMFY_LOGS:-/workspace/logs}/custom_nodes}"
   mkdir -p "$custom_dir" "$log_dir"
 
-  local max_jobs="${MAX_NODE_JOBS:-8}"
+  local max_jobs="${MAX_CUSTOM_NODE_JOBS:-8}"
   local job_count=0
   local failed=0
 
   echo "[custom-nodes] Using manifest: $src"
   echo "[custom-nodes] Installing custom nodes into: $custom_dir"
+  echo "[custom-nodes] Running maximum of ${MAX_CUSTOM_NODE_JOBS} parallel jobs. Configure with MAX_CUSTOM_NODE_JOBS."
   cd "$custom_dir"
 
   local line url dst rest
@@ -793,7 +794,7 @@ install_custom_nodes_set() {
   mkdir -p "${CUSTOM_DIR:?}" "${CUSTOM_LOG_DIR:?}"
 
   # Concurrency
-  local max_jobs="${MAX_NODE_JOBS:-8}"
+  local max_jobs="${MAX_CUSTOM_NODE_JOBS:-8}"
   if ! [[ "$max_jobs" =~ ^[0-9]+$ ]] || (( max_jobs < 1 )); then max_jobs=8; fi
   echo "[custom-nodes] Using concurrency: ${max_jobs}"
 
@@ -2586,9 +2587,14 @@ aria2_show_download_snapshot() {
   pending_count="$(jq -r 'length' <<<"$wai" 2>/dev/null || echo 0)"
   completed_count="$(jq -r 'length' <<<"$sto" 2>/dev/null || echo 0)"
 
+  echo
   echo "================================================================================"
   echo "=== Aria2 Downloader Snapshot @ $(date '+%Y-%m-%d %H:%M:%S')"
+  echo "================================================================================"
+  echo "==="
   echo "=== Active: $active_count   Pending: $pending_count   Completed: $completed_count"
+  echo "==="
+  echo "=== Max Concurrent Downloads (ARIA2_MAX_CONC)=${ARIA2_MAX_CONC}
   echo "================================================================================"
   echo
 

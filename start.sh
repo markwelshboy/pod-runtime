@@ -207,7 +207,7 @@ section 7 "Install Custom Nodes"
 #----------------------------------------------
 
 if [[ "${INSTALL_EXTRA_CUSTOM_NODES:-1}" == "1" ]]; then
-  echo "Installing extra custom nodes. Trying ${CUSTOM_NODES_MANIFEST_URL}..."
+  echo "Installing custom nodes. Trying ${CUSTOM_NODES_MANIFEST_URL}..."
   if ! install_custom_nodes; then
     echo "⚠️ install_custom_nodes reported errors; custom-node extras may be incomplete."
   fi
