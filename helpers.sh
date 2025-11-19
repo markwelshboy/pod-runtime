@@ -2594,7 +2594,7 @@ aria2_show_download_snapshot() {
   echo "==="
   echo "=== Active: $active_count   Pending: $pending_count   Completed: $completed_count"
   echo "==="
-  echo "=== Max Concurrent Downloads (ARIA2_MAX_CONC)=${ARIA2_MAX_CONC}
+  echo "=== Max Concurrent Downloads (ARIA2_MAX_CONC)=${ARIA2_MAX_CONC}"
   echo "================================================================================"
   echo
 
