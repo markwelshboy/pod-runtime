@@ -646,7 +646,8 @@ snapshot_custom_nodes_state() {
       if [[ "$count" -eq 0 ]]; then
         echo "(no subdirectories under custom_nodes)"
       else
-        printf '%-32s  %-10s  %-13s  %s\n' "Custom Node Name/Dir" "SHA" "Branch" "GIT Remote"
+        printf '%-32s  %-10s  %-10s  %s\n' "Custom Node (Name/Dir)" "SHA" "Branch" "GIT Remote"
+        printf '%-32s  %-10s  %-10s  %s\n' "======================" "==========" "==========" "======================"
         for d in "${dirs[@]}"; do
           local name sha branch remote
           name="$(basename "$d")"
@@ -655,7 +656,7 @@ snapshot_custom_nodes_state() {
             sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
             branch="$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
             remote="$(git -C "$d" config --get remote.origin.url 2>/dev/null || echo "unknown")"
-            printf '%-32s  %-10s  ( %-10s )  [%s]\n' "$name" "$sha" "$branch" "$remote"
+            printf '%-32s  %-10s  %-10s  [%s]\n' "$name" "$sha" "$branch" "$remote"
           else
             printf '%-32s  %s\n' "$name" "<not a git repo>"
           fi
@@ -3817,4 +3818,40 @@ copy_workflows_to_comfyui() {
   fi
 
   return 0
+}
+
+# Pretty section header for logs
+# Usage:
+#   section 1 "bootstrap + env"
+#   section 9 "install extra custom nodes"
+section() {
+  local num="${1:-?}"; shift || true
+  local msg="$*"
+
+  # Column width: use $COLUMNS if set, otherwise 120; clamp to >= 80
+  local cols="${COLUMNS:-120}"
+  (( cols < 80 )) && cols=80
+
+  # Build a border line like:  ------------------------------------------------------------
+  local border
+  border="$(printf '%*s' "$cols" '' | tr ' ' '-')"
+
+  # Uppercase the message if present
+  if [[ -n "$msg" ]]; then
+    msg="${msg^^}"
+  fi
+
+  local ts
+  ts="$(date -Is 2>/dev/null || date)"
+
+  echo
+  echo "$border"
+  if [[ -n "$msg" ]]; then
+    printf "# SECTION %s [%s]\n" "$num" "$ts"
+    printf "#   %s\n" "$msg"
+  else
+    printf "# SECTION %s [%s]\n" "$num" "$ts"
+  fi
+  echo "$border"
+  echo
 }

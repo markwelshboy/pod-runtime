@@ -6,10 +6,10 @@ umask 0022
 
 echo "=== ComfyUI bootstrap: $(date) ==="
 
-# --------------------------------------------------
-# -2) Capture the environment so we can recreate it 
-#    in a bash shell
-# --------------------------------------------------
+#----------------------------------------------
+# -2) Capture the environment so we can
+#       recreate it in a bash shell
+#----------------------------------------------
 
 mkdir -p /workspace
 
@@ -62,9 +62,9 @@ SUMMARY="/workspace/logs/env.summary"
 
 echo "Saved session env to $SESSION_ENV; summary at $SUMMARY"
 
-# --------------------------------------------------
+#----------------------------------------------
 # -1) Wire up .env and helpers
-# --------------------------------------------------
+#----------------------------------------------
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ENVIRONMENT="${ENVIRONMENT:-$SCRIPT_DIR/.env}"
@@ -84,63 +84,64 @@ fi
 # shellcheck source=/dev/null
 source "$HELPERS"
 
-# --------------------------------------------------
-# 0) Create startup log
-# --------------------------------------------------
+# make sure dirs exist (Comfy home, models, logs, etc.)
 
-LOG_DIR="${COMFY_LOGS:-/workspace/logs}"
-mkdir -p "$LOG_DIR"
-STARTUP_LOG="${LOG_DIR}/startup.log"
+ensure_dirs
+
+#------------------------------------------------------------------------
+section 0 "Prepare Session Logging"
+#----------------------------------------------
+# 0) Create startup log
+#----------------------------------------------
+
+STARTUP_LOG="${COMFY_LOGS}/startup.log"
 
 # Duplicate all further stdout/stderr to both Vast log and a file
 exec > >(tee -a "$STARTUP_LOG") 2>&1
 
 echo "[bootstrap] Logging to: ${STARTUP_LOG}"
 
-# --------------------------------------------------
-# 1) Pretty boot banner for Vast / RunPod logs
-# --------------------------------------------------
+#------------------------------------------------------------------------
+section 1 "Print Status/Configuration Overview"
+#----------------------------------------------
+# Pretty boot banner for Vast / RunPod logs
+#----------------------------------------------
 
 on_start_banner
 
-# --------------------------------------------------
-# 2) Configure SSH
-# --------------------------------------------------
+#------------------------------------------------------------------------
+section 2 "SSH"
+#----------------------------------------------
+# Configure SSH using SSH* environment 
+#   variables
+#----------------------------------------------
 
 setup_ssh
 
-# --------------------------------------------------
-# 3) Ensure ComfyUI lives on the network volume
-#      /ComfyUI  →  $COMFY_HOME (/workspace/ComfyUI)
-# --------------------------------------------------
-
+#------------------------------------------------------------------------
+section 3 "Relocate ComfyUI"
+#----------------------------------------------
+# Ensure ComfyUI lives on the network volume
+#   /ComfyUI  →  $COMFY_HOME (/workspace/ComfyUI)
+#----------------------------------------------
 if [[ -d /ComfyUI ]]; then
   mkdir -p "$(dirname "$COMFY_HOME")"
 
-  if [[ ! -d "$COMFY_HOME" || -z "$(ls -A "$COMFY_HOME" 2>/dev/null)" ]]; then
-    echo "[comfy-relocate] [mv] First run: moving /ComfyUI → $COMFY_HOME"
-    mv /ComfyUI "$COMFY_HOME"
-  else
-    echo "[comfy-relocate] [rsync] Merging base /ComfyUI into existing $COMFY_HOME (no overwrite)"
-    # Trailing slashes are important: copy contents, not the dir itself
-    rsync -a --ignore-existing /ComfyUI/ "$COMFY_HOME"/
-    # Optional: once you trust it, you can remove the original to avoid confusion
-    # rm -rf /ComfyUI
-  fi
+  echo "[comfy-relocate] Merging base /ComfyUI into existing $COMFY_HOME structure (no overwrite)"
+  # Trailing slashes are important: copy contents, not the dir itself
+  rsync -a --ignore-existing /ComfyUI/ "$COMFY_HOME"/
+  # Optional: once you trust it, you can remove the original to avoid confusion
+  # rm -rf /ComfyUI
 else
-  echo "[comfy-relocate] ❌ Comfy not installed."
+  echo "[comfy-relocate] ❌ Comfy not installed in expected location. Unable to move."
 fi
 
-# --------------------------------------------------
-# 3) Sanity: make sure dirs exist 
-#      (Comfy home, models, logs, etc.)
-# --------------------------------------------------
-
-ensure_dirs
-
-# --------------------------------------------------
-# 4) Move 4xLSDIR.pth into upscale_models if present
-# --------------------------------------------------
+#------------------------------------------------------------------------
+section 4 "Move Upscalers"
+#----------------------------------------------
+# Move 4xLSDIR.pth into upscale_models if 
+#   present
+#----------------------------------------------
 
 if [[ -f "/4xLSDIR.pth" && ! -f "$UPSCALE_DIR/4xLSDIR.pth" ]]; then
   echo "Moving 4xLSDIR.pth into $UPSCALE_DIR..."
@@ -151,9 +152,11 @@ else
   echo "4xLSDIR.pth not found; skipping."
 fi
 
-# --------------------------------------------------
-# 5) Models via model_manifest.json + aria2
-# --------------------------------------------------
+#------------------------------------------------------------------------
+section 5 "Huggingface & CivitAI Download"
+#----------------------------------------------
+# Models via model_manifest.json + aria2
+#----------------------------------------------
 
 helpers_have_aria2_rpc || aria2_start_daemon
 aria2_clear_results >/dev/null 2>&1 || true
@@ -179,9 +182,12 @@ fi
 
 aria2_show_download_snapshot || true
 
-# --------------------------------------------------
-# 6) SageAttention (bundle or build)
-# --------------------------------------------------
+#------------------------------------------------------------------------
+section 6 "Pull (if available) or Build SageAttention"
+#----------------------------------------------
+# Prefer pull of SageAttention for speed. Build
+#   if not.
+#----------------------------------------------
 
 if [[ "${ENABLE_SAGE:-1}" == "1" ]]; then
   echo "Ensuring SageAttention (bundle or build)..."
@@ -194,9 +200,12 @@ fi
 
 aria2_show_download_snapshot || true
 
-# --------------------------------------------------
-# 7) Extra custom nodes on top of baked-in ones
-# --------------------------------------------------
+#------------------------------------------------------------------------
+section 7 "Install Custom Nodes"
+#----------------------------------------------
+# Install all Custom Nodes from Manifest
+#----------------------------------------------
+
 if [[ "${INSTALL_EXTRA_CUSTOM_NODES:-1}" == "1" ]]; then
   echo "Installing extra custom nodes. Trying ${CUSTOM_NODES_MANIFEST_URL}..."
   if ! install_custom_nodes; then
@@ -209,15 +218,19 @@ fi
 
 aria2_show_download_snapshot || true
 
-# --------------------------------------------------
-# 8) Optional Hearmeman workflows/assets sync
-# --------------------------------------------------
+#------------------------------------------------------------------------
+section 8 "Hearmeman24 Asset Copy"
+#----------------------------------------------
+# Optional Hearmeman workflows/assets sync
+#----------------------------------------------
 
 copy_hearmeman_assets_if_any || true
 
-# --------------------------------------------------
-# 9) Wait for all downloads to complete
-# --------------------------------------------------
+#------------------------------------------------------------------------
+section 9 "Aria2 (Manifest+CivitAI) Tracking"
+#----------------------------------------------
+# Wait for all downloads to complete
+#----------------------------------------------
 
 echo "[aria2-downloads-progress] Checking download progress..."
 
@@ -228,30 +241,38 @@ aria2_monitor_progress \
 
 aria2_clear_results >/dev/null 2>&1 || true
 
-# --------------------------------------------------
-# 10) Start Jupyter
-# --------------------------------------------------
+#------------------------------------------------------------------------
+section 10 "Jupyter Launch"
+#----------------------------------------------
+# Optionally start Jupyter if requested
+#----------------------------------------------
 
 if [[ "${LAUNCH_JUPYTER:-0}" == "1" ]]; then
   echo "Launching Jupyter. Trying from port 8888..."
-  jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace   jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace &>/workspace/logs/jupyter.log &
+  jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace &>/workspace/logs/jupyter.log &
 else
   echo "LAUNCH_JUPYTER=0 → skipping Jupyter launch..."
 fi
 
-# --------------------------------------------------
-# 11) Specific Hearmeman methodologies / setups
-#       Copy Hearmeman's workflows to ComfyUI & 
-#       configure sensible defaults
-# --------------------------------------------------
+#------------------------------------------------------------------------
+section 11 "Comfy Flow/Methodology Specific Configurations"
+#----------------------------------------------
+# Specific Hearmeman methodologies / setups
+#    Copy Hearmeman's workflows to ComfyUI & 
+#    configure sensible defaults
+#----------------------------------------------
 
 copy_workflows_to_comfyui || true
 
 change_latent_preview_method || true
 
-# --------------------------------------------------
-# 12) Start ComfyUI
-# --------------------------------------------------
+#------------------------------------------------------------------------
+section 12 "ComfyUI Launch"
+#----------------------------------------------
+# Report the Custom Nodes being used for this 
+#   session. Use tmux's to launch ComfyUI
+#   Send telegram message if configured
+#----------------------------------------------
 
 # Final snapshot of custom_nodes before ComfyUI launch
 snapshot_custom_nodes_state --summary "before-comfy-launch" || true
@@ -261,12 +282,14 @@ cd "${COMFY_HOME:-/workspace/ComfyUI}"
 echo "▶️  Starting ComfyUI"
 
 if ${SCRIPT_DIR}/run_comfy_mux.sh; then
-  tg "🚀 ComfyUI is UP on 8188, 8288 (GPU0), 8388 (GPU1 if present)."
+  tg "🚀 ComfyUI is UP on 8188, 8288 (GPU0), 8388 (GPU1 if present)." || true
 else
-  tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}."
+  tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}." || true
 fi
 
-echo "Bootstrap complete. General logs: ${COMFY_LOGS}"
+echo "Bootstrap complete. Bootstrap log: ${COMFY_LOGS}/startup.log"
+echo "General logs: ${COMFY_LOGS}/startup.log
+
 echo "=== Bootstrap done: $(date) ==="
 
 sleep infinity
