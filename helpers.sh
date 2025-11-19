@@ -707,7 +707,8 @@ install_custom_nodes() {
 
   echo "[custom-nodes] Using manifest: $src"
   echo "[custom-nodes] Installing custom nodes into: $custom_dir"
-  echo "[custom-nodes] Running maximum of ${MAX_CUSTOM_NODE_JOBS} parallel jobs. Configure with MAX_CUSTOM_NODE_JOBS."
+  echo "[custom-nodes] Running maximum of ${MAX_CUSTOM_NODE_JOBS} parallel install jobs. Configure with MAX_CUSTOM_NODE_JOBS."
+  echo
   cd "$custom_dir"
 
   local line url dst rest
