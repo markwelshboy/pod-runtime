@@ -10,13 +10,16 @@ import torch; print(torch.cuda.device_count() if torch.cuda.is_available() else 
 PY
 
 health() {
-  local name=$1 port=$2
+  local name=$1 port=$2 out=$3 cache=$4
   local t=0
   until curl -fsS "http://127.0.0.1:${port}" >/dev/null 2>&1; do
     sleep 2; t=$((t+2))
     [ $t -ge 60 ] && echo "WARN: ${name} on ${port} not 200 after 60s." && exit 1
   done
   echo "🚀: ${name} is UP on :${port}"
+  echo "       Output: $out"
+  echo "        Cache: $cache"
+  echo ""
 }
 
 start_one() {
@@ -26,14 +29,14 @@ start_one() {
      python ${BASE}/main.py --listen --port ${port} --use-sage-attention \
        --output-directory ${out} --temp-directory ${cache} \
        >> ${LOGS}/comfyui-${port}.log 2>&1"
-  ( health "$sess" "$port" ) || true
+  ( health "$sess" "$port" "$out" "$cache" ) || true
 }
 
 tmux new-session -d -s comfy-8188 \
   "PYTHONUNBUFFERED=1 python ${BASE}/main.py --listen --port 8188 --use-sage-attention \
    --output-directory ${BASE}/output --temp-directory ${BASE}/cache \
    >> ${LOGS}/comfyui-8188.log 2>&1"
-( health "comfy-8188" 8188 ) || true
+( health "comfy-8188" 8188 "${BASE}/output" "${BASE}/cache") || true
 
 gpus=$(python - <<'PY'
 import torch
