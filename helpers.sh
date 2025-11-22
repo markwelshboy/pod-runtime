@@ -121,7 +121,8 @@ ensure_dirs(){
     "${VAE_DIR:?}" \
     "${LORAS_DIR:?}" \
     "${DETECTION_DIR:?}" \
-    "${CTRL_DIR:?}" \
+    "${CTRLNET_DIR:?}" \
+    "${SAMS_DIR:?}" \
     "${UPSCALE_DIR:?}"
 
 }
@@ -3535,7 +3536,7 @@ show_env () {
   echo "VAE_DIR:              $VAE_DIR"
   echo "LORAS_DIR:            $LORAS_DIR"
   echo "DETECTION_DIR:        $DETECTION_DIR"
-  echo "CTRL_DIR:             $CTRL_DIR"
+  echo "CTRLNET_DIR:             $CTRLNET_DIR"
   echo "UPSCALE_DIR:          $UPSCALE_DIR"
   echo ""
   echo "HF_TOKEN:             $(if [ -n "$HF_TOKEN" ]; then echo "Set"; else echo "Not set"; fi)"
