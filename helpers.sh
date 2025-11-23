@@ -3642,7 +3642,7 @@ show_gpu () {
 show_download_environment_variables () {
   
   compgen -A variable | grep "download_" | while IFS= read -r var_name; do
-    printf " %-40s%s\n" "${var_name}:" "${!var_name}"
+    printf " %-39s%s\n" "${var_name}:" "${!var_name}"
   done
 }
 
