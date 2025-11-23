@@ -3,8 +3,11 @@
 # Safely source a file if it exists
 source_if_exists() {
   local f="$1"
-  [[ -f "$f" ]] && # shellcheck disable=SC1090
-  . "$f"
+  if [ -f "$f" ]; then
+    echo "[helpers] Sourcing: $f"
+    #shellcheck disable=SC1090
+    source "$f"
+  fi
 }
 
 # Load the "runtime env" so an SSH shell matches the autorun context
@@ -19,13 +22,6 @@ load_runtime_env() {
   source_if_exists "$repo_root/.env"
   source_if_exists "$repo_root/helpers.sh"
 
-  # If helpers defined some higher-level summaries, show them briefly
-  if type -t auto_channel_detect >/dev/null 2>&1; then
-    auto_channel_detect || true
-  fi
-  if type -t show_env_summary >/dev/null 2>&1; then
-    show_env_summary || true
-  fi
 }
 
 # Quick Git identity helper (does NOT run automatically)

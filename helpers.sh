@@ -1145,7 +1145,7 @@ hf_repo_info() {
   type="${HF_REPO_TYPE:-dataset}"
   url="https://huggingface.co/${type}s/${ns}/${name}"
 
-  echo "=================================================="
+  echo "========================================================================"
   echo "🤖 Hugging Face Repo Info"
   echo "Repo handle    : ${ns}/${name}"
   echo "Repo type      : ${type}"
@@ -1173,7 +1173,7 @@ hf_repo_info() {
     echo "Torch key      : ${key}"
   fi
 
-  echo "=================================================="
+  echo "========================================================================"
 }
 
 # Return 0 if a LOCAL file exists for given basename in $CACHE_DIR
@@ -3513,42 +3513,72 @@ aria2_enqueue_and_wait_from_civitai() {
   return 0
 }
 
+show_gpu () {
+  # --- Gather info safely ---
+  local gpustr arch
+  local gpu_cc gpu_label
+
+  gpustr="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 || echo "no-gpu")"
+  gpu_cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || echo "?")"
+  arch="${gpu_cc//./}"   # "12.0" → "120"
+
+  # --- ASCII GPU header ---
+  gpu_label="GPU: ${gpustr}"
+  if [[ -n "$arch" && "$arch" != "?" ]]; then
+    gpu_label+="  (sm_${arch})"
+  fi
+  local width=${#gpu_label}
+  local border
+  border="$(printf '─%.0s' $(seq 1 "$width"))"
+
+  echo "┌─${border}─┐"
+  printf "│ %-${width}s │\n" "$gpu_label"
+  echo "└─${border}─┘"
+}
+
 show_env () {
+
   # ----- Convenience environment echo -----
-  echo "======================================="
-  echo "🧠 Environment Summary"
-  echo "======================================="
+  echo "========================================================================"
   echo ""
-  echo "COMFY_HOME:           $COMFY_HOME"
+
+show_gpu
+
   echo ""
-  echo "Custom nodes dir:     $CUSTOM_DIR"
-  echo "Cache dir:            $CACHE_DIR"
-  echo "Logs dir:             $COMFY_LOGS"
-  echo "Output dir:           $OUTPUT_DIR"
-  echo "Bundles dir:          $BUNDLES_DIR"
-  echo "Bundle tag:           $CUSTOM_NODES_BUNDLE_TAG"
-  echo "Workflow dir:         $WORKFLOW_DIR"
-  echo "Model manifest URL:   $MODEL_MANIFEST_URL"
+  echo "========================================================================"
+  echo "🧠 Environment Summary — $(date -Is)"
+  echo "========================================================================"
   echo ""
-  echo "DIFFUSION_MODELS_DIR: $DIFFUSION_MODELS_DIR"
-  echo "TEXT_ENCODERS_DIR:    $TEXT_ENCODERS_DIR"
-  echo "CLIP_VISION_DIR:      $CLIP_VISION_DIR"
-  echo "VAE_DIR:              $VAE_DIR"
-  echo "LORAS_DIR:            $LORAS_DIR"
-  echo "DETECTION_DIR:        $DETECTION_DIR"
-  echo "CTRLNET_DIR:             $CTRLNET_DIR"
-  echo "UPSCALE_DIR:          $UPSCALE_DIR"
+  echo "COMFY_HOME:               $COMFY_HOME"
   echo ""
-  echo "HF_TOKEN:             $(if [ -n "$HF_TOKEN" ]; then echo "Set"; else echo "Not set"; fi)"
-  echo "CIVITAI_TOKEN:        $(if [ -n "$CIVITAI_TOKEN" ]; then echo "Set"; else echo "Not set"; fi)"
-  echo "CHECKPOINT_IDS:       ${CHECKPOINT_IDS_TO_DOWNLOAD:-Empty}"
-  echo "LORAS_IDS:            ${LORAS_IDS_TO_DOWNLOAD:-Empty}"
-  echo "======================================="
+  echo "Custom nodes dir:         $CUSTOM_DIR"
+  echo "Cache dir:                $CACHE_DIR"
+  echo "Logs dir:                 $COMFY_LOGS"
+  echo "Output dir:               $OUTPUT_DIR"
+  echo "Bundles dir:              $BUNDLES_DIR"
+  echo "Workflow dir:             $WORKFLOW_DIR"
+  echo "Custom Node Manifest:     $CUSTOM_NODES_MANIFEST_URL"
+  echo "Model manifest:           $MODEL_MANIFEST_URL"
+  echo ""
+  echo "DIFFUSION_MODELS_DIR:     $DIFFUSION_MODELS_DIR"
+  echo "TEXT_ENCODERS_DIR:        $TEXT_ENCODERS_DIR"
+  echo "CLIP_VISION_DIR:          $CLIP_VISION_DIR"
+  echo "VAE_DIR:                  $VAE_DIR"
+  echo "LORAS_DIR:                $LORAS_DIR"
+  echo "DETECTION_DIR:            $DETECTION_DIR"
+  echo "CTRLNET_DIR:              $CTRLNET_DIR"
+  echo "UPSCALE_DIR:              $UPSCALE_DIR"
+  echo "SAMS_DIR:                 $SAMS_DIR"
+  echo ""
+  echo "HF_TOKEN:                 $(if [ -n "$HF_TOKEN" ]; then echo "Set"; else echo "Not set"; fi)"
+  echo "CIVITAI_TOKEN:            $(if [ -n "$CIVITAI_TOKEN" ]; then echo "Set"; else echo "Not set"; fi)"
+  echo "CHECKPOINT_IDS:           ${CHECKPOINT_IDS_TO_DOWNLOAD:-Empty}"
+  echo "LORAS_IDS:                ${LORAS_IDS_TO_DOWNLOAD:-Empty}"
+  echo "========================================================================"
   echo ""
   hf_repo_info
   echo ""
-  echo "======================================="
-
+  echo "========================================================================"
 }
 
 # Probe ComfyUI version for logging
@@ -3621,33 +3651,19 @@ on_start_banner() {
   mkdir -p "$(dirname "$logfile")"
 
   # --- Gather info safely ---
-  local pyver torchver cudaver gpustr arch comfyver
-  local gpu_cc gpu_label
+  local pyver torchver cudaver comfyver
 
   pyver="$($PY -c 'import sys; print(".".join(map(str, sys.version_info[:3])))' 2>/dev/null || echo "?")"
   torchver="$($PY -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "not-importable")"
   cudaver="$($PY -c 'import torch; print(torch.version.cuda)' 2>/dev/null || echo "?")"
 
-  gpustr="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 || echo "no-gpu")"
-  gpu_cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || echo "?")"
-  arch="${gpu_cc//./}"   # "12.0" → "120"
-
   comfyver="$(detect_comfy_version || echo unknown)"
-
-  # --- ASCII GPU header ---
-  gpu_label="GPU: ${gpustr}"
-  if [[ -n "$arch" && "$arch" != "?" ]]; then
-    gpu_label+="  (sm_${arch})"
-  fi
-  local width=${#gpu_label}
-  local border
-  border="$(printf '─%.0s' $(seq 1 "$width"))"
 
   {
     echo ""
-    echo "┌─${border}─┐"
-    printf "│ %-${width}s │\n" "$gpu_label"
-    echo "└─${border}─┘"
+
+    show_gpu
+
     echo ""
     echo "============================================================"
     echo "   🚀 COMFYUI BOOTSTRAP START (Vast) — $(date -Is)"
