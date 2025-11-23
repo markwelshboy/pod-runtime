@@ -28,8 +28,10 @@ VARS=(
   MODEL_MANIFEST_URL CUSTOM_NODES_MANIFEST_URL
   ENABLE_MODEL_MANIFEST_DOWNLOAD ENABLE_CIVITAI_DOWNLOAD ENABLE_SAGE 
   INSTALL_EXTRA_CUSTOM_NODES LAUNCH_JUPYTER
-  native_480p native_720p download_wan22 download_wan22_lightning download_vae
+  download_480p_native_models download_720p_native_models download_wan22 
+  download_wan22_lightning download_vae
   download_wan_animate download_detection download_optimization_loras
+  download_wan22_animate_god_mode_25
   wan_fun_and_sdxl_helper
 )
 
@@ -219,12 +221,12 @@ fi
 aria2_show_download_snapshot || true
 
 #------------------------------------------------------------------------
-section 8 "Hearmeman24 Asset Copy"
+section 8 "Hearmeman24 Repo Files Copy"
 #----------------------------------------------
 # Optional Hearmeman workflows/assets sync
 #----------------------------------------------
 
-copy_hearmeman_assets_if_any || true
+copy_hearmeman_files_from_repo_if_any || true
 
 #------------------------------------------------------------------------
 section 9 "Aria2 (Manifest+CivitAI) Tracking"

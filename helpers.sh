@@ -130,7 +130,7 @@ ensure_dirs(){
 # ------------------------- #
 #  Workflows / Asset import #
 # ------------------------- #
-copy_hearmeman_assets_if_any() {
+copy_hearmeman_files_from_repo_if_any() {
   local repo="${HEARMEMAN_REPO:-}"
   if [[ -z "$repo" ]]; then
     return 0
@@ -143,7 +143,7 @@ copy_hearmeman_assets_if_any() {
   echo "[hearmeman] Temp repo location:  ${tmp}"
 
   if ! git clone "$repo" "$tmp" >/dev/null 2>&1; then
-    echo "[hearmeman] ❌ Failed to clone repo; skipping asset sync." >&2
+    echo "[hearmeman] ❌ Failed to clone repo; skipping repo sync." >&2
     rm -rf "$tmp"
     return 0
   fi
@@ -157,14 +157,17 @@ copy_hearmeman_assets_if_any() {
   fi
 
   if [[ -n "$wf_src" ]]; then
+    echo "[hearmeman] Relocating workflows found in repo."
     local wf_dst="${COMFY_HOME}/workflows"
     echo "[hearmeman] Workflows source:    ${wf_src}"
     echo "[hearmeman] Workflows dest:      ${wf_dst}"
     mkdir -p "$wf_dst"
     cp -rf "${wf_src}/"* "$wf_dst"/ 2>/dev/null || true
   else
-    echo "[hearmeman] No workflows found under src/workflows or workflows." >&2
+    echo "[hearmeman] No workflows found under $repo/src/workflows or $repo/workflows." >&2
   fi
+  
+  echo ""
 
   # ---- Assets ----
   local assets_src=""
@@ -175,17 +178,19 @@ copy_hearmeman_assets_if_any() {
   fi
 
   if [[ -n "$assets_src" ]]; then
+    echo "[hearmeman] Relocating assets found in repo."
     local assets_dst="${COMFY_HOME}/assets"
     echo "[hearmeman] Assets source:       ${assets_src}"
     echo "[hearmeman] Assets dest:         ${assets_dst}"
     mkdir -p "$assets_dst"
     cp -rf "${assets_src}/"* "$assets_dst"/ 2>/dev/null || true
   else
-    echo "[hearmeman] No assets found under src/assets or assets." >&2
+    echo "[hearmeman] No assets found under $repo/src/assets or $repo/assets." >&2
   fi
 
   rm -rf "$tmp"
-  echo "[hearmeman] Asset sync complete."
+  echo ""
+  echo "[hearmeman] Repo sync complete."
 }
 
 # ======================================================================
