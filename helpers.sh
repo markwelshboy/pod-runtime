@@ -1704,7 +1704,7 @@ PY
   echo "[sage-bundle] [install_sage_from_source] TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}" >&2
 
   # Clean + build (NO build isolation, so setup can import torch)
-  echo "[sage-bundle] [install_sage_from_source] Clonging SageAttention, repo=https://github.com/thu-ml/SageAttention.git" >&2
+  echo "[sage-bundle] [install_sage_from_source] Cloning SageAttention, repo=https://github.com/thu-ml/SageAttention.git" >&2
   rm -rf /tmp/SageAttention
   git clone https://github.com/thu-ml/SageAttention.git /tmp/SageAttention
 
@@ -3864,6 +3864,7 @@ change_latent_preview_method() {
   local root="${CUSTOM_DIR:-${comfy_home}/custom_nodes}"
   local js="${root}/ComfyUI-VideoHelperSuite/web/js/VHS.core.js"
 
+  echo ""
   echo "[preview] Attempting to enable VHS.LatentPreview + configure ComfyUI-Manager…"
 
   # --- Patch VHS.core.js if present ---
@@ -3923,6 +3924,8 @@ copy_workflows_to_comfyui() {
   local source_dir="${comfy_home}/workflows"
   local dest_root="${WORKFLOW_DIR:-${comfy_home}/user/default/workflows}"
 
+  echo ""
+  echo "[workflows] Copying any local workflows..."
   echo "[workflows] Source:      $source_dir"
   echo "[workflows] Destination: $dest_root"
 

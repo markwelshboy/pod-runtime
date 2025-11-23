@@ -27,7 +27,7 @@ VARS=(
   HF_REPO_ID HF_REPO_TYPE HF_REMOTE_URL
   MODEL_MANIFEST_URL CUSTOM_NODES_MANIFEST_URL
   ENABLE_MODEL_MANIFEST_DOWNLOAD ENABLE_CIVITAI_DOWNLOAD ENABLE_SAGE 
-  INSTALL_EXTRA_CUSTOM_NODES LAUNCH_JUPYTER
+  INSTALL_CUSTOM_NODES LAUNCH_JUPYTER
   download_480p_native_models download_720p_native_models download_wan22 
   download_wan22_lightning download_vae
   download_wan_animate download_detection download_optimization_loras
@@ -163,23 +163,23 @@ section 5 "Huggingface & CivitAI Download"
 helpers_have_aria2_rpc || aria2_start_daemon
 aria2_clear_results >/dev/null 2>&1 || true
 
-if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD:-1}" == "1" ]]; then
+if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}" == "true" ]]; then
   echo "Using model manifest: $MODEL_MANIFEST_URL"
   if ! aria2_download_from_manifest; then
     echo "⚠️ aria2_download_from_manifest failed; see logs."
   fi
 else
-  echo "ENABLE_MODEL_MANIFEST_DOWNLOAD=0 → skipping model downloader."
+  echo "ENABLE_MODEL_MANIFEST_DOWNLOAD=false → skipping model downloader."
 fi
 
-if [[ "${ENABLE_CIVITAI_DOWNLOAD:-1}" == "1" ]]; then
+if [[ "${ENABLE_CIVITAI_DOWNLOAD:-true}" == "true" ]]; then
   echo "Attempting to download CivitAI assets from env IDs... "
   echo "LORAS:${LORAS_IDS_TO_DOWNLOAD}, CHECKPOINTS:${CHECKPOINT_IDS_TO_DOWNLOAD}"
   if ! aria2_download_civitai_from_environment_vars; then
     echo "⚠️ aria2_download_civitai_from_environment_vars reported issues; see CivitAI log."
   fi
 else
-  echo "ENABLE_CIVITAI_DOWNLOAD=0 → skipping CivitAI downloader."
+  echo "ENABLE_CIVITAI_DOWNLOAD=false → skipping CivitAI downloader."
 fi
 
 aria2_show_download_snapshot || true
@@ -191,13 +191,13 @@ section 6 "SageAttention: Pull (if available) or Build from Source"
 #   if not.
 #----------------------------------------------
 
-if [[ "${ENABLE_SAGE:-1}" == "1" ]]; then
+if [[ "${ENABLE_SAGE:-true}" == "true" ]]; then
   echo "Ensuring SageAttention (bundle or build)..."
   if ! ensure_sage_from_bundle_or_build; then
     echo "⚠️ SageAttention failed; check logs. Continuing without aborting."
   fi
 else
-  echo "ENABLE_SAGE=0 → skipping SageAttention setup."
+  echo "ENABLE_SAGE=false → skipping SageAttention setup."
 fi
 
 aria2_show_download_snapshot || true
@@ -208,14 +208,14 @@ section 7 "Install Custom Nodes"
 # Install all Custom Nodes from Manifest
 #----------------------------------------------
 
-if [[ "${INSTALL_EXTRA_CUSTOM_NODES:-1}" == "1" ]]; then
+if [[ "${INSTALL_CUSTOM_NODES:-true}" == "true" ]]; then
   echo "Installing custom nodes. Trying ${CUSTOM_NODES_MANIFEST_URL}..."
   if ! install_custom_nodes; then
     echo "⚠️ install_custom_nodes reported errors; custom-node extras may be incomplete."
   fi
   snapshot_custom_nodes_state "after-install_custom_nodes" || true
 else
-  echo "INSTALL_EXTRA_CUSTOM_NODES=0 → skipping extra custom node installation."
+  echo "INSTALL_CUSTOM_NODES=false → skipping extra custom node installation."
 fi
 
 aria2_show_download_snapshot || true
@@ -249,7 +249,7 @@ section 10 "Jupyter Launch"
 # Optionally start Jupyter if requested
 #----------------------------------------------
 
-if [[ "${LAUNCH_JUPYTER:-0}" == "1" ]]; then
+if [[ "${LAUNCH_JUPYTER:-false}" == "true" ]]; then
   echo "Launching Jupyter. Trying from port 8888..."
   jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace &>/workspace/logs/jupyter.log &
 else
