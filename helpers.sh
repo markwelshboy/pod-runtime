@@ -123,12 +123,12 @@ ensure_dirs(){
     "${DETECTION_DIR:?}" \
     "${CTRLNET_DIR:?}" \
     "${SAMS_DIR:?}" \
-    "${UPSCALE_DIR:?}"
-
+    "${UPSCALE_DIR:?}" \
+    "${CTRLNET_DIR}/SDXL/controlnet-union-sdxl-1.0"
 }
 
 # ------------------------- #
-#  Workflows / Icons import #
+#  Workflows / Asset import #
 # ------------------------- #
 copy_hearmeman_assets_if_any() {
   local repo="${HEARMEMAN_REPO:-}"
@@ -140,7 +140,7 @@ copy_hearmeman_assets_if_any() {
   rm -rf "$tmp"
 
   echo "[hearmeman] Syncing assets from: ${repo}"
-  echo "[hearmeman] Temp clone dir:      ${tmp}"
+  echo "[hearmeman] Temp repo location:  ${tmp}"
 
   if ! git clone "$repo" "$tmp" >/dev/null 2>&1; then
     echo "[hearmeman] ❌ Failed to clone repo; skipping asset sync." >&2
@@ -158,8 +158,8 @@ copy_hearmeman_assets_if_any() {
 
   if [[ -n "$wf_src" ]]; then
     local wf_dst="${COMFY_HOME}/workflows"
-    echo "[hearmeman] Workflows source: ${wf_src}"
-    echo "[hearmeman] Workflows dest:   ${wf_dst}"
+    echo "[hearmeman] Workflows source:    ${wf_src}"
+    echo "[hearmeman] Workflows dest:      ${wf_dst}"
     mkdir -p "$wf_dst"
     cp -rf "${wf_src}/"* "$wf_dst"/ 2>/dev/null || true
   else
@@ -176,8 +176,8 @@ copy_hearmeman_assets_if_any() {
 
   if [[ -n "$assets_src" ]]; then
     local assets_dst="${COMFY_HOME}/assets"
-    echo "[hearmeman] Assets source: ${assets_src}"
-    echo "[hearmeman] Assets dest:   ${assets_dst}"
+    echo "[hearmeman] Assets source:       ${assets_src}"
+    echo "[hearmeman] Assets dest:         ${assets_dst}"
     mkdir -p "$assets_dst"
     cp -rf "${assets_src}/"* "$assets_dst"/ 2>/dev/null || true
   else
@@ -3513,6 +3513,109 @@ aria2_enqueue_and_wait_from_civitai() {
   return 0
 }
 
+# Returns a human-readable HF token status on stdout
+hf_token_status() {
+  # Safe with `set -u`
+  local token="${HF_TOKEN:-}"
+
+  # 1) Not set at all
+  if [[ -z "$token" ]]; then
+    printf '%s' "❌ not set"
+    return 1
+  fi
+
+  # 2) GUI default / placeholder
+  if [[ "$token" == "token_here" || "$token" == "HF_TOKEN_HERE" ]]; then
+    printf '%s' "⚠️ placeholder"
+    return 1
+  fi
+
+  # 3) Can't validate if curl is missing
+  if ! command -v curl >/dev/null 2>&1; then
+    printf '%s' "⚠️ set (curl missing, can't validate)"
+    return 0
+  fi
+
+  # 4) Call HF whoami-v2 to validate
+  local code
+  code="$(curl -fsS --max-time 5 \
+           -o /dev/null -w '%{http_code}' \
+           -H "Authorization: Bearer $token" \
+           "https://huggingface.co/api/whoami-v2" 2>/dev/null || echo "000")"
+
+  case "$code" in
+    200)
+      printf '%s' "✅ HF_TOKEN valid (whoami-v2 OK)"
+      return 0
+      ;;
+    401|403)
+      printf '%s' "❌ HF_TOKEN invalid / unauthorized"
+      return 1
+      ;;
+    000)
+      printf '%s' "⚠️ HF_TOKEN set (network error talking to HF)"
+      return 1
+      ;;
+    *)
+      printf '%s' "⚠️ HF_TOKEN set (whoami-v2 HTTP $code)"
+      return 1
+      ;;
+  esac
+}
+
+civitai_token_status() {
+  local token="${CIVITAI_TOKEN:-}"
+
+  # 1) Not set
+  if [[ -z "$token" ]]; then
+    printf '%s' "❌ not set"
+    return 1
+  fi
+
+  # 2) Common placeholder patterns
+  if [[ "$token" == "token_here" || "$token" == "CIVITAI_TOKEN_HERE" ]]; then
+    printf '%s' "⚠️ placeholder value"
+    return 1
+  fi
+
+  # 3) Ensure curl exists
+  if ! command -v curl >/dev/null 2>&1; then
+    printf '%s' "⚠️ set (curl missing, can't validate)"
+    return 0
+  fi
+
+  # 4) Validate against Civitai
+  local code
+  code="$(curl -fsS --max-time 5 \
+           -o /dev/null -w '%{http_code}' \
+           -H "Authorization: Bearer $token" \
+           "https://civitai.com/api/v1/auth/me" \
+           2>/dev/null || echo "000")"
+
+  case "$code" in
+    200)
+      printf '%s' "✅ CIVITAI_TOKEN valid (auth/me OK)"
+      return 0
+      ;;
+    401)
+      printf '%s' "❌ CIVITAI_TOKEN invalid (401)"
+      return 1
+      ;;
+    403)
+      printf '%s' "❌ CIVITAI_TOKEN forbidden (403 — wrong scopes?)"
+      return 1
+      ;;
+    000)
+      printf '%s' "⚠️ CIVITAI_TOKEN set (network error)"
+      return 1
+      ;;
+    *)
+      printf '%s' "⚠️ CIVITAI_TOKEN generated unexpected HTTP $code"
+      return 1
+      ;;
+  esac
+}
+
 show_gpu () {
   # --- Gather info safely ---
   local gpustr arch
@@ -3536,13 +3639,20 @@ show_gpu () {
   echo "└─${border}─┘"
 }
 
+show_download_environment_variables () {
+  
+  compgen -A variable | grep "download_" | while IFS= read -r var_name; do
+    echo "$var_name:              ${!var_name}"
+  done
+}
+
 show_env () {
 
   # ----- Convenience environment echo -----
   echo "========================================================================"
   echo ""
 
-show_gpu
+  show_gpu
 
   echo ""
   echo "========================================================================"
@@ -3550,6 +3660,7 @@ show_gpu
   echo "========================================================================"
   echo ""
   echo "COMFY_HOME:               $COMFY_HOME"
+  echo "Comfy version:            $(detect_comfy_version || echo unknown)"
   echo ""
   echo "Custom nodes dir:         $CUSTOM_DIR"
   echo "Cache dir:                $CACHE_DIR"
@@ -3559,6 +3670,10 @@ show_gpu
   echo "Workflow dir:             $WORKFLOW_DIR"
   echo "Custom Node Manifest:     $CUSTOM_NODES_MANIFEST_URL"
   echo "Model manifest:           $MODEL_MANIFEST_URL"
+  echo ""
+
+  show_download_environment_variables
+
   echo ""
   echo "DIFFUSION_MODELS_DIR:     $DIFFUSION_MODELS_DIR"
   echo "TEXT_ENCODERS_DIR:        $TEXT_ENCODERS_DIR"
@@ -3570,15 +3685,13 @@ show_gpu
   echo "UPSCALE_DIR:              $UPSCALE_DIR"
   echo "SAMS_DIR:                 $SAMS_DIR"
   echo ""
-  echo "HF_TOKEN:                 $(if [ -n "$HF_TOKEN" ]; then echo "Set"; else echo "Not set"; fi)"
-  echo "CIVITAI_TOKEN:            $(if [ -n "$CIVITAI_TOKEN" ]; then echo "Set"; else echo "Not set"; fi)"
+  echo "HF_TOKEN:                 $(hf_token_status)"
+  echo "CIVITAI_TOKEN:            $(civitai_token_status)"
   echo "CHECKPOINT_IDS:           ${CHECKPOINT_IDS_TO_DOWNLOAD:-Empty}"
   echo "LORAS_IDS:                ${LORAS_IDS_TO_DOWNLOAD:-Empty}"
-  echo "========================================================================"
-  echo ""
-  hf_repo_info
   echo ""
   echo "========================================================================"
+
 }
 
 # Probe ComfyUI version for logging
@@ -3657,8 +3770,6 @@ on_start_banner() {
   torchver="$($PY -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "not-importable")"
   cudaver="$($PY -c 'import torch; print(torch.version.cuda)' 2>/dev/null || echo "?")"
 
-  comfyver="$(detect_comfy_version || echo unknown)"
-
   {
     echo ""
 
@@ -3679,7 +3790,6 @@ on_start_banner() {
     echo " CUDA (Torch):           ${cudaver}"
     echo ""
     echo " ComfyUI Path:           ${COMFY_HOME:-/workspace/ComfyUI}"
-    echo " ComfyUI Version:        ${comfyver}"
     echo ""
     echo " Model Manifest:         ${MODEL_MANIFEST_URL:-unset}"
     echo " Custom Node Manifest:   ${CUSTOM_NODES_MANIFEST_URL:-unset}"
@@ -3689,6 +3799,8 @@ on_start_banner() {
     echo " ENABLE_SAGE                    = ${ENABLE_SAGE:-1}"
     echo " INSTALL_EXTRA_CUSTOM_NODES     = ${INSTALL_EXTRA_CUSTOM_NODES:-1}"
     echo " LAUNCH_JUPYTER                 = ${LAUNCH_JUPYTER:-0}"
+    echo ""
+    show_download_environment_variables
     echo ""
     echo " Log Directory:          ${COMFY_LOGS:-/workspace/logs}"
     echo "============================================================"
@@ -3731,6 +3843,7 @@ setup_ssh() {
   # Start sshd in the background, logging to stdout
   /usr/sbin/sshd -D -e &
   echo "[ssh] sshd started."
+  sleep 5
 }
 
 change_latent_preview_method() {
