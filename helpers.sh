@@ -1863,9 +1863,9 @@ import sys
 print("[sage-bundle] [restore_sage_from_tar] sys.executable:", sys.executable)
 try:
     import sageattention
-    print("[sage-bundle] [restore_sage_from_tar] SAGE imported sucessfully from tar bundle:", sageattention, getattr(sageattention, "__file__", None))
+    print("[sage-bundle] [restore_sage_from_tar] ✅ SAGE imported sucessfully from tar bundle:", sageattention, getattr(sageattention, "__file__", None))
 except Exception as e:
-    print("[sage-bundle] [restore_sage_from_tar] SAGE IMPORT ERROR:", repr(e))
+    print("[sage-bundle] [restore_sage_from_tar] ❌ SAGE IMPORT ERROR:", repr(e))
 PY
 }
 
@@ -1883,7 +1883,7 @@ ensure_sage_from_bundle_or_build() {
     local pattern="${CACHE_DIR}/torch_sage_bundle_${key}.tgz"
 
     if [[ -f "$pattern" ]]; then
-      echo "[sage-bundle] [ensure_sage_from_bundle_or_build] Found local Sage bundle in cache: $(basename "$pattern")" >&2
+      echo "[sage-bundle] [ensure_sage_from_bundle_or_build] ✅ Found local Sage bundle in cache: $(basename "$pattern")" >&2
     else
       # Exact bundle from HF
       echo "[sage-bundle] [ensure_sage_from_bundle_or_build] No version of bundle (${pattern}) found in local cache=${CACHE_DIR}. Attempting to fetch bundle from HF repo." >&2
@@ -1905,7 +1905,7 @@ ensure_sage_from_bundle_or_build() {
   fi
 
   if [[ -n "${tarpath:-}" && -f "$tarpath" ]]; then
-    echo "[sage-bundle] [ensure_sage_from_bundle_or_build] Using Sage bundle: $(basename "$tarpath")" >&2
+    echo "[sage-bundle] [ensure_sage_from_bundle_or_build] ✅ Using Sage bundle: $(basename "$tarpath")" >&2
     SAGE_TARPATH="$tarpath" restore_sage_from_tar
     return 0
   fi
@@ -2465,11 +2465,12 @@ aria2_show_download_snapshot() {
   pending_count="$(jq -r 'length' <<<"$wai" 2>/dev/null || echo 0)"
   completed_count="$(jq -r 'length' <<<"$sto" 2>/dev/null || echo 0)"
 
+  echo ""
   echo "================================================================================"
   echo "=== Aria2 Downloader Snapshot @ $(date '+%Y-%m-%d %H:%M:%S')"
   echo "=== Active: $active_count   Pending: $pending_count   Completed: $completed_count"
   echo "================================================================================"
-  echo
+  echo ""
 
   # Helper: trim COMFY/COMFY_HOME from a dir
   local ROOT
