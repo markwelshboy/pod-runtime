@@ -3469,16 +3469,127 @@ on_start_comfy_banner() {
     echo " Model Manifest:     ${MODEL_MANIFEST_URL:-unset}"
     echo " Node Manifest:      ${CUSTOM_NODES_MANIFEST_URL:-unset}"
     echo ""
-    echo " ENABLE_MODEL_MANIFEST_DOWNLOAD = ${ENABLE_MODEL_MANIFEST_DOWNLOAD:-1}"
-    echo " ENABLE_CIVITAI_DOWNLOAD        = ${ENABLE_CIVITAI_DOWNLOAD:-1}"
-    echo " ENABLE_SAGE                    = ${ENABLE_SAGE:-1}"
-    echo " INSTALL_EXTRA_CUSTOM_NODES     = ${INSTALL_EXTRA_CUSTOM_NODES:-1}"
-    echo " LAUNCH_JUPYTER                 = ${LAUNCH_JUPYTER:-0}"
+    echo " ENABLE_MODEL_MANIFEST_DOWNLOAD = ${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}"
+    echo " ENABLE_CIVITAI_DOWNLOAD        = ${ENABLE_CIVITAI_DOWNLOAD:-true}"
+    echo " ENABLE_SAGE                    = ${ENABLE_SAGE:-true}"
+    echo " INSTALL_EXTRA_CUSTOM_NODES     = ${INSTALL_EXTRA_CUSTOM_NODES:-true}"
+    echo " LAUNCH_JUPYTER                 = ${LAUNCH_JUPYTER:-false}"
     echo ""
     echo " Log Directory:      ${COMFY_LOGS:-/workspace/logs}"
     echo "============================================================"
     echo ""
   } | tee "$logfile"
+}
+
+change_latent_preview_method() {
+  # Honour env toggle, but be robust under set -u
+  local do_change="${change_preview_method:-true}"
+  if [[ "$do_change" != "true" ]]; then
+    echo "[preview] Skipping preview method update (change_preview_method != 'true')."
+    return 0
+  fi
+
+  local comfy_home="${COMFY_HOME:-/workspace/ComfyUI}"
+  local root="${CUSTOM_DIR:-${comfy_home}/custom_nodes}"
+  local js="${root}/ComfyUI-VideoHelperSuite/web/js/VHS.core.js"
+
+  echo "[preview] Attempting to enable VHS.LatentPreview + configure ComfyUI-Manager…"
+
+  # --- Patch VHS.core.js if present ---
+  if [[ -f "$js" ]]; then
+    echo "[preview] Found VHS JS at: $js"
+    # If sed fails for any reason, don't kill whole bootstrap
+    if ! sed -i "/id: *'VHS.LatentPreview'/,/defaultValue:/s/defaultValue: false/defaultValue: true/" "$js"; then
+      echo "[preview] ⚠️ Failed to patch $js; leaving as-is." >&2
+    else
+      echo "[preview] Patched VHS.LatentPreview defaultValue → true."
+    fi
+  else
+    echo "[preview] VHS.core.js not found at $js; skipping JS patch."
+  fi
+
+  # --- Configure ComfyUI-Manager config.ini ---
+  local cfg_dir="${comfy_home}/user/default/ComfyUI-Manager"
+  local cfg="${cfg_dir}/config.ini"
+
+  mkdir -p "$cfg_dir"
+
+  if [[ ! -f "$cfg" ]]; then
+    echo "[preview] Creating new ComfyUI-Manager config.ini at: $cfg"
+    cat >"$cfg" <<'INI'
+[default]
+preview_method = auto
+git_exe =
+use_uv = False
+channel_url = https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main
+share_option = all
+bypass_ssl = False
+file_logging = True
+component_policy = workflow
+update_policy = stable-comfyui
+windows_selector_event_loop_policy = False
+model_download_by_agent = False
+downgrade_blacklist =
+security_level = normal
+skip_migration_check = False
+always_lazy_install = False
+network_mode = public
+db_mode = cache
+INI
+  else
+    echo "[preview] config.ini already exists. Updating preview_method → auto…"
+    if ! sed -i 's/^preview_method[[:space:]]*=.*/preview_method = auto/' "$cfg"; then
+      echo "[preview] ⚠️ Failed to update preview_method in $cfg; leaving as-is." >&2
+    fi
+  fi
+
+  echo "[preview] Config file setup complete; default preview method is 'auto'."
+  return 0
+}
+
+copy_workflows_to_comfyui() {
+  local comfy_home="${COMFY_HOME:-/workspace/ComfyUI}"
+  local source_dir="${comfy_home}/workflows"
+  local dest_root="${WORKFLOW_DIR:-${comfy_home}/user/default/workflows}"
+
+  echo "[workflows] Source:      $source_dir"
+  echo "[workflows] Destination: $dest_root"
+
+  # If source doesn’t exist or is empty, nothing to do
+  if [[ ! -d "$source_dir" ]]; then
+    echo "[workflows] No source workflows directory found; skipping."
+    return 0
+  fi
+
+  mkdir -p "$dest_root"
+
+  shopt -s nullglob
+  local moved_any=0
+  for dir in "$source_dir"/*/; do
+    [[ -d "$dir" ]] || continue
+
+    local dir_name dest_dir
+    dir_name="$(basename "$dir")"
+    dest_dir="${dest_root}/${dir_name}"
+
+    if [[ -e "$dest_dir" ]]; then
+      echo "[workflows] Destination already has '$dir_name'. Removing source: $dir"
+      rm -rf -- "$dir"
+    else
+      echo "[workflows] Moving: $dir → $dest_root"
+      mv -- "$dir" "$dest_root/"
+      moved_any=1
+    fi
+  done
+  shopt -u nullglob
+
+  if (( moved_any == 0 )); then
+    echo "[workflows] No new workflow directories to move."
+  else
+    echo "[workflows] Workflow sync complete."
+  fi
+
+  return 0
 }
 
 # --------------------------------------------------

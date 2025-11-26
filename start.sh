@@ -281,7 +281,9 @@ snapshot_custom_nodes_state --summary "before-comfy-launch" || true
 
 cd "${COMFY_HOME:-/workspace/ComfyUI}"
 
+echo ""
 echo "▶️  Starting ComfyUI"
+echo ""
 
 if ${SCRIPT_DIR}/run_comfy_mux.sh; then
   tg "🚀 ComfyUI is UP on 8188, 8288 (GPU0), 8388 (GPU1 if present)." || true
