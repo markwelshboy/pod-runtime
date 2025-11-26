@@ -11,7 +11,7 @@ echo "=== AI Training bootstrap: $(date) ==="
 #    in a bash shell
 # --------------------------------------------------
 
-mkdir -p /workspace
+ensure_workspace
 
 # === Persist session env for later SSH logins ===
 SECRET_DIR="/root/.secrets"
@@ -23,11 +23,11 @@ umask 077
 
 # Vars to persist
 VARS=(
+  SSH_PUBLIC_KEY PUBLIC_KEY 
   HF_TOKEN
   WANDB_TOKEN AI_TOOLKIT_AUTH
   HF_REPO_ID HF_REPO_TYPE HF_REMOTE_URL
   MODEL_MANIFEST_URL
-  LAUNCH_JUPYTER
 )
 
 {
@@ -59,16 +59,29 @@ SUMMARY="/workspace/logs/env.summary"
 
 echo "Saved session env to $SESSION_ENV; summary at $SUMMARY"
 
+#------------------------------------------------------------------------
+section 0 "Prepare Session Logging"
+#----------------------------------------------
+# 0) Create startup log
+#----------------------------------------------
+
+STARTUP_LOG="${TRAINING_LOGS}/startup.log"
+
+# Duplicate all further stdout/stderr to both Vast log and a file
+exec > >(tee -a "$STARTUP_LOG") 2>&1
+
+echo "[bootstrap] Logging to: ${STARTUP_LOG}"
+
 # --------------------------------------------------
 # 1) Wire up .env and helpers
 # --------------------------------------------------
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-ENVIRONMENT="${ENVIRONMENT:-$SCRIPT_DIR/.env.training}"
+ENVIRONMENT="${ENVIRONMENT:-$SCRIPT_DIR/.env}"
 HELPERS="${HELPERS:-$SCRIPT_DIR/helpers.sh}"
 
 if [[ ! -f "$ENVIRONMENT" ]]; then
-  echo "[fatal] .env not found at: $ENVIRONMENT" >&2
+  echo "[fatal] Environment file not found at: $ENVIRONMENT" >&2
   exit 1
 fi
 # shellcheck source=/dev/null
@@ -87,346 +100,34 @@ source "$HELPERS"
 
 on_start_training_banner
 
-# ---------------------------------------------------------
-# Basic logging / section helpers
-# ---------------------------------------------------------
-section() {
-  local num="${1:-?}"
-  shift || true
-  local msg="${*}"
-  local title="SECTION ${num}"
-  [ -n "$msg" ] && title="${title}: ${msg}"
+#------------------------------------------------------------------------
+section 2 "SSH"
+#----------------------------------------------
+# Configure SSH using SSH* environment 
+#   variables
+#----------------------------------------------
 
-  local line
-  line="$(printf '%*s' 80 '' | tr ' ' '-')"
-  printf '\n%s\n#\n# %s\n#\n%s\n\n' "$line" "$title" "$line"
-}
+setup_ssh
 
-log() { printf '[start.training] %s\n' "$*"; }
-die() { log "ERROR: $*"; exit 1; }
+#------------------------------------------------------------------------
+section 3 "Clone training repo"
+#----------------------------------------------
+# Clone or update training repo
+#----------------------------------------------
 
-# ---------------------------------------------------------
-# Load optional env + helpers from pod-runtime
-# ---------------------------------------------------------
-REPO_ROOT="${REPO_ROOT:-/workspace/pod-runtime}"
-
-if [ -f "${REPO_ROOT}/.env.training" ]; then
-  # shellcheck disable=SC1090
-  . "${REPO_ROOT}/.env.training"
-fi
-
-if [ -f "${REPO_ROOT}/helpers.sh" ]; then
-  # shellcheck disable=SC1090
-  . "${REPO_ROOT}/helpers.sh"
-fi
-
-# ---------------------------------------------------------
-# Workspace + training repo
-# ---------------------------------------------------------
-TRAINING_REPO_URL="${TRAINING_REPO_URL:-https://github.com/markwelshboy/ai-training-wan22.git}"
-TRAINING_REPO_DIR="${TRAINING_REPO_DIR:-/workspace/ai-training-wan22}"
-
-ensure_workspace() {
-  if [ ! -d /workspace ]; then
-    mkdir -p /workspace
-  fi
-}
-
-clone_or_update_repo() {
-  local url="$1" dir="$2" name
-  name="$(basename "$dir")"
-
-  if [ -d "${dir}/.git" ]; then
-    log "Updating ${name} in ${dir}..."
-    git -C "${dir}" pull --rebase --autostash || \
-      log "Warning: git pull failed for ${name}; using existing checkout."
-  else
-    log "Cloning ${name} from ${url} into ${dir}..."
-    rm -rf "${dir}"
-    git clone --depth 1 "${url}" "${dir}"
-  fi
-}
-
-ensure_workspace
 clone_or_update_repo "${TRAINING_REPO_URL}" "${TRAINING_REPO_DIR}"
 
-TRAINING_SRC_DIR="${TRAINING_REPO_DIR}/src"
+#------------------------------------------------------------------------
 
-# ---------------------------------------------------------
-# Env selectors
-# ---------------------------------------------------------
-VENV_DIR="${VENV_DIR:-/opt/venv}"
-CONDA_DIR="${CONDA_DIR:-/opt/conda}"
-CONDA_ENV_NAME="${CONDA_ENV_NAME:-diffusion-pipe}"
-
-use_venv() {
-  if [ ! -x "${VENV_DIR}/bin/python" ]; then
-    die "Venv not found at ${VENV_DIR}"
-  fi
-  # strip conda from PATH to make venv clearly in charge
-  local PATH_NO_CONDA
-  PATH_NO_CONDA="$(printf '%s\n' "$PATH" | awk -v c="${CONDA_DIR}/bin" -v RS=':' '
-    {
-      if ($0 != c && $0 != "") {
-        out = (out ? out ":" $0 : $0)
-      }
-    }
-    END { print out }
-  ')"
-  export PATH="${VENV_DIR}/bin:${PATH_NO_CONDA}"
-  export PYTHONNOUSERSITE=1
-  log "Using venv at ${VENV_DIR} (python: $(command -v python))"
-}
-
-use_conda_env() {
-  [ -d "${CONDA_DIR}" ] || die "Conda dir not found at ${CONDA_DIR}"
-  export PATH="${CONDA_DIR}/bin:${PATH}"
-
-  local CONDA_SH="${CONDA_DIR}/etc/profile.d/conda.sh"
-  if [ -r "${CONDA_SH}" ]; then
-    # shellcheck disable=SC1090
-    . "${CONDA_SH}"
-  else
-    die "conda.sh not found at ${CONDA_SH}"
-  fi
-
-  if ! conda env list | awk '{print $1}' | grep -qx "${CONDA_ENV_NAME}"; then
-    die "Conda env '${CONDA_ENV_NAME}' not found"
-  fi
-
-  log "Activating conda env '${CONDA_ENV_NAME}'..."
-  conda activate "${CONDA_ENV_NAME}"
-  log "Conda env active. python: $(command -v python)"
-}
-
-# ---------------------------------------------------------
-# Shared helpers (PIPE / misc)
-# ---------------------------------------------------------
-enable_tcmalloc() {
-  if command -v ldconfig >/dev/null 2>&1; then
-    local lib
-    lib="$(ldconfig -p 2>/dev/null | grep -Po 'libtcmalloc.so.\d' | head -n 1 || true)"
-    if [ -n "${lib}" ]; then
-      export LD_PRELOAD="${lib}"
-      log "Using tcmalloc: ${lib}"
-    else
-      log "libtcmalloc not found; skipping LD_PRELOAD."
-    fi
-  else
-    log "ldconfig not available; skipping tcmalloc detection."
-  fi
-}
-
-setup_network_volume() {
-  local base
-  if [ -d "/workspace" ]; then
-    base="/workspace"
-  else
-    base="/workspace"
-    mkdir -p "${base}"
-  fi
-
-  export NETWORK_VOLUME="${base}/diffusion_pipe_working_folder"
-  mkdir -p "${NETWORK_VOLUME}"
-  echo "cd ${NETWORK_VOLUME}" >> /root/.bashrc
-  log "NETWORK_VOLUME=${NETWORK_VOLUME}"
-}
-
-start_jupyter_for_network_volume() {
-  log "Starting JupyterLab for NETWORK_VOLUME=${NETWORK_VOLUME}..."
-  jupyter-lab --ip=0.0.0.0 --allow-root --no-browser \
-    --NotebookApp.token='' --NotebookApp.password='' \
-    --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True \
-    --notebook-dir="${NETWORK_VOLUME}" \
-    >/tmp/jupyter.log 2>&1 &
-}
-
-mirror_tree_if_missing() {
-  local src="$1" dst="$2"
-  if [ -d "${dst}" ]; then
-    log "Target ${dst} already exists; leaving as-is."
-    return 0
-  fi
-  if [ ! -d "${src}" ]; then
-    log "Warning: source ${src} does not exist; cannot mirror."
-    return 0
-  fi
-  log "Mirroring ${src} -> ${dst}..."
-  mkdir -p "${dst}"
-  rsync -a "${src}/" "${dst}/"
-}
-
-# ---------------------------------------------------------
-# PIPE mode (diffusion-pipe + Wan LoRA training harness)
-# ---------------------------------------------------------
-run_diffusion_pipe_mode() {
-  section 2 "Initialize Diffusion Pipe workspace"
-
-  enable_tcmalloc
-  setup_network_volume
-  start_jupyter_for_network_volume
-
-  local DP_BASE_SRC="/opt/diffusion-pipe"
-  local HARNESS_SRC="${TRAINING_SRC_DIR}/diffusion-pipe"
-  local DP_WORK_DIR="${NETWORK_VOLUME}/diffusion_pipe"
-  local HARNESS_WORK_DIR="${NETWORK_VOLUME}/runpod-diffusion_pipe"
-
-  mirror_tree_if_missing "${DP_BASE_SRC}" "${DP_WORK_DIR}"
-  mirror_tree_if_missing "${HARNESS_SRC}" "${HARNESS_WORK_DIR}"
-
-  if [ -d "${HARNESS_WORK_DIR}" ]; then
-    # Move Captioning + Wan2.2 training helpers to root of working volume
-    [ -d "${HARNESS_WORK_DIR}/Captioning" ] && \
-      mv "${HARNESS_WORK_DIR}/Captioning" "${NETWORK_VOLUME}/"
-    [ -d "${HARNESS_WORK_DIR}/wan2.2_lora_training" ] && \
-      mv "${HARNESS_WORK_DIR}/wan2.2_lora_training" "${NETWORK_VOLUME}/"
-
-    # Optional Qwen helpers
-    if [ "${IS_DEV:-false}" = "true" ] && \
-       [ -d "${HARNESS_WORK_DIR}/qwen_image_musubi_training" ]; then
-      mv "${HARNESS_WORK_DIR}/qwen_image_musubi_training" "${NETWORK_VOLUME}/" 2>/dev/null || true
-    fi
-
-    local TOML_DIR="${HARNESS_WORK_DIR}/toml_files"
-    if [ -d "${TOML_DIR}" ]; then
-      log "Patching TOMLs under ${TOML_DIR}..."
-      for toml_file in "${TOML_DIR}"/*.toml; do
-        [ -f "${toml_file}" ] || continue
-        cp "${toml_file}" "${toml_file}.backup"
-
-        sed -i "s|diffusers_path = '/models/|diffusers_path = '${NETWORK_VOLUME}/models/|g" "${toml_file}"
-        sed -i "s|ckpt_path = '/Wan/|ckpt_path = '${NETWORK_VOLUME}/models/Wan/|g" "${toml_file}"
-        sed -i "s|checkpoint_path = '/models/|checkpoint_path = '${NETWORK_VOLUME}/models/|g" "${toml_file}"
-        sed -i "s|output_dir = '/data/|output_dir = '${NETWORK_VOLUME}/training_outputs/|g" "${toml_file}"
-        sed -i "s|#transformer_path = '/models/|#transformer_path = '${NETWORK_VOLUME}/models/|g" "${toml_file}"
-      done
-    fi
-
-    if [ -f "${HARNESS_WORK_DIR}/interactive_start_training.sh" ]; then
-      mv "${HARNESS_WORK_DIR}/interactive_start_training.sh" "${NETWORK_VOLUME}/"
-      chmod +x "${NETWORK_VOLUME}/interactive_start_training.sh"
-    fi
-
-    if [ -f "${HARNESS_WORK_DIR}/HowToUse.txt" ]; then
-      mv "${HARNESS_WORK_DIR}/HowToUse.txt" "${NETWORK_VOLUME}/"
-    fi
-
-    if [ -f "${HARNESS_WORK_DIR}/send_lora.sh" ]; then
-      chmod +x "${HARNESS_WORK_DIR}/send_lora.sh"
-      cp "${HARNESS_WORK_DIR}/send_lora.sh" /usr/local/bin/
-    fi
-
-    if [ -d "${DP_WORK_DIR}/examples" ]; then
-      rm -rf "${DP_WORK_DIR}/examples"/*
-      if [ -f "${HARNESS_WORK_DIR}/dataset.toml" ]; then
-        mv "${HARNESS_WORK_DIR}/dataset.toml" "${DP_WORK_DIR}/examples/"
-      fi
-    fi
-  fi
-
-  mkdir -p "${NETWORK_VOLUME}/image_dataset_here" \
-           "${NETWORK_VOLUME}/video_dataset_here" \
-           "${NETWORK_VOLUME}/logs"
-
-  if [ -f "${DP_WORK_DIR}/examples/dataset.toml" ]; then
-    sed -i "s|path = '/home/anon/data/images/grayscale'|path = '${NETWORK_VOLUME}/image_dataset_here'|" \
-      "${DP_WORK_DIR}/examples/dataset.toml"
-  fi
-
-  # Triton optional
-  if [ "${download_triton:-false}" = "true" ]; then
-    log "Installing Triton..."
-    pip install triton || log "Warning: Triton install failed."
-  fi
-
-  section 3 "Finalize Diffusion Pipe Python stack"
-
-  log "Ensuring torch 2.7.1/cu128 for diffusion-pipe..."
-  pip install "torch==2.7.1" "torchvision==0.22.1" "torchaudio==2.7.1" \
-    --index-url https://download.pytorch.org/whl/cu128
-
-  log "Upgrading transformers..."
-  pip install -U transformers
-
-  log "Ensuring huggingface_hub[cli]..."
-  pip install --upgrade "huggingface_hub[cli]"
-
-  log "Upgrading peft (>=0.17.0)..."
-  pip install --upgrade "peft>=0.17.0"
-
-  log "Updating diffusers from GitHub..."
-  pip uninstall -y diffusers || true
-  pip install "git+https://github.com/huggingface/diffusers"
-
-  section 4 "Diffusion-pipe ready"
-  log "✅ JupyterLab + Diffusion Pipe workspace ready at ${NETWORK_VOLUME}"
-  sleep infinity
-}
-
-# ---------------------------------------------------------
-# AI-Toolkit mode (TOOLKIT)
-# ---------------------------------------------------------
-run_ai_toolkit_mode() {
-  section 2 "Launch AI-Toolkit UI"
-
-  # venv already active
-  cd /opt/ai-toolkit/ui
-
-  local port="${AI_TOOLKIT_PORT:-8675}"
-  log "Starting AI-Toolkit UI on port ${port}..."
-  log "AI_TOOLKIT_AUTH=${AI_TOOLKIT_AUTH:-<not set>}"
-
-  # AI_TOOLKIT_AUTH is passed from Vast secrets
-  AI_TOOLKIT_AUTH="${AI_TOOLKIT_AUTH:-}" \
-  PORT="${port}" \
-    npm run build_and_start
-}
-
-# ---------------------------------------------------------
-# MUSUBI GUI mode (MUSUBI_GUI)
-# ---------------------------------------------------------
-run_musubi_gui_mode() {
-  section 2 "Launch Musubi WAN 2.2 GUI"
-
-  # Optional Sage prebuild
-  if declare -f ensure_sage_from_bundle_or_build >/dev/null 2>&1; then
-    log "Ensuring SageAttention cache (MUSUBI_GUI)..."
-    ensure_sage_from_bundle_or_build "MUSUBI_GUI"
-  fi
-
-  cd /opt/musubi-tuner_Wan2.2_GUI
-
-  # WANDB_TOKEN can be passed via env; we just expose it to the process
-  log "Starting Musubi Wan 2.2 GUI (local desktop app; no HTTP port)."
-  exec python musubi_tuner_gui.py
-}
-
-# ---------------------------------------------------------
-# MUSUBI CLI mode (MUSUBI)
-# ---------------------------------------------------------
-run_musubi_cli_mode() {
-  section 2 "Prepare generic MUSUBI trainer environment"
-
-  if declare -f ensure_sage_from_bundle_or_build >/dev/null 2>&1; then
-    log "Ensuring SageAttention cache (MUSUBI)..."
-    ensure_sage_from_bundle_or_build "MUSUBI"
-  fi
-
-  cd /opt/musubi-tuner
-
-  log "Generic MUSUBI trainer environment ready."
-  log "You can now run musubi-tuner CLI scripts from /opt/musubi-tuner."
-  log "Dropping into an interactive shell..."
-  exec bash
-}
-
-# ---------------------------------------------------------
-# RUNMODE selection
-# ---------------------------------------------------------
-RUNMODE="${RUNMODE:-MUSUBI_GUI}"
-
-section 1 "Configure environment for RUNMODE=${RUNMODE}"
+RUNMODE="${RUNMODE:-DIFFUSION-PIPE}"
 log "RUNMODE=${RUNMODE}"
+
+#------------------------------------------------------------------------
+section 4 "Configure environment for RUNMODE=${RUNMODE}"
+#----------------------------------------------
+# Configure SSH using SSH* environment 
+#   variables
+#----------------------------------------------
 
 case "${RUNMODE}" in
   MUSUBI)
@@ -435,25 +136,25 @@ case "${RUNMODE}" in
     run_musubi_cli_mode "$@"
     ;;
 
-  MUSUBI_GUI)
+  MUSUBI-GUI)
     log "Configuring venv for Musubi WAN 2.2 GUI..."
     use_venv
     run_musubi_gui_mode "$@"
     ;;
 
-  TOOLKIT)
+  AI-TOOLKIT)
     log "Configuring venv for AI-Toolkit..."
     use_venv
     run_ai_toolkit_mode "$@"
     ;;
 
-  PIPE)
+  DIFFUSION-PIPE)
     log "Configuring conda env for Diffusion Pipe..."
     use_conda_env
     run_diffusion_pipe_mode "$@"
     ;;
 
   *)
-    die "Unknown RUNMODE='${RUNMODE}'. Expected one of: MUSUBI, MUSUBI_GUI, TOOLKIT, PIPE"
+    die "Unknown RUNMODE='${RUNMODE}'. Expected one of: MUSUBI, MUSUBI-GUI, AI-TOOLKIT, DIFFUSION-PIPE"
     ;;
 esac

@@ -88,7 +88,7 @@ source "$HELPERS"
 
 # make sure dirs exist (Comfy home, models, logs, etc.)
 
-ensure_dirs
+ensure_comfy_dirs
 
 #------------------------------------------------------------------------
 section 0 "Prepare Session Logging"
@@ -109,7 +109,7 @@ section 1 "Status/Configuration Overview"
 # Pretty boot banner for Vast / RunPod logs
 #----------------------------------------------
 
-on_start_banner
+on_start_comfy_banner
 
 #------------------------------------------------------------------------
 section 2 "SSH"
