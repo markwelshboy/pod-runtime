@@ -3570,7 +3570,11 @@ ensure_training_dirs() {
 
   mkdir -p \
     "${TRAINING_MODELS_DIR:?}" \
-    "${TRAINING_DIFFUSION_MODELS_DIR:?}"
+    "${TRAINING_DIFFUSION_MODELS_DIR:?}" \
+    "${TRAINING_CKPT_MODELS_DIR:?}" \
+    "${TRAINING_CHECKPOINT_MODELS_DIR:?}" \
+    "${TRAINING_TRANSFORMER_MODELS_DIR:?}" \
+    "${TRAINING_OUTPUT_DIR:?}"
 
 }
 
@@ -3587,13 +3591,13 @@ sub_section() {
   local num="${1:-?}"
   shift || true
   local msg="${*}"
-  local title="SECTION ${num}"
+  local title="SUB-SECTION ${num}"
   [ -n "$msg" ] && title="${title}: ${msg}"
 
   local line
   line="$(printf '%*s' 80 '' | tr ' ' '-')"
 
-  printf '\n%s\n#\n# %s\n#\n%s\n\n' "$line" "$title" "$line"
+  printf '\n  %s\n  #\n  # %s\n  #\n  %s\n\n' "$line" "$title" "$line"
 }
 
 # --------------------------------------------------
@@ -3645,7 +3649,8 @@ on_start_training_banner() {
     echo ""
     echo " Training Manifest:  ${TRAINING_MODEL_MANIFEST_URL:-unset}"
     echo ""
-    echo " ENABLE_SAGE       = ${ENABLE_SAGE:-true}"
+    echo " ENABLE_SAGE         ${ENABLE_SAGE:-false}"
+    echo " ENABLE_TRITON       ${ENABLE_TRITON:-false}"
     echo ""
     echo " Log Directory:      ${TRAINING_LOGS:-/workspace/training_logs}"
     echo "============================================================"
@@ -3769,7 +3774,7 @@ mirror_tree_if_missing() {
 # DIFFUSION-PIPE mode (diffusion-pipe + Wan LoRA training harness)
 # ---------------------------------------------------------
 run_diffusion_pipe_mode() {
-  sub_section 1 "Initialize Diffusion Pipe workspace"
+  sub_section 5.1 "Initialize Diffusion Pipe workspace"
 
   enable_tcmalloc
   setup_network_volume
@@ -3778,7 +3783,7 @@ run_diffusion_pipe_mode() {
   local DP_BASE_SRC="/opt/diffusion-pipe"
   local HARNESS_SRC="${TRAINING_SRC_DIR}/diffusion-pipe"
   local DP_WORK_DIR="${NETWORK_VOLUME}/diffusion_pipe"
-  local HARNESS_WORK_DIR="${NETWORK_VOLUME}/vast-diffusion_pipe"
+  local HARNESS_WORK_DIR="${NETWORK_VOLUME}/runpod-diffusion_pipe"
 
   mirror_tree_if_missing "${DP_BASE_SRC}" "${DP_WORK_DIR}"
   mirror_tree_if_missing "${HARNESS_SRC}" "${HARNESS_WORK_DIR}"
@@ -3848,7 +3853,7 @@ run_diffusion_pipe_mode() {
     pip install triton || tlog "Warning: Triton install failed."
   fi
 
-  sub_section 2 "Finalize Diffusion Pipe Python stack"
+  sub_section 5.2 "Finalize Diffusion Pipe Python stack"
 
   tlog "Ensuring torch 2.7.1/cu128 for diffusion-pipe..."
   pip install "torch==2.7.1" "torchvision==0.22.1" "torchaudio==2.7.1" \
@@ -3870,7 +3875,7 @@ run_diffusion_pipe_mode() {
   pip uninstall -y diffusers || true
   pip install "git+https://github.com/huggingface/diffusers"
 
-  sub_section 3 "Diffusion-pipe ready"
+  sub_section 5.3 "Diffusion-pipe ready"
   tlog "✅ JupyterLab (port 8888) + Diffusion Pipe workspace ready at ${NETWORK_VOLUME}"
   sleep infinity
 }
@@ -3879,18 +3884,16 @@ run_diffusion_pipe_mode() {
 # AI-Toolkit mode (TOOLKIT)
 # ---------------------------------------------------------
 run_ai_toolkit_mode() {
-  sub_section 1 "Launch AI-Toolkit UI"
+  sub_section 5.1 "Launch AI-Toolkit UI"
 
   # venv already active
   cd /opt/ai-toolkit/ui
 
-  local port="${AI_TOOLKIT_PORT:-8675}"
-  tlog "Starting AI-Toolkit UI on port ${port}..."
+  tlog "Starting AI-Toolkit UI on port ${AI_TOOLKIT_PORT}..."
   tlog "AI_TOOLKIT_AUTH=${AI_TOOLKIT_AUTH:-<not set>}"
 
   # AI_TOOLKIT_AUTH is passed from Vast secrets
-  AI_TOOLKIT_AUTH="${AI_TOOLKIT_AUTH:-}" \
-  PORT="${port}" \
+  AI_TOOLKIT_AUTH="${AI_TOOLKIT_AUTH:-}" PORT="${AI_TOOLKIT_PORT}" \
     npm run build_and_start
 }
 
@@ -3898,7 +3901,7 @@ run_ai_toolkit_mode() {
 # MUSUBI GUI mode (MUSUBI_GUI)
 # ---------------------------------------------------------
 run_musubi_gui_mode() {
-  sub_section 1 "Launch Musubi WAN 2.2 GUI"
+  sub_section 5.1 "Launch Musubi WAN 2.2 GUI"
 
   # Optional Sage prebuild
   if declare -f ensure_sage_from_bundle_or_build >/dev/null 2>&1; then
@@ -3917,7 +3920,7 @@ run_musubi_gui_mode() {
 # MUSUBI CLI mode (MUSUBI)
 # ---------------------------------------------------------
 run_musubi_cli_mode() {
-  sub_section 1 "Prepare generic MUSUBI trainer environment"
+  sub_section 5.1 "Prepare generic MUSUBI trainer environment"
 
   # Optional Sage prebuild
   if [ "${ENABLE_SAGE:-false}" = "true" ]; then
