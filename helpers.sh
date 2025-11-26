@@ -129,23 +129,62 @@ ensure_comfy_dirs() {
 # ------------------------- #
 #  Workflows / Icons import #
 # ------------------------- #
-copy_hearmeman_assets_if_any(){
+copy_hearmeman_assets_if_any() {
   local repo="${HEARMEMAN_REPO:-}"
-  if [ -z "$repo" ]; then return 0; fi
+  if [[ -z "$repo" ]]; then
+    return 0
+  fi
+
   local tmp="${CACHE_DIR}/.hearmeman.$$"
   rm -rf "$tmp"
-  git clone "$repo" "$tmp" || return 0
-  # Workflows
-  if [ -d "$tmp/src/workflows" ]; then
-    mkdir -p "${COMFY_HOME}/workflows"
-    cp -rf "$tmp/src/workflows/"* "${COMFY_HOME}/workflows/" || true
+
+  echo "[hearmeman] Syncing assets from: ${repo}"
+  echo "[hearmeman] Temp clone dir:      ${tmp}"
+
+  if ! git clone "$repo" "$tmp" >/dev/null 2>&1; then
+    echo "[hearmeman] ❌ Failed to clone repo; skipping asset sync." >&2
+    rm -rf "$tmp"
+    return 0
   fi
-  # Icons / scripts (e.g., start.sh images)
-  if [ -d "$tmp/src/assets" ]; then
-    mkdir -p "${COMFY_HOME}/assets"
-    cp -rf "$tmp/src/assets/"* "${COMFY_HOME}/assets/" || true
+
+  # ---- Workflows ----
+  local wf_src=""
+  if [[ -d "$tmp/src/workflows" ]]; then
+    wf_src="$tmp/src/workflows"
+  elif [[ -d "$tmp/workflows" ]]; then
+    wf_src="$tmp/workflows"
   fi
+
+  if [[ -n "$wf_src" ]]; then
+    local wf_dst="${COMFY_HOME}/workflows"
+    echo "[hearmeman] Workflows source: ${wf_src}"
+    echo "[hearmeman] Workflows dest:   ${wf_dst}"
+    mkdir -p "$wf_dst"
+    cp -rf "${wf_src}/"* "$wf_dst"/ 2>/dev/null || true
+  else
+    echo "[hearmeman] No workflows found under src/workflows or workflows." >&2
+  fi
+
+  # ---- Assets ----
+  local assets_src=""
+  if [[ -d "$tmp/src/assets" ]]; then
+    assets_src="$tmp/src/assets"
+  elif [[ -d "$tmp/assets" ]]; then
+    assets_src="$tmp/assets"
+  fi
+
+  if [[ -n "$assets_src" ]]; then
+    local assets_dst="${COMFY_HOME}/assets"
+    echo "[hearmeman] Assets source: ${assets_src}"
+    echo "[hearmeman] Assets dest:   ${assets_dst}"
+    mkdir -p "$assets_dst"
+    cp -rf "${assets_src}/"* "$assets_dst"/ 2>/dev/null || true
+  else
+    echo "[hearmeman] No assets found under src/assets or assets." >&2
+  fi
+
   rm -rf "$tmp"
+  echo "[hearmeman] Asset sync complete."
 }
 
 # ======================================================================
@@ -699,16 +738,18 @@ install_custom_nodes_set() {
 
 hf_ensure_local_repo() {
   local repo="${HF_LOCAL_REPO:-${CACHE_DIR}/.hf_repo}"
-  local url
+  local url display_url
 
   url="$(hf_remote_url 2>/dev/null || true)"
   if [[ -z "$url" ]]; then
     echo "[hf-ensure-local-repo] hf_ensure_local_repo: hf_remote_url unresolved" >&2
     return 1
-  else
-    local display_url="${$url/https:\/\/oauth2:[^@]*@/https:\/\/oauth2:***@}"
-    echo "[hf-ensure-local-repo] Master repo url=${display_url}" >&2
   fi
+
+  # Redact token just for logging:
+  # transforms: https://oauth2:<TOKEN>@huggingface.co/...  ->  https://oauth2:***@huggingface.co/...
+  display_url="$(printf '%s\n' "$url" | sed -E 's#(https://oauth2:)[^@]*@#\1***@#')"
+  echo "[hf-ensure-local-repo] Master repo url=${display_url}" >&2
 
   echo "[hf-ensure-local-repo] Using local repo=${repo}" >&2
 
@@ -720,13 +761,13 @@ hf_ensure_local_repo() {
   else
     echo "[hf-ensure-local-repo] Cloning HF repo into $repo…" >&2
     mkdir -p "$(dirname "$repo")"
-    git clone --depth=1 "$url" "$repo" >/dev/null 2>&1 || {
+    if ! git clone --depth=1 "$url" "$repo" >/dev/null 2>&1; then
       echo "[hf-ensure-local-repo] ❌ Failed to clone HF repo into $repo" >&2
       return 1
-    }
+    fi
   fi
 
-  echo "$repo"
+  printf '%s\n' "$repo"
 }
 
 # hf_remote_url: builds authenticated HTTPS remote for model/dataset repos
@@ -3592,6 +3633,120 @@ copy_workflows_to_comfyui() {
   return 0
 }
 
+snapshot_custom_nodes_state() {
+  local mode="full"
+  local stage=""
+
+  # ----------------------------
+  # Parse arguments:
+  #   snapshot_custom_nodes_state [--summary] [--stage STAGE] [STAGE]
+  # ----------------------------
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --summary)
+        mode="summary"
+        shift
+        ;;
+      --stage)
+        stage="${2:-}"
+        shift 2
+        ;;
+      --stage=*)
+        stage="${1#--stage=}"
+        shift
+        ;;
+      *)
+        # Bare positional becomes the stage/tag if not already set
+        if [[ -z "$stage" ]]; then
+          stage="$1"
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  local root="${CUSTOM_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/custom_nodes}"
+  local logs_root="${COMFY_LOGS:-/workspace/logs}"
+  local out="${logs_root}/custom_nodes.snapshot"
+
+  mkdir -p "$logs_root"
+
+  # Small helper to format the header line
+  local now; now="$(date -Is)"
+  local stage_suffix=""
+  if [[ -n "$stage" ]]; then
+    stage_suffix=" [stage: ${stage}]"
+  fi
+
+  if [[ ! -d "$root" ]]; then
+    local msg="[custom-nodes] Snapshot${stage_suffix}: no custom_nodes dir at ${root}"
+    if [[ "$mode" == "summary" ]]; then
+      echo "$msg" | tee -a "$out"
+    else
+      echo "$msg" | tee -a "$out"
+    fi
+    return 0
+  fi
+
+  # Collect entries once so we can count and iterate
+  local -a dirs=()
+  while IFS= read -r d; do
+    dirs+=("$d")
+  done < <(find "$root" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort)
+
+  local count="${#dirs[@]}"
+
+  if [[ "$mode" == "summary" ]]; then
+    # ----------------------------
+    # Summary mode:
+    #   - One-line summary to screen
+    #   - Full list to the snapshot file only
+    # ----------------------------
+    {
+      echo "============================================================"
+      echo "  Custom Nodes Snapshot @ ${now}${stage_suffix}"
+      echo "  Root: ${root}"
+      echo "  Total nodes: ${count}"
+      echo "============================================================"
+      for d in "${dirs[@]}"; do
+        printf '%s\n' "$(basename "$d")"
+      done
+      echo
+    } >> "$out"
+
+    echo "[custom-nodes] Snapshot${stage_suffix}: ${count} node(s); details: ${out}"
+  else
+    # ----------------------------
+    # Full mode:
+    #   - Detailed git info to BOTH screen and file (via tee)
+    # ----------------------------
+    {
+      echo "============================================================"
+      echo "  Custom Nodes Snapshot @ ${now}${stage_suffix}"
+      echo "  Root: ${root}"
+      echo "============================================================"
+      if [[ "$count" -eq 0 ]]; then
+        echo "(no subdirectories under custom_nodes)"
+      else
+        for d in "${dirs[@]}"; do
+          local name sha branch remote
+          name="$(basename "$d")"
+
+          if [[ -d "$d/.git" ]] && command -v git >/dev/null 2>&1; then
+            sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+            branch="$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
+            remote="$(git -C "$d" config --get remote.origin.url 2>/dev/null || echo "unknown")"
+            printf '%-32s  %s  (%s)  [%s]\n' "$name" "$sha" "$branch" "$remote"
+          else
+            printf '%-32s  %s\n' "$name" "<not a git repo>"
+          fi
+        done
+      fi
+      echo
+    } | tee -a "$out"
+  fi
+}
+
 # --------------------------------------------------
 # SSH setup: authorized_keys from env, start sshd
 # --------------------------------------------------
@@ -3627,6 +3782,7 @@ setup_ssh() {
   # Start sshd in the background, logging to stdout
   /usr/sbin/sshd -D -e &
   echo "[ssh] sshd started."
+  sleep 5
 }
 
 # Pretty section header for logs
