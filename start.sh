@@ -291,8 +291,10 @@ else
   tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}." || true
 fi
 
+echo ""
 echo "Bootstrap complete. Bootstrap log: ${COMFY_LOGS}/startup.log"
-echo "General logs: ${COMFY_LOGS}" 
+echo "General logs: ${COMFY_LOGS}"
+echo ""
 
 echo "=== Bootstrap done: $(date) ==="
 
