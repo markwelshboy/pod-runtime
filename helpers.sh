@@ -126,6 +126,16 @@ ensure_comfy_dirs() {
 
 }
 
+ensure_training_dirs() {
+  mkdir -p \
+    "${TRAINING_LOGS:?}"
+
+  mkdir -p \
+    "${TRAINING_MODELS_DIR:-/workspace/models}" \
+    "${TRAINING_DIFFUSION_MODELS_DIR:?}"
+
+}
+
 ensure_workspace() {
   if [ ! -d /workspace ]; then
     mkdir -p /workspace

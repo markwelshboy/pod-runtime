@@ -7,11 +7,9 @@ umask 0022
 echo "=== AI Training bootstrap: $(date) ==="
 
 # --------------------------------------------------
-# 0) Capture the environment so we can recreate it 
+# -1) Capture the environment so we can recreate it 
 #    in a (ssh) bash shell
 # --------------------------------------------------
-
-ensure_workspace
 
 # === Persist session env for later SSH logins ===
 SECRET_DIR="/root/.secrets"
@@ -45,14 +43,14 @@ VARS=(
 
 umask 0022
 
-# Optional: non-secret summary for logs
-mkdir -p ${TRAINING_LOGS}
-SUMMARY="${TRAINING_LOGS}/env.summary"
+# Optional: non-secret summary of env vars
+SUMMARY="/workspace/env.summary"
 {
   echo "Generated: $(date -Is)"
   for k in "${VARS[@]}"; do
     # skip secrets AND skip unset
     [[ "$k" =~ TOKEN ]] && continue
+    [[ "$k" =~ KEY ]] && continue
     if [[ ${!k+set} ]]; then
       printf '%-22s = %s\n' "$k" "${!k}"
     fi
@@ -61,21 +59,8 @@ SUMMARY="${TRAINING_LOGS}/env.summary"
 
 echo "Saved session env to $SESSION_ENV; summary at $SUMMARY"
 
-#------------------------------------------------------------------------
-section 0 "Prepare Session Logging"
-#----------------------------------------------
-# 0) Create startup log
-#----------------------------------------------
-
-STARTUP_LOG="${TRAINING_LOGS}/startup.log"
-
-# Duplicate all further stdout/stderr to both Vast log and a file
-exec > >(tee -a "$STARTUP_LOG") 2>&1
-
-echo "[bootstrap] Logging to: ${STARTUP_LOG}"
-
 # --------------------------------------------------
-# 1) Wire up .env and helpers
+# 0) Wire up .env and helpers, create training dirs
 # --------------------------------------------------
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,14 +81,31 @@ fi
 # shellcheck source=/dev/null
 source "$HELPERS"
 
-# --------------------------------------------------
-# 1.5) Pretty boot banner for Vast / RunPod logs
-# --------------------------------------------------
+ensure_training_dirs
+
+#------------------------------------------------------------------------
+section 1 "Preparing Session Logging"
+#----------------------------------------------
+# Create startup log
+#----------------------------------------------
+
+STARTUP_LOG="${TRAINING_LOGS}/startup.log"
+
+# Duplicate all further stdout/stderr to both Vast log and a file
+exec > >(tee -a "$STARTUP_LOG") 2>&1
+
+echo "[bootstrap] Logging to: ${STARTUP_LOG}"
+
+#------------------------------------------------------------------------
+section 2 "Vast AI Training Bootstrap Configuration"
+#----------------------------------------------
+# Pretty banner
+#----------------------------------------------
 
 on_start_training_banner
 
 #------------------------------------------------------------------------
-section 2 "SSH"
+section 3 "SSH"
 #----------------------------------------------
 # Configure SSH using SSH* environment 
 #   variables
@@ -112,7 +114,7 @@ section 2 "SSH"
 setup_ssh
 
 #------------------------------------------------------------------------
-section 3 "Clone training repo"
+section 4 "Clone training repo"
 #----------------------------------------------
 # Clone or update training repo
 #----------------------------------------------
@@ -120,13 +122,9 @@ section 3 "Clone training repo"
 clone_or_update_repo "${TRAINING_REPO_URL}" "${TRAINING_REPO_DIR}"
 
 #------------------------------------------------------------------------
-
-
-#------------------------------------------------------------------------
-section 4 "Configure environment for TRAINING_RUNMODE=${TRAINING_RUNMODE}"
+section 5 "Configure environment for TRAINING_RUNMODE=${TRAINING_RUNMODE}"
 #----------------------------------------------
-# Configure SSH using SSH* environment 
-#   variables
+# Switch based on TRAINING_RUNMODE
 #----------------------------------------------
 
 tlog "TRAINING_RUNMODE=${TRAINING_RUNMODE}"
