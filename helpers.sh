@@ -126,22 +126,6 @@ ensure_comfy_dirs() {
 
 }
 
-ensure_training_dirs() {
-  mkdir -p \
-    "${TRAINING_LOGS:?}"
-
-  mkdir -p \
-    "${TRAINING_MODELS_DIR:-/workspace/models}" \
-    "${TRAINING_DIFFUSION_MODELS_DIR:?}"
-
-}
-
-ensure_workspace() {
-  if [ ! -d /workspace ]; then
-    mkdir -p /workspace
-  fi
-}
-
 # ------------------------- #
 #  Workflows / Icons import #
 # ------------------------- #
@@ -3570,8 +3554,34 @@ section() {
   echo
 }
 
+# -------------------------------------------------------------------------------------
+#
+# AI Training environment setup helpers
+#
+#
+# -------------------------------------------------------------------------------------
+
+tlog() { printf '[start.training] %s\n' "$*"; }
+die() { tlog "ERROR: $*"; exit 1; }
+
+ensure_training_dirs() {
+  mkdir -p \
+    "${TRAINING_LOGS:?}"
+
+  mkdir -p \
+    "${TRAINING_MODELS_DIR:?}" \
+    "${TRAINING_DIFFUSION_MODELS_DIR:?}"
+
+}
+
+ensure_workspace() {
+  if [ ! -d /workspace ]; then
+    mkdir -p /workspace
+  fi
+}
+
 # ------------------------------------------------------------------
-#  Pretty section logger
+#  Pretty (sub) section logger
 # ------------------------------------------------------------------
 sub_section() {
   local num="${1:-?}"
@@ -3585,16 +3595,6 @@ sub_section() {
 
   printf '\n%s\n#\n# %s\n#\n%s\n\n' "$line" "$title" "$line"
 }
-
-# -------------------------------------------------------------------------------------
-#
-# AI Training environment setup helpers
-#
-#
-# -------------------------------------------------------------------------------------
-
-tlog() { printf '[start.training] %s\n' "$*"; }
-die() { tlog "ERROR: $*"; exit 1; }
 
 # --------------------------------------------------
 # Pretty boot banner for Vast / RunPod logs
@@ -3643,7 +3643,7 @@ on_start_training_banner() {
     echo " Torch:              ${torchver}"
     echo " CUDA (Torch):       ${cudaver}"
     echo ""
-    echo " Model Manifest:     ${MODEL_MANIFEST_URL:-unset}"
+    echo " Training Manifest:  ${TRAINING_MODEL_MANIFEST_URL:-unset}"
     echo ""
     echo " ENABLE_SAGE       = ${ENABLE_SAGE:-true}"
     echo ""
@@ -3766,7 +3766,7 @@ mirror_tree_if_missing() {
 }
 
 # ---------------------------------------------------------
-# PIPE mode (diffusion-pipe + Wan LoRA training harness)
+# DIFFUSION-PIPE mode (diffusion-pipe + Wan LoRA training harness)
 # ---------------------------------------------------------
 run_diffusion_pipe_mode() {
   sub_section 1 "Initialize Diffusion Pipe workspace"
@@ -3916,9 +3916,12 @@ run_musubi_gui_mode() {
 run_musubi_cli_mode() {
   sub_section 1 "Prepare generic MUSUBI trainer environment"
 
-  if declare -f ensure_sage_from_bundle_or_build >/dev/null 2>&1; then
-    tlog "Ensuring SageAttention cache (MUSUBI)..."
-    ensure_sage_from_bundle_or_build "MUSUBI"
+  # Optional Sage prebuild
+  if [ "${ENABLE_SAGE:-false}" = "true" ]; then
+    if declare -f ensure_sage_from_bundle_or_build >/dev/null 2>&1; then
+      tlog "Ensuring SageAttention..."
+      ensure_sage_from_bundle_or_build
+    fi
   fi
 
   cd /opt/musubi-tuner
