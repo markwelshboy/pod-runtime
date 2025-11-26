@@ -3423,73 +3423,6 @@ PY
 # --------------------------------------------------
 # Pretty boot banner for Vast / RunPod logs
 # --------------------------------------------------
-on_start_training_banner() {
-  local logfile="${COMFY_LOGS:-/workspace/logs}/startup_banner.log"
-  mkdir -p "$(dirname "$logfile")"
-
-  # --- Gather info safely ---
-  local pyver torchver cudaver gpustr arch comfyver
-  local gpu_cc gpu_label
-
-  pyver="$($PY -c 'import sys; print(".".join(map(str, sys.version_info[:3])))' 2>/dev/null || echo "?")"
-  torchver="$($PY -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "not-importable")"
-  cudaver="$($PY -c 'import torch; print(torch.version.cuda)' 2>/dev/null || echo "?")"
-
-  gpustr="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 || echo "no-gpu")"
-  gpu_cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || echo "?")"
-  arch="${gpu_cc//./}"   # "12.0" → "120"
-
-  comfyver=$(probe_comfy_version)
-
-  # --- ASCII GPU header ---
-  gpu_label="GPU: ${gpustr}"
-  if [[ -n "$arch" && "$arch" != "?" ]]; then
-    gpu_label+="  (sm_${arch})"
-  fi
-  local width=${#gpu_label}
-  local border
-  border="$(printf '─%.0s' $(seq 1 "$width"))"
-
-  {
-    echo ""
-    echo "┌─${border}─┐"
-    printf "│ %-${width}s │\n" "$gpu_label"
-    echo "└─${border}─┘"
-    echo ""
-    echo "============================================================"
-    echo "   🚀 COMFYUI BOOTSTRAP START (Vast) — $(date -Is)"
-    echo "============================================================"
-    echo " Image Tag:          ${IMAGE_TAG:-unknown}"
-    echo " Build Git SHA:      ${BUILD_GIT_SHA:-unknown}"
-    echo ""
-    echo " Repo Root:          ${REPO_ROOT:-?}"
-    echo " Runtime Directory:  ${SCRIPT_DIR:-?}"
-    echo ""
-    echo " Python:             ${pyver}"
-    echo " Torch:              ${torchver}"
-    echo " CUDA (Torch):       ${cudaver}"
-    echo ""
-    echo " ComfyUI Path:       ${COMFY_HOME:-/workspace/ComfyUI}"
-    echo " ComfyUI Version:    ${comfyver}"
-    echo ""
-    echo " Model Manifest:     ${MODEL_MANIFEST_URL:-unset}"
-    echo " Node Manifest:      ${CUSTOM_NODES_MANIFEST_URL:-unset}"
-    echo ""
-    echo " ENABLE_MODEL_MANIFEST_DOWNLOAD = ${ENABLE_MODEL_MANIFEST_DOWNLOAD:-1}"
-    echo " ENABLE_CIVITAI_DOWNLOAD        = ${ENABLE_CIVITAI_DOWNLOAD:-1}"
-    echo " ENABLE_SAGE                    = ${ENABLE_SAGE:-1}"
-    echo " INSTALL_EXTRA_CUSTOM_NODES     = ${INSTALL_EXTRA_CUSTOM_NODES:-1}"
-    echo " LAUNCH_JUPYTER                 = ${LAUNCH_JUPYTER:-0}"
-    echo ""
-    echo " Log Directory:      ${COMFY_LOGS:-/workspace/logs}"
-    echo "============================================================"
-    echo ""
-  } | tee "$logfile"
-}
-
-# --------------------------------------------------
-# Pretty boot banner for Vast / RunPod logs
-# --------------------------------------------------
 on_start_comfy_banner() {
   local logfile="${COMFY_LOGS:-/workspace/logs}/startup_banner.log"
   mkdir -p "$(dirname "$logfile")"
@@ -3591,19 +3524,56 @@ setup_ssh() {
   echo "[ssh] sshd started."
 }
 
-clone_or_update_repo() {
-  local url="$1" dir="$2" name
-  name="$(basename "$dir")"
+# Pretty section header for logs
+# Usage:
+#   section 1 "bootstrap + env"
+#   section 9 "install extra custom nodes"
+section() {
+  local num="${1:-?}"; shift || true
+  local msg="$*"
 
-  if [ -d "${dir}/.git" ]; then
-    log "Updating ${name} in ${dir}..."
-    git -C "${dir}" pull --rebase --autostash || \
-      log "Warning: git pull failed for ${name}; using existing checkout."
-  else
-    log "Cloning ${name} from ${url} into ${dir}..."
-    rm -rf "${dir}"
-    git clone --depth 1 "${url}" "${dir}"
+  # Column width: use $COLUMNS if set, otherwise 120; clamp to >= 80
+  local cols="${COLUMNS:-120}"
+  (( cols < 80 )) && cols=80
+
+  # Build a border line like:  ------------------------------------------------------------
+  local border
+  border="$(printf '%*s' "$cols" '' | tr ' ' '-')"
+
+  # Uppercase the message if present
+  if [[ -n "$msg" ]]; then
+    msg="${msg^^}"
   fi
+
+  local ts
+  ts="$(date -Is 2>/dev/null || date)"
+
+  echo
+  echo "$border"
+  if [[ -n "$msg" ]]; then
+    printf "# SECTION %s [%s]\n" "$num" "$ts"
+    printf "#   %s\n" "$msg"
+  else
+    printf "# SECTION %s [%s]\n" "$num" "$ts"
+  fi
+  echo "$border"
+  echo
+}
+
+# ------------------------------------------------------------------
+#  Pretty section logger
+# ------------------------------------------------------------------
+sub_section() {
+  local num="${1:-?}"
+  shift || true
+  local msg="${*}"
+  local title="SECTION ${num}"
+  [ -n "$msg" ] && title="${title}: ${msg}"
+
+  local line
+  line="$(printf '%*s' 80 '' | tr ' ' '-')"
+
+  printf '\n%s\n#\n# %s\n#\n%s\n\n' "$line" "$title" "$line"
 }
 
 # -------------------------------------------------------------------------------------
@@ -3615,6 +3585,78 @@ clone_or_update_repo() {
 
 tlog() { printf '[start.training] %s\n' "$*"; }
 die() { tlog "ERROR: $*"; exit 1; }
+
+# --------------------------------------------------
+# Pretty boot banner for Vast / RunPod logs
+# --------------------------------------------------
+on_start_training_banner() {
+  local logfile="${TRAINING_LOGS:-/workspace/training_logs}/startup_banner.log"
+  mkdir -p "$(dirname "$logfile")"
+
+  # --- Gather info safely ---
+  local pyver torchver cudaver gpustr arch
+  local gpu_cc gpu_label
+
+  pyver="$($PY -c 'import sys; print(".".join(map(str, sys.version_info[:3])))' 2>/dev/null || echo "?")"
+  torchver="$($PY -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "not-importable")"
+  cudaver="$($PY -c 'import torch; print(torch.version.cuda)' 2>/dev/null || echo "?")"
+
+  gpustr="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 || echo "no-gpu")"
+  gpu_cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || echo "?")"
+  arch="${gpu_cc//./}"   # "12.0" → "120"
+
+  # --- ASCII GPU header ---
+  gpu_label="GPU: ${gpustr}"
+  if [[ -n "$arch" && "$arch" != "?" ]]; then
+    gpu_label+="  (sm_${arch})"
+  fi
+  local width=${#gpu_label}
+  local border
+  border="$(printf '─%.0s' $(seq 1 "$width"))"
+
+  {
+    echo ""
+    echo "┌─${border}─┐"
+    printf "│ %-${width}s │\n" "$gpu_label"
+    echo "└─${border}─┘"
+    echo ""
+    echo "============================================================"
+    echo "   🚀 AI TRAINING BOOTSTRAP START (Vast) — $(date -Is)"
+    echo "============================================================"
+    echo " Image Tag:          ${IMAGE_TAG:-unknown}"
+    echo " Build Git SHA:      ${BUILD_GIT_SHA:-unknown}"
+    echo ""
+    echo " Repo Root:          ${REPO_ROOT:-?}"
+    echo " Runtime Directory:  ${SCRIPT_DIR:-?}"
+    echo ""
+    echo " Python:             ${pyver}"
+    echo " Torch:              ${torchver}"
+    echo " CUDA (Torch):       ${cudaver}"
+    echo ""
+    echo " Model Manifest:     ${MODEL_MANIFEST_URL:-unset}"
+    echo ""
+    echo " ENABLE_SAGE       = ${ENABLE_SAGE:-true}"
+    echo ""
+    echo " Log Directory:      ${TRAINING_LOGS:-/workspace/training_logs}"
+    echo "============================================================"
+    echo ""
+  } | tee "$logfile"
+}
+
+clone_or_update_repo() {
+  local url="$1" dir="$2" name
+  name="$(basename "$dir")"
+
+  if [ -d "${dir}/.git" ]; then
+    tlog "Updating ${name} in ${dir}..."
+    git -C "${dir}" pull --rebase --autostash || \
+      tlog "Warning: git pull failed for ${name}; using existing checkout."
+  else
+    tlog "Cloning ${name} from ${url} into ${dir}..."
+    rm -rf "${dir}"
+    git clone --depth 1 "${url}" "${dir}"
+  fi
+}
 
 use_venv() {
   if [ ! -x "${VENV_DIR}/bin/python" ]; then
@@ -3717,7 +3759,7 @@ mirror_tree_if_missing() {
 # PIPE mode (diffusion-pipe + Wan LoRA training harness)
 # ---------------------------------------------------------
 run_diffusion_pipe_mode() {
-  section 2 "Initialize Diffusion Pipe workspace"
+  sub_section 1 "Initialize Diffusion Pipe workspace"
 
   enable_tcmalloc
   setup_network_volume
@@ -3726,15 +3768,15 @@ run_diffusion_pipe_mode() {
   local DP_BASE_SRC="/opt/diffusion-pipe"
   local HARNESS_SRC="${TRAINING_SRC_DIR}/diffusion-pipe"
   local DP_WORK_DIR="${NETWORK_VOLUME}/diffusion_pipe"
-  local HARNESS_WORK_DIR="${NETWORK_VOLUME}/runpod-diffusion_pipe"
+  local HARNESS_WORK_DIR="${NETWORK_VOLUME}/vast-diffusion_pipe"
 
   mirror_tree_if_missing "${DP_BASE_SRC}" "${DP_WORK_DIR}"
   mirror_tree_if_missing "${HARNESS_SRC}" "${HARNESS_WORK_DIR}"
 
   if [ -d "${HARNESS_WORK_DIR}" ]; then
     # Move Captioning + Wan2.2 training helpers to root of working volume
-    [ -d "${HARNESS_WORK_DIR}/Captioning" ] && \
-      mv "${HARNESS_WORK_DIR}/Captioning" "${NETWORK_VOLUME}/"
+    [ -d "${HARNESS_WORK_DIR}/captioning" ] && \
+      mv "${HARNESS_WORK_DIR}/captioning" "${NETWORK_VOLUME}/"
     [ -d "${HARNESS_WORK_DIR}/wan2.2_lora_training" ] && \
       mv "${HARNESS_WORK_DIR}/wan2.2_lora_training" "${NETWORK_VOLUME}/"
 
@@ -3791,12 +3833,12 @@ run_diffusion_pipe_mode() {
   fi
 
   # Triton optional
-  if [ "${download_triton:-false}" = "true" ]; then
+  if [ "${ENABLE_TRITON:-false}" = "true" ]; then
     tlog "Installing Triton..."
-    pip install triton || log "Warning: Triton install failed."
+    pip install triton || tlog "Warning: Triton install failed."
   fi
 
-  section 3 "Finalize Diffusion Pipe Python stack"
+  sub_section 2 "Finalize Diffusion Pipe Python stack"
 
   tlog "Ensuring torch 2.7.1/cu128 for diffusion-pipe..."
   pip install "torch==2.7.1" "torchvision==0.22.1" "torchaudio==2.7.1" \
@@ -3815,7 +3857,7 @@ run_diffusion_pipe_mode() {
   pip uninstall -y diffusers || true
   pip install "git+https://github.com/huggingface/diffusers"
 
-  section 4 "Diffusion-pipe ready"
+  sub_section 3 "Diffusion-pipe ready"
   tlog "✅ JupyterLab + Diffusion Pipe workspace ready at ${NETWORK_VOLUME}"
   sleep infinity
 }
@@ -3824,7 +3866,7 @@ run_diffusion_pipe_mode() {
 # AI-Toolkit mode (TOOLKIT)
 # ---------------------------------------------------------
 run_ai_toolkit_mode() {
-  section 2 "Launch AI-Toolkit UI"
+  sub_section 1 "Launch AI-Toolkit UI"
 
   # venv already active
   cd /opt/ai-toolkit/ui
@@ -3843,7 +3885,7 @@ run_ai_toolkit_mode() {
 # MUSUBI GUI mode (MUSUBI_GUI)
 # ---------------------------------------------------------
 run_musubi_gui_mode() {
-  section 2 "Launch Musubi WAN 2.2 GUI"
+  sub_section 1 "Launch Musubi WAN 2.2 GUI"
 
   # Optional Sage prebuild
   if declare -f ensure_sage_from_bundle_or_build >/dev/null 2>&1; then
@@ -3862,7 +3904,7 @@ run_musubi_gui_mode() {
 # MUSUBI CLI mode (MUSUBI)
 # ---------------------------------------------------------
 run_musubi_cli_mode() {
-  section 2 "Prepare generic MUSUBI trainer environment"
+  sub_section 1 "Prepare generic MUSUBI trainer environment"
 
   if declare -f ensure_sage_from_bundle_or_build >/dev/null 2>&1; then
     tlog "Ensuring SageAttention cache (MUSUBI)..."

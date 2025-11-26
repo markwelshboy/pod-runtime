@@ -8,7 +8,7 @@ echo "=== AI Training bootstrap: $(date) ==="
 
 # --------------------------------------------------
 # 0) Capture the environment so we can recreate it 
-#    in a bash shell
+#    in a (ssh) bash shell
 # --------------------------------------------------
 
 ensure_workspace
@@ -25,9 +25,11 @@ umask 077
 VARS=(
   SSH_PUBLIC_KEY PUBLIC_KEY 
   HF_TOKEN
-  WANDB_TOKEN AI_TOOLKIT_AUTH
+  WANDB_TOKEN 
+  AI_TOOLKIT_PORT AI_TOOLKIT_AUTH
   HF_REPO_ID HF_REPO_TYPE HF_REMOTE_URL
-  MODEL_MANIFEST_URL
+  TRAINING_MODEL_MANIFEST_URL
+  ENABLE_SAGE ENABLE_TRITON
 )
 
 {
@@ -44,8 +46,8 @@ VARS=(
 umask 0022
 
 # Optional: non-secret summary for logs
-mkdir -p /workspace/logs
-SUMMARY="/workspace/logs/env.summary"
+mkdir -p ${TRAINING_LOGS}
+SUMMARY="${TRAINING_LOGS}/env.summary"
 {
   echo "Generated: $(date -Is)"
   for k in "${VARS[@]}"; do
@@ -119,42 +121,42 @@ clone_or_update_repo "${TRAINING_REPO_URL}" "${TRAINING_REPO_DIR}"
 
 #------------------------------------------------------------------------
 
-RUNMODE="${RUNMODE:-DIFFUSION-PIPE}"
-log "RUNMODE=${RUNMODE}"
 
 #------------------------------------------------------------------------
-section 4 "Configure environment for RUNMODE=${RUNMODE}"
+section 4 "Configure environment for TRAINING_RUNMODE=${TRAINING_RUNMODE}"
 #----------------------------------------------
 # Configure SSH using SSH* environment 
 #   variables
 #----------------------------------------------
 
-case "${RUNMODE}" in
+tlog "TRAINING_RUNMODE=${TRAINING_RUNMODE}"
+
+case "${TRAINING_RUNMODE}" in
   MUSUBI)
-    log "Configuring venv for generic MUSUBI trainer..."
+    tlog "Configuring venv for generic MUSUBI trainer..."
     use_venv
     run_musubi_cli_mode "$@"
     ;;
 
   MUSUBI-GUI)
-    log "Configuring venv for Musubi WAN 2.2 GUI..."
+    tlog "Configuring venv for Musubi WAN 2.2 GUI..."
     use_venv
     run_musubi_gui_mode "$@"
     ;;
 
   AI-TOOLKIT)
-    log "Configuring venv for AI-Toolkit..."
+    tlog "Configuring venv for AI-Toolkit..."
     use_venv
     run_ai_toolkit_mode "$@"
     ;;
 
   DIFFUSION-PIPE)
-    log "Configuring conda env for Diffusion Pipe..."
+    tlog "Configuring conda env for Diffusion Pipe..."
     use_conda_env
     run_diffusion_pipe_mode "$@"
     ;;
 
   *)
-    die "Unknown RUNMODE='${RUNMODE}'. Expected one of: MUSUBI, MUSUBI-GUI, AI-TOOLKIT, DIFFUSION-PIPE"
+    die "Unknown TRAINING_RUNMODE='${TRAINING_RUNMODE}'. Expected one of: MUSUBI, MUSUBI-GUI, AI-TOOLKIT, DIFFUSION-PIPE"
     ;;
 esac
