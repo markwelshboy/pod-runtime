@@ -3100,9 +3100,6 @@ aria2_enqueue_and_wait_from_manifest() {
     "${ARIA2_PROGRESS_BAR_WIDTH:-40}" \
     "${COMFY_LOGS:-/workspace/logs}/aria2_progress.log"
 
-  # Show completed block when done
-  helpers_print_completed_from_aria2 2>/dev/null || true
-
   aria2_clear_results >/dev/null 2>&1 || true
   trap - INT TERM
   return 0
@@ -3672,7 +3669,7 @@ show_env () {
   echo " Logs dir:                              $COMFY_LOGS"
   echo " Output dir:                            $OUTPUT_DIR"
   echo " Bundles dir:                           $BUNDLES_DIR"
-  echo " Workflow dir:                          $WORKFLOW_DIR"
+  echo " Workflow dir:                          $COMFY_WORKFLOW_DIR"
   echo ""
   echo " Custom Node Manifest:                  $CUSTOM_NODES_MANIFEST_URL"
   echo " Model manifest:                        $MODEL_MANIFEST_URL"
@@ -3803,7 +3800,7 @@ on_start_banner() {
     echo " ENABLE_MODEL_MANIFEST_DOWNLOAD:        ${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}"
     echo " ENABLE_CIVITAI_DOWNLOAD:               ${ENABLE_CIVITAI_DOWNLOAD:-true}"
     echo " ENABLE_SAGE:                           ${ENABLE_SAGE:-true}"
-    echo " INSTALL_EXTRA_CUSTOM_NODES:            ${INSTALL_EXTRA_CUSTOM_NODES:-true}"
+    echo " INSTALL_CUSTOM_NODES:                  ${INSTALL_CUSTOM_NODES:-true}"
     echo " LAUNCH_JUPYTER:                        ${LAUNCH_JUPYTER:-false}"
     echo ""
     show_download_environment_variables
@@ -3922,7 +3919,7 @@ INI
 copy_workflows_to_comfyui() {
   local comfy_home="${COMFY_HOME:-/workspace/ComfyUI}"
   local source_dir="${comfy_home}/workflows"
-  local dest_root="${WORKFLOW_DIR:-${comfy_home}/user/default/workflows}"
+  local dest_root="${COMFY_WORKFLOW_DIR:-${comfy_home}/user/default/workflows}"
 
   echo ""
   echo "[workflows] Copying any local workflows..."

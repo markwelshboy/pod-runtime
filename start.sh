@@ -155,7 +155,7 @@ else
 fi
 
 #------------------------------------------------------------------------
-section 5 "Huggingface & CivitAI Download"
+section 5 "Huggingface (Models) & CivitAI (Loras/Checkpoints) Download"
 #----------------------------------------------
 # Models via model_manifest.json + aria2
 #----------------------------------------------
