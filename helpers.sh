@@ -31,7 +31,7 @@ shopt -s extglob
 # Optional (misc tooling):
 #   COMFY_REPO_URL       - ComfyUI repo URL (default comfyanonymous/ComfyUI)
 #   GIT_DEPTH            - default 1
-#   MAX_NODE_JOBS        - default 6..8
+#   MAX_CUSTOM_NODE_JOBS - default 6..8
 # Hugging Face:
 #   HF_REPO_ID           - e.g. user/comfyui-bundles
 #   HF_REPO_TYPE         - dataset | model (default dataset)
@@ -45,7 +45,7 @@ shopt -s extglob
 # Provide reasonable fallbacks if .env forgot any
 : "${COMFY_REPO_URL:=https://github.com/comfyanonymous/ComfyUI}"
 : "${GIT_DEPTH:=1}"
-: "${MAX_NODE_JOBS:=8}"
+: "${MAX_CUSTOM_NODE_JOBS:=8}"
 : "${HF_API_BASE:=https://huggingface.co}"
 : "${CN_BRANCH:=main}"
 : "${CACHE_DIR:=${COMFY_HOME:-/tmp}/cache}"
@@ -553,7 +553,7 @@ rewrite_custom_nodes_requirements() {
 #   - Manifest format (plain text, one entry per line):
 #       <git_url> <target_dir> [optional git clone args...]
 #     Lines starting with # or empty are ignored.
-#   - Uses clone_or_pull/build_node as the core, in parallel up to MAX_NODE_JOBS.
+#   - Uses clone_or_pull/build_node as the core, in parallel up to MAX_CUSTOM_NODE_JOBS.
 install_custom_nodes() {
   _helpers_need curl
 
@@ -581,12 +581,13 @@ install_custom_nodes() {
   local log_dir="${CUSTOM_LOG_DIR:-${COMFY_LOGS:-/workspace/logs}/custom_nodes}"
   mkdir -p "$custom_dir" "$log_dir"
 
-  local max_jobs="${MAX_NODE_JOBS:-8}"
+  local max_jobs="${MAX_CUSTOM_NODE_JOBS:-8}"
   local job_count=0
   local failed=0
 
   echo "[custom-nodes] Using manifest: $src"
   echo "[custom-nodes] Installing custom nodes into: $custom_dir"
+  echo "[custom-nodes] Using concurrency: ${max_jobs}. Change with MAX_CUSTOM_NODE_JOBS env var."
   cd "$custom_dir"
 
   local line url dst rest
@@ -649,10 +650,12 @@ install_custom_nodes() {
 
   if (( failed != 0 )); then
     echo "[custom-nodes] Completed with one or more errors." >&2
+    echo ""
     return 1
   fi
 
   echo "[custom-nodes] Manifest install completed successfully."
+  echo ""
   return 0
 }
 
@@ -672,9 +675,9 @@ install_custom_nodes_set() {
   mkdir -p "${CUSTOM_DIR:?}" "${CUSTOM_LOG_DIR:?}"
 
   # Concurrency
-  local max_jobs="${MAX_NODE_JOBS:-8}"
+  local max_jobs="${MAX_CUSTOM_NODE_JOBS:-8}"
   if ! [[ "$max_jobs" =~ ^[0-9]+$ ]] || (( max_jobs < 1 )); then max_jobs=8; fi
-  echo "[custom-nodes] Using concurrency: ${max_jobs}"
+  echo "[custom-nodes] Using concurrency: ${max_jobs}. Change with MAX_CUSTOM_NODE_JOBS env var."
 
   # Harden git so it never prompts (prompts can look like a 'hang')
   export GIT_TERMINAL_PROMPT=0
@@ -2469,6 +2472,8 @@ aria2_show_download_snapshot() {
   echo "================================================================================"
   echo "=== Aria2 Downloader Snapshot @ $(date '+%Y-%m-%d %H:%M:%S')"
   echo "=== Active: $active_count   Pending: $pending_count   Completed: $completed_count"
+  echo ""
+  echo "=== Max Concurrent Downloads (ARIA2_MAX_CONC)=${ARIA2_MAX_CONC}"
   echo "================================================================================"
   echo ""
 
@@ -2557,7 +2562,7 @@ aria2_show_download_snapshot() {
         dir="${dir#$ROOT/}"
       fi
 
-      printf " %3d%% [%-*s] %8s/s (%6s / %6s)  [ %-28s ] %s\n" \
+      printf " %3d%% [%-*s] %8s/s (%6s / %6s)  [ %-23s ] <- %s\n" \
         "$pct" "$W" "$bar" \
         "$(helpers_human_bytes "$spd")" \
         "$(helpers_human_bytes "$done")" \
@@ -3387,40 +3392,106 @@ aria2_enqueue_and_wait_from_civitai() {
 
 show_env () {
   # ----- Convenience environment echo -----
-  echo "======================================="
-  echo "🧠 Environment Summary"
-  echo "======================================="
+  echo "========================================================================"
+  echo "🧠 Environment Summary — $(date -Is)"
+  echo "========================================================================"
   echo ""
-  echo "COMFY_HOME:           $COMFY_HOME"
+  echo " COMFY_HOME:            $COMFY_HOME"
+  echo " Comfy version:         $(detect_comfy_version || echo unknown)"
   echo ""
-  echo "Custom nodes dir:     $CUSTOM_DIR"
-  echo "Cache dir:            $CACHE_DIR"
-  echo "Logs dir:             $COMFY_LOGS"
-  echo "Output dir:           $OUTPUT_DIR"
-  echo "Bundles dir:          $BUNDLES_DIR"
-  echo "Bundle tag:           $CUSTOM_NODES_BUNDLE_TAG"
-  echo "Workflow dir:         $WORKFLOW_DIR"
-  echo "Model manifest URL:   $MODEL_MANIFEST_URL"
+  echo " Custom nodes dir:      $CUSTOM_DIR"
+  echo " Cache dir:             $CACHE_DIR"
+  echo " Logs dir:              $COMFY_LOGS"
+  echo " Output dir:            $OUTPUT_DIR"
+  echo " Bundles dir:           $BUNDLES_DIR"
+  echo " Bundle tag:            $CUSTOM_NODES_BUNDLE_TAG"
+  echo " Workflow dir:          $WORKFLOW_DIR"
+  echo " Model manifest URL:    $MODEL_MANIFEST_URL"
   echo ""
-  echo "DIFFUSION_MODELS_DIR: $DIFFUSION_MODELS_DIR"
-  echo "TEXT_ENCODERS_DIR:    $TEXT_ENCODERS_DIR"
-  echo "CLIP_VISION_DIR:      $CLIP_VISION_DIR"
-  echo "VAE_DIR:              $VAE_DIR"
-  echo "LORAS_DIR:            $LORAS_DIR"
-  echo "DETECTION_DIR:        $DETECTION_DIR"
-  echo "CTRL_DIR:             $CTRL_DIR"
-  echo "UPSCALE_DIR:          $UPSCALE_DIR"
+  echo " DIFFUSION_MODELS_DIR:  $DIFFUSION_MODELS_DIR"
+  echo " TEXT_ENCODERS_DIR:     $TEXT_ENCODERS_DIR"
+  echo " CLIP_VISION_DIR:       $CLIP_VISION_DIR"
+  echo " VAE_DIR:               $VAE_DIR"
+  echo " LORAS_DIR:             $LORAS_DIR"
+  echo " DETECTION_DIR:         $DETECTION_DIR"
+  echo " CTRL_DIR:              $CTRL_DIR"
+  echo " UPSCALE_DIR:           $UPSCALE_DIR"
   echo ""
-  echo "HF_TOKEN:             $(if [ -n "$HF_TOKEN" ]; then echo "Set"; else echo "Not set"; fi)"
-  echo "CIVITAI_TOKEN:        $(if [ -n "$CIVITAI_TOKEN" ]; then echo "Set"; else echo "Not set"; fi)"
-  echo "CHECKPOINT_IDS:       ${CHECKPOINT_IDS_TO_DOWNLOAD:-Empty}"
-  echo "LORAS_IDS:            ${LORAS_IDS_TO_DOWNLOAD:-Empty}"
-  echo "======================================="
-  echo ""
-  hf_repo_info
+  echo " HF_TOKEN:              $(hf_token_status)"
+  echo " CIVITAI_TOKEN:         $(civitai_token_status)"
+  echo " CHECKPOINT_IDS:        ${CHECKPOINT_IDS_TO_DOWNLOAD:-Empty}"
+  echo " LORAS_IDS:             ${LORAS_IDS_TO_DOWNLOAD:-Empty}"
   echo ""
   echo "======================================="
 
+}
+
+# ------------------------- #
+#  Workflows / Asset import #
+# ------------------------- #
+copy_hearmeman_files_from_repo_if_any() {
+  local repo="${HEARMEMAN_REPO:-}"
+  if [[ -z "$repo" ]]; then
+    return 0
+  fi
+
+  if [ -z "$repo" ]; then return 0; fi
+  local tmp="${CACHE_DIR}/.hearmeman.$$"
+  rm -rf "$tmp"
+
+  echo "[hearmeman] Syncing files from:  ${repo}"
+  echo "[hearmeman] Temp repo location:  ${tmp}"
+
+  if ! git clone "$repo" "$tmp" >/dev/null 2>&1; then
+    echo "[hearmeman] ❌ Failed to clone repo; skipping repo sync." >&2
+    rm -rf "$tmp"
+    return 0
+  fi
+
+  # ---- Workflows ----
+  local wf_src=""
+  if [[ -d "$tmp/src/workflows" ]]; then
+    wf_src="$tmp/src/workflows"
+  elif [[ -d "$tmp/workflows" ]]; then
+    wf_src="$tmp/workflows"
+  fi
+
+  if [[ -n "$wf_src" ]]; then
+    echo "[hearmeman] Relocating workflows found in repo."
+    local wf_dst="${COMFY_HOME}/workflows"
+    echo "[hearmeman] Workflows source:    ${wf_src}"
+    echo "[hearmeman] Workflows dest:      ${wf_dst}"
+    mkdir -p "$wf_dst"
+    cp -rf "${wf_src}/"* "$wf_dst"/ 2>/dev/null || true
+  else
+    echo "[hearmeman] No workflows found under $repo/src/workflows or $repo/workflows." >&2
+  fi
+  
+  echo ""
+
+  # ---- Assets ----
+  local assets_src=""
+  if [[ -d "$tmp/src/assets" ]]; then
+    assets_src="$tmp/src/assets"
+  elif [[ -d "$tmp/assets" ]]; then
+    assets_src="$tmp/assets"
+  fi
+
+  if [[ -n "$assets_src" ]]; then
+    echo "[hearmeman] Relocating assets found in repo."
+    local assets_dst="${COMFY_HOME}/assets"
+    echo "[hearmeman] Assets source:       ${assets_src}"
+    echo "[hearmeman] Assets dest:         ${assets_dst}"
+    mkdir -p "$assets_dst"
+    cp -rf "${assets_src}/"* "$assets_dst"/ 2>/dev/null || true
+  else
+    echo "[hearmeman] No assets found under $repo/src/assets or $repo/assets." >&2
+  fi
+
+  rm -rf "$tmp"
+  echo ""
+  echo "[hearmeman] Repo sync complete."
+  echo ""
 }
 
 # Probe ComfyUI version for logging
@@ -3456,26 +3527,14 @@ PY
   echo "$ver"
 }
 
-# --------------------------------------------------
-# Pretty boot banner for Vast / RunPod logs
-# --------------------------------------------------
-on_start_comfy_banner() {
-  local logfile="${COMFY_LOGS:-/workspace/logs}/startup_banner.log"
-  mkdir -p "$(dirname "$logfile")"
-
+show_gpu () {
   # --- Gather info safely ---
-  local pyver torchver cudaver gpustr arch comfyver
+  local gpustr arch
   local gpu_cc gpu_label
-
-  pyver="$($PY -c 'import sys; print(".".join(map(str, sys.version_info[:3])))' 2>/dev/null || echo "?")"
-  torchver="$($PY -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "not-importable")"
-  cudaver="$($PY -c 'import torch; print(torch.version.cuda)' 2>/dev/null || echo "?")"
 
   gpustr="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 || echo "no-gpu")"
   gpu_cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || echo "?")"
   arch="${gpu_cc//./}"   # "12.0" → "120"
-
-  comfyver=$(probe_comfy_version)
 
   # --- ASCII GPU header ---
   gpu_label="GPU: ${gpustr}"
@@ -3486,38 +3545,72 @@ on_start_comfy_banner() {
   local border
   border="$(printf '─%.0s' $(seq 1 "$width"))"
 
+  echo "┌─${border}─┐"
+  printf "│ %-${width}s │\n" "$gpu_label"
+  echo "└─${border}─┘"
+}
+
+show_download_environment_variables () {
+
+  compgen -A variable | grep "download_" | while IFS= read -r var_name; do
+    printf " %-39s%s\n" "${var_name}:" "${!var_name}"
+  done
+}
+
+# --------------------------------------------------
+# Pretty boot banner for Vast / RunPod logs
+# --------------------------------------------------
+on_start_comfy_banner() {
+  local logfile="${COMFY_LOGS:-/workspace/logs}/startup_banner.log"
+  mkdir -p "$(dirname "$logfile")"
+
+  # --- Gather info safely ---
+  local pyver torchver cudaver arch comfyver
+
+  pyver="$($PY -c 'import sys; print(".".join(map(str, sys.version_info[:3])))' 2>/dev/null || echo "?")"
+  torchver="$($PY -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "not-importable")"
+  cudaver="$($PY -c 'import torch; print(torch.version.cuda)' 2>/dev/null || echo "?")"
+
+  comfyver=$(probe_comfy_version)
+
   {
-    echo ""
-    echo "┌─${border}─┐"
-    printf "│ %-${width}s │\n" "$gpu_label"
-    echo "└─${border}─┘"
+    echo "============================================================"
+   
+    show_gpu
+
     echo ""
     echo "============================================================"
     echo "   🚀 COMFYUI BOOTSTRAP START (Vast) — $(date -Is)"
     echo "============================================================"
-    echo " Image Tag:          ${IMAGE_TAG:-unknown}"
-    echo " Build Git SHA:      ${BUILD_GIT_SHA:-unknown}"
     echo ""
-    echo " Repo Root:          ${REPO_ROOT:-?}"
-    echo " Runtime Directory:  ${SCRIPT_DIR:-?}"
+    echo " Image Tag:                       ${IMAGE_TAG:-unknown}"
+    echo " Build Git SHA:                   ${BUILD_GIT_SHA:-unknown}"
     echo ""
-    echo " Python:             ${pyver}"
-    echo " Torch:              ${torchver}"
-    echo " CUDA (Torch):       ${cudaver}"
+    echo " Repo Root:                       ${REPO_ROOT:-?}"
+    echo " Runtime Directory:               ${SCRIPT_DIR:-?}"
     echo ""
-    echo " ComfyUI Path:       ${COMFY_HOME:-/workspace/ComfyUI}"
-    echo " ComfyUI Version:    ${comfyver}"
+    echo " Python:                          ${pyver}"
+    echo " Torch:                           ${torchver}"
+    echo " CUDA (Torch):                    ${cudaver}"
     echo ""
-    echo " Model Manifest:     ${MODEL_MANIFEST_URL:-unset}"
-    echo " Node Manifest:      ${CUSTOM_NODES_MANIFEST_URL:-unset}"
+    echo " ComfyUI Path:                    ${COMFY_HOME:-/workspace/ComfyUI}"
+    echo " ComfyUI Version:                 ${comfyver}"
     echo ""
-    echo " ENABLE_MODEL_MANIFEST_DOWNLOAD = ${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}"
-    echo " ENABLE_CIVITAI_DOWNLOAD        = ${ENABLE_CIVITAI_DOWNLOAD:-true}"
-    echo " ENABLE_SAGE                    = ${ENABLE_SAGE:-true}"
-    echo " INSTALL_EXTRA_CUSTOM_NODES     = ${INSTALL_EXTRA_CUSTOM_NODES:-true}"
-    echo " LAUNCH_JUPYTER                 = ${LAUNCH_JUPYTER:-false}"
+    echo " Model Manifest:                  ${MODEL_MANIFEST_URL:-unset}"
+    echo " Node Manifest:                   ${CUSTOM_NODES_MANIFEST_URL:-unset}"
     echo ""
-    echo " Log Directory:      ${COMFY_LOGS:-/workspace/logs}"
+    echo " ENABLE_MODEL_MANIFEST_DOWNLOAD   ${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}"
+    echo " ENABLE_CIVITAI_DOWNLOAD          ${ENABLE_CIVITAI_DOWNLOAD:-true}"
+    echo " ENABLE_SAGE                      ${ENABLE_SAGE:-true}"
+    echo " INSTALL_EXTRA_CUSTOM_NODES       ${INSTALL_EXTRA_CUSTOM_NODES:-true}"
+    echo " LAUNCH_JUPYTER                   ${LAUNCH_JUPYTER:-false}"
+    echo ""
+    
+    show_download_environment_variables
+
+    echo ""
+    echo " Log Directory:                   ${COMFY_LOGS:-/workspace/logs}"
+    echo ""
     echo "============================================================"
     echo ""
   } | tee "$logfile"
@@ -3746,6 +3839,109 @@ snapshot_custom_nodes_state() {
       echo
     } | tee -a "$out"
   fi
+}
+
+civitai_token_status() {
+  local token="${CIVITAI_TOKEN:-}"
+
+  # 1) Not set
+  if [[ -z "$token" ]]; then
+    printf '%s' "❌ not set"
+    return 1
+  fi
+
+  # 2) Common placeholder patterns
+  if [[ "$token" == "token_here" || "$token" == "CIVITAI_TOKEN_HERE" ]]; then
+    printf '%s' "⚠️ placeholder value"
+    return 1
+  fi
+
+  # 3) Ensure curl exists
+  if ! command -v curl >/dev/null 2>&1; then
+    printf '%s' "⚠️ set (curl missing, can't validate)"
+    return 0
+  fi
+
+  # 4) Validate against Civitai
+  local code
+  code="$(curl -fsS --max-time 5 \
+           -o /dev/null -w '%{http_code}' \
+           -H "Authorization: Bearer $token" \
+           "https://civitai.com/api/v1/auth/me" \
+           2>/dev/null || echo "000")"
+
+  case "$code" in
+    200)
+      printf '%s' "✅ valid (auth/me OK)"
+      return 0
+      ;;
+    401)
+      printf '%s' "❌ invalid token (401)"
+      return 1
+      ;;
+    403)
+      printf '%s' "❌ forbidden (403 — wrong scopes?)"
+      return 1
+      ;;
+    000)
+      printf '%s' "⚠️ set (network error)"
+      return 1
+      ;;
+    *)
+      printf '%s' "⚠️ unexpected HTTP $code"
+      return 1
+      ;;
+  esac
+}
+
+# Returns a human-readable HF token status on stdout
+hf_token_status() {
+  # Safe with `set -u`
+  local token="${HF_TOKEN:-}"
+
+  # 1) Not set at all
+  if [[ -z "$token" ]]; then
+    printf '%s' "❌ not set"
+    return 1
+  fi
+
+  # 2) GUI default / placeholder
+  if [[ "$token" == "token_here" ]]; then
+    printf '%s' "⚠️ placeholder (token_here)"
+    return 1
+  fi
+
+  # 3) Can't validate if curl is missing
+  if ! command -v curl >/dev/null 2>&1; then
+    printf '%s' "⚠️ set (curl missing, can't validate)"
+    return 0
+  fi
+
+  # 4) Call HF whoami-v2 to validate
+  local code
+  code="$(curl -fsS --max-time 5 \
+           -o /dev/null -w '%{http_code}' \
+           -H "Authorization: Bearer $token" \
+           "https://huggingface.co/api/whoami-v2" 2>/dev/null || echo "000")"
+
+  case "$code" in
+    200)
+      printf '%s' "✅ valid (whoami-v2 OK)"
+      return 0
+      ;;
+    401|403)
+      printf '%s' "❌ invalid / unauthorized"
+      return 1
+      ;;
+    000)
+      printf '%s' "⚠️ set (network error talking to HF)"
+      return 1
+      ;;
+    *)
+      printf '%s' "⚠️ set (whoami-v2 HTTP $code)"
+      return 1
+      ;;
+  esac
 }
 
 # --------------------------------------------------
