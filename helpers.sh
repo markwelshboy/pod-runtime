@@ -3857,8 +3857,11 @@ run_diffusion_pipe_mode() {
   tlog "Upgrading transformers..."
   pip install -U transformers
 
-  tlog "Ensuring huggingface_hub[cli]..."
-  pip install --upgrade "huggingface_hub[cli]"
+  # We intentionally do NOT upgrade huggingface_hub here because
+  # transformers 4.57.3 requires huggingface-hub<1.0.
+  # The version from requirements.txt (e.g. 0.36.x) is fine.
+  #tlog "Ensuring huggingface_hub[cli]..."
+  #pip install --upgrade "huggingface_hub[cli]"
 
   tlog "Upgrading peft (>=0.17.0)..."
   pip install --upgrade "peft>=0.17.0"
@@ -3868,7 +3871,7 @@ run_diffusion_pipe_mode() {
   pip install "git+https://github.com/huggingface/diffusers"
 
   sub_section 3 "Diffusion-pipe ready"
-  tlog "✅ JupyterLab + Diffusion Pipe workspace ready at ${NETWORK_VOLUME}"
+  tlog "✅ JupyterLab (port 8888) + Diffusion Pipe workspace ready at ${NETWORK_VOLUME}"
   sleep infinity
 }
 
