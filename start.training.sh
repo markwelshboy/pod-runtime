@@ -23,7 +23,8 @@ umask 077
 VARS=(
   SSH_PUBLIC_KEY PUBLIC_KEY 
   HF_TOKEN
-  WANDB_TOKEN 
+  WANDB_TOKEN
+  GEMINI_API_KEY
   AI_TOOLKIT_PORT AI_TOOLKIT_AUTH
   HF_REPO_ID HF_REPO_TYPE HF_REMOTE_URL
   TRAINING_MODEL_MANIFEST_URL
@@ -51,6 +52,7 @@ SUMMARY="/workspace/env.summary"
     # skip secrets AND skip unset
     [[ "$k" =~ TOKEN ]] && continue
     [[ "$k" =~ KEY ]] && continue
+    [[ "$k" =~ AUTH ]] && continue
     if [[ ${!k+set} ]]; then
       printf '%-22s = %s\n' "$k" "${!k}"
     fi
