@@ -12,7 +12,8 @@
     "DETECTION_DIR": "{COMFY_HOME}/models/detection",
     "UPSCALE_DIR": "{COMFY_HOME}/models/upscale_models",
     "SAMS_DIR": "{COMFY_HOME}/models/sams",
-    "CTRLNET_DIR": "{COMFY_HOME}/models/controlnet"
+    "CTRLNET_DIR": "{COMFY_HOME}/models/controlnet",
+    "CHECKPOINTS_DIR": "{COMFY_HOME}/models/checkpoints"
 },
   "sections": {
     "download_480p_native_models": [
@@ -222,7 +223,7 @@
         "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
         "path": "{VAE_DIR}/wan_2.1_vae.safetensors"
       },
-{
+      {
         "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors",
         "path": "{VAE_DIR}/Wan2_1_VAE_bf16.safetensors"
       },
@@ -369,6 +370,40 @@
       {
         "url": "https://huggingface.co/xinsir/controlnet-union-sdxl-1.0/resolve/main/diffusion_pytorch_model_promax.safetensors",
         "path": "{COMFY_HOME}/models/controlnet/SDXL/controlnet-union-sdxl-1.0/diffusion_pytorch_model_promax.safetensors"
+      }
+    ],
+    "download_aio_mega": [
+      {
+        "url": "https://huggingface.co/Phr00t/WAN2.2-14B-Rapid-AllInOne/resolve/main/Mega-v12/wan2.2-rapid-mega-aio-v10.safetensors",
+        "path": "{CHECKPOINTS_DIR}/wan2.2-rapid-mega-aio-v12.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Fun/VACE/Wan2_2_Fun_VACE_module_A14B_HIGH_bf16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/Wan2_2_Fun_VACE_module_A14B_HIGH_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Fun/VACE/Wan2_2_Fun_VACE_module_A14B_LOW_bf16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/Wan2_2_Fun_VACE_module_A14B_LOW_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/blob/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/blob/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/blob/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+        "path": "{LORAS_DIR}/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/blob/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+        "path": "{LORAS_DIR}/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
       }
     ]
   }
