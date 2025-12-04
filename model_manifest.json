@@ -426,8 +426,8 @@
         "path": "{LORAS_DIR}/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank128_bf16.safetensors"
       },
       {
-        "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensor",
-        "path": "{TEXT_ENCODERS_DIR}/clip_l.safetensor"
+        "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/clip_l.safetensors"
       },
       {
         "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors",
