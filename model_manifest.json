@@ -374,7 +374,7 @@
     ],
     "download_aio_mega": [
       {
-        "url": "https://huggingface.co/Phr00t/WAN2.2-14B-Rapid-AllInOne/resolve/main/Mega-v12/wan2.2-rapid-mega-aio-v10.safetensors",
+        "url": "https://huggingface.co/Phr00t/WAN2.2-14B-Rapid-AllInOne/resolve/main/Mega-v12/wan2.2-rapid-mega-aio-v12.safetensors",
         "path": "{CHECKPOINTS_DIR}/wan2.2-rapid-mega-aio-v12.safetensors"
       },
       {
@@ -386,19 +386,19 @@
         "path": "{DIFFUSION_MODELS_DIR}/Wan2_2_Fun_VACE_module_A14B_LOW_bf16.safetensors"
       },
       {
-        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/blob/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
         "path": "{DIFFUSION_MODELS_DIR}/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors"
       },
       {
-        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/blob/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
         "path": "{DIFFUSION_MODELS_DIR}/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors"
       },
       {
-        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/blob/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
         "path": "{LORAS_DIR}/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
       },
       {
-        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/blob/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
         "path": "{LORAS_DIR}/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
       },
       {
