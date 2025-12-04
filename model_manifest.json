@@ -386,6 +386,14 @@
         "path": "{DIFFUSION_MODELS_DIR}/Wan2_2_Fun_VACE_module_A14B_LOW_bf16.safetensors"
       },
       {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/VACE/Wan2_2_Fun_VACE_module_A14B_HIGH_fp8_e4m3fn_scaled_KJ.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/Wan2_2_Fun_VACE_module_A14B_HIGH_fp8_e4m3fn_scaled_KJ.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/VACE/Wan2_2_Fun_VACE_module_A14B_LOW_fp8_e4m3fn_scaled_KJ.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/Wan2_2_Fun_VACE_module_A14B_LOW_fp8_e4m3fn_scaled_KJ.safetensors"
+      },
+      {
         "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
         "path": "{DIFFUSION_MODELS_DIR}/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors"
       },
