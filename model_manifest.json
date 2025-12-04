@@ -303,7 +303,7 @@
       },
       {
         "url": "https://huggingface.co/lightx2v/Wan2.2-Lightning/resolve/main/Wan2.2-T2V-A14B-4steps-lora-250928/low_noise_model.safetensors",
-        "path": "{DIFFUSION_MODELS_DIR}/t2v_lightx2v_low_noise_model.safetensors"
+        "path": "{DIFFUSION_MODELS_DIR}/low_noise_model.safetensors"
       },
       {
         "url": "https://huggingface.co/Kijai/sam2-safetensors/resolve/main/sam2.1_hiera_base_plus.safetensors",
@@ -311,7 +311,7 @@
       },
       {
         "url": "https://huggingface.co/lightx2v/Wan2.2-Distill-Loras/resolve/main/wan2.2_i2v_A14b_low_noise_lora_rank64_lightx2v_4step_1022.safetensors",
-        "path": "{LORAS_DIR}/i2v_lightx2v_low_noise_model.safetensors"
+        "path": "{LORAS_DIR}/wan2.2_i2v_A14b_low_noise_lora_rank64_lightx2v_4step_1022.safetensors"
       },
       {
         "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_animate_14B_relight_lora_bf16.safetensors",
@@ -355,11 +355,11 @@
       },
       {
         "url": "https://huggingface.co/lightx2v/Wan2.2-Distill-Loras/resolve/main/wan2.2_i2v_A14b_high_noise_lora_rank64_lightx2v_4step_1022.safetensors",
-        "path": "{LORAS_DIR}/i2v_lightx2v_high_noise_model.safetensors"
+        "path": "{LORAS_DIR}/wan2.2_i2v_A14b_high_noise_lora_rank64_lightx2v_4step_1022.safetensors"
       },
       {
         "url": "https://huggingface.co/lightx2v/Wan2.2-Distill-Loras/resolve/main/wan2.2_i2v_A14b_low_noise_lora_rank64_lightx2v_4step_1022.safetensors",
-        "path": "{LORAS_DIR}/i2v_lightx2v_low_noise_model.safetensors"
+        "path": "{LORAS_DIR}/wan2.2_i2v_A14b_low_noise_lora_rank64_lightx2v_4step_1022.safetensors"
       }
     ],
     "download_wan_fun_and_sdxl_helper": [
