@@ -378,11 +378,11 @@
         "path": "{CHECKPOINTS_DIR}/wan2.2-rapid-mega-aio-v12.safetensors"
       },
       {
-        "url": "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Fun/VACE/Wan2_2_Fun_VACE_module_A14B_HIGH_bf16.safetensors",
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Fun/VACE/Wan2_2_Fun_VACE_module_A14B_HIGH_bf16.safetensors",
         "path": "{DIFFUSION_MODELS_DIR}/Wan2_2_Fun_VACE_module_A14B_HIGH_bf16.safetensors"
       },
       {
-        "url": "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/Fun/VACE/Wan2_2_Fun_VACE_module_A14B_LOW_bf16.safetensors",
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Fun/VACE/Wan2_2_Fun_VACE_module_A14B_HIGH_bf16.safetensors",
         "path": "{DIFFUSION_MODELS_DIR}/Wan2_2_Fun_VACE_module_A14B_LOW_bf16.safetensors"
       },
       {
