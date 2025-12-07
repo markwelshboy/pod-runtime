@@ -509,7 +509,7 @@
       },
       {
         "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/4x-ClearRealityV1.pth",
-        "path": "{UPSCALERS_DIR}/4x-ClearRealityV1.pth"
+        "path": "{UPSCALE_DIR}/4x-ClearRealityV1.pth"
       }
     ]
   }
