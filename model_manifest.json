@@ -453,6 +453,64 @@
         "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Fun/VACE/Wan2_2_Fun_VACE_module_A14B_LOW_bf16.safetensors",
         "path": "{DIFFUSION_MODELS_DIR}/Wan2_2_Fun_VACE_module_A14B_LOW_bf16.safetensors"
       }
+    ],
+    "download_gguf": [
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-I2V-A14B-HighNoise-Q8_0.gguf",
+        "path": "{DIFFUSION_MODELS_DIR}/Wan2.2-I2V-A14B-HighNoise-Q8_0.gguf"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-I2V-A14B-LowNoise-Q8_0.gguf",
+        "path": "{DIFFUSION_MODELS_DIR}/Wan2.2-T2V-A14B-LowNoise-Q8_0.gguf"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-T2V-A14B-HighNoise-Q8_0.gguf",
+        "path": "{DIFFUSION_MODELS_DIR}/Wan2.2-T2V-A14B-HighNoise-Q8_0.gguf"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-T2V-A14B-LowNoise-Q8_0.gguf",
+        "path": "{DIFFUSION_MODELS_DIR}/Wan2.2-T2V-A14B-LowNoise-Q8_0.gguf"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.1_T2V_14B_FusionX_LoRA.safetensors",
+        "path": "{LORAS_DIR}/Wan2.1_T2V_14B_FusionX_LoRA.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors",
+        "path": "{LORAS_DIR}/Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank32.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-Lightning_T2V-A14B-4steps-lora_HIGH_fp16.safetensors",
+        "path": "{LORAS_DIR}/Wan2.2-Lightning_T2V-A14B-4steps-lora_HIGH_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-Lightning_T2V-A14B-4steps-lora_LOW_fp16.safetensors",
+        "path": "{LORAS_DIR}/Wan2.2-Lightning_T2V-A14B-4steps-lora_LOW_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-Lightning_I2V-A14B-4steps-lora_HIGH_fp16.safetensors",
+        "path": "{LORAS_DIR}/Wan2.2-Lightning_I2V-A14B-4steps-lora_HIGH_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-Lightning_I2V-A14B-4steps-lora_LOW_fp16.safetensors",
+        "path": "{LORAS_DIR}/Wan2.2-Lightning_I2V-A14B-4steps-lora_LOW_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-Lightning_T2V-v1.1-A14B-4steps-lora_HIGH_fp16.safetensors",
+        "path": "{LORAS_DIR}/Wan2.2-Lightning_T2V-v1.1-A14B-4steps-lora_HIGH_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-Lightning_T2V-v1.1-A14B-4steps-lora_LOW_fp16.safetensors",
+        "path": "{LORAS_DIR}/Wan2.2-Lightning_T2V-v1.1-A14B-4steps-lora_LOW_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/umt5-xxl-encoder-Q5_K_S.gguf",
+        "path": "{TEXT_ENCODERS_DIR}/umt5-xxl-encoder-Q5_K_S.gguf"
+      },
+      {
+        "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/4x-ClearRealityV1.pth",
+        "path": "{UPSCALERS_DIR}/4x-ClearRealityV1.pth"
+      }
     ]
   }
 }
