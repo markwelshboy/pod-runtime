@@ -461,7 +461,7 @@
       },
       {
         "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-I2V-A14B-LowNoise-Q8_0.gguf",
-        "path": "{DIFFUSION_MODELS_DIR}/Wan2.2-T2V-A14B-LowNoise-Q8_0.gguf"
+        "path": "{DIFFUSION_MODELS_DIR}/Wan2.2-I2V-A14B-LowNoise-Q8_0.gguf"
       },
       {
         "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/Wan2.2-T2V-A14B-HighNoise-Q8_0.gguf",
