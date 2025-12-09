@@ -4861,3 +4861,59 @@ EOF
   done
   return "$rc"
 }
+
+fix_numeric_stack_if_broken() {
+  local pip_bin="${PIP:-/opt/venv/bin/pip}"
+
+  echo "🔍 Checking NumPy/SciPy health..."
+
+  # Try importing SciPy integrate as a health check
+  if /opt/venv/bin/python - << 'PY' >/dev/null 2>&1
+import numpy, scipy
+from scipy import integrate
+integrate.quad(lambda x: x, 0, 1)
+PY
+  then
+    echo "✅ NumPy/SciPy look healthy."
+    return 0
+  fi
+
+  echo "⚠️  NumPy/SciPy appear broken, attempting repair..."
+
+  # Capture current NumPy version (so we don't accidentally change your numeric stack)
+  local np_ver
+  np_ver="$(/opt/venv/bin/python - << 'PY'
+import numpy
+print(numpy.__version__)
+PY
+)"
+  echo "   Detected NumPy version: ${np_ver}"
+
+  # Reinstall NumPy at the same version (in case headers/ABI got out of sync)
+  echo "   Reinstalling NumPy ${np_ver}..."
+  if ! "$pip_bin" install --no-cache-dir --force-reinstall "numpy==${np_ver}"; then
+    echo "❌ Failed to reinstall NumPy ${np_ver}."
+    return 1
+  fi
+
+  # Now reinstall SciPy so it’s built/linked for this NumPy
+  echo "   Reinstalling SciPy..."
+  if ! "$pip_bin" install --no-cache-dir --force-reinstall "scipy"; then
+    echo "❌ Failed to reinstall SciPy."
+    return 1
+  fi
+
+  # Re-check
+  if /opt/venv/bin/python - << 'PY' >/dev/null 2>&1
+import numpy, scipy
+from scipy import integrate
+integrate.quad(lambda x: x, 0, 1)
+PY
+  then
+    echo "✅ NumPy/SciPy repaired successfully."
+    return 0
+  else
+    echo "❌ NumPy/SciPy still failing after reinstall."
+    return 1
+  fi
+}

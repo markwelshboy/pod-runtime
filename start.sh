@@ -105,6 +105,14 @@ exec > >(tee -a "$STARTUP_LOG") 2>&1
 echo "[bootstrap] Logging to: ${STARTUP_LOG}"
 
 #------------------------------------------------------------------------
+section 0.25 "Validate Numeric Stack - Fix if broken"
+#----------------------------------------------
+# 0.25) Fix Numeric stack
+#----------------------------------------------
+
+fix_numeric_stack_if_broken
+
+#------------------------------------------------------------------------
 section 0.5 "Ensure HF Transfer is Utilized (if Possible)"
 #----------------------------------------------
 # 0.5) Install fast HF backend (safe, quiet)
