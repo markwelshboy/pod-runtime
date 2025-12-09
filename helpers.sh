@@ -4401,3 +4401,463 @@ run_musubi_cli_mode() {
   tlog "Dropping into an interactive shell..."
   exec bash
 }
+
+hf_transfer_install() {
+  # Safe, idempotent installer for hf_transfer.
+  # Uses $PIP if defined, otherwise tries `pip`.
+
+  local pip_bin="${PIP:-pip}"
+
+  echo "🔍 Checking for hf_transfer package..."
+
+  if "$pip_bin" show hf_transfer >/dev/null 2>&1; then
+    echo "✅ hf_transfer already installed."
+    return 0
+  fi
+
+  echo "⬆️  Installing hf_transfer (fast HF backend)..."
+  if "$pip_bin" install -q hf_transfer >/dev/null 2>&1; then
+    echo "✅ hf_transfer installed successfully."
+  else
+    echo "⚠️  WARNING: hf_transfer installation failed — proceeding without it."
+    echo "   HuggingFace downloads will still work, but may be slower."
+    return 1
+  fi
+}
+
+hf_transfer_verify() {
+  python3 - <<'EOF'
+import huggingface_hub
+import os
+
+enabled = os.environ.get("HF_HUB_ENABLE_HF_TRANSFER") == "1"
+print("HF_HUB_ENABLE_HF_TRANSFER:", enabled)
+
+try:
+    from hf_transfer import __version__ as v
+    print("hf_transfer installed:", v)
+except ImportError:
+    print("hf_transfer NOT installed")
+EOF
+}
+
+hf_transfer_options_report() {
+  echo "=== hf_transfer / hub config ==="
+  env | grep -E '^HF_(HUB_|TOKEN|HUB_ENABLE|HUB_MAX_|SPLIT=|MCONN=|CHUNK=|AUTH_MODE=)' | sort
+  echo "==============================="
+}
+
+hf_transfer_tune() {
+  # Map our custom HF_* knobs into the official hub / hf_transfer env vars.
+
+  # Ensure fast backend is enabled if we want it
+  : "${HF_HUB_ENABLE_HF_TRANSFER:=1}"
+  export HF_HUB_ENABLE_HF_TRANSFER
+
+  # Map your concurrency knobs → hub-style envs
+  # HF_MCONN = parallel connections / workers
+  if [[ -n "${HF_MCONN:-}" ]]; then
+    # Max workers for concurrent operations (downloads/uploads)
+    : "${HF_HUB_MAX_WORKERS:=${HF_MCONN}}"
+    # Some tools also check this for concurrent downloads specifically
+    : "${HF_HUB_MAX_CONCURRENT_DOWNLOADS:=${HF_MCONN}}"
+    export HF_HUB_MAX_WORKERS HF_HUB_MAX_CONCURRENT_DOWNLOADS
+  fi
+
+  # HF_SPLIT = “batch size” / internal split count
+  if [[ -n "${HF_SPLIT:-}" ]]; then
+    # Not an exact 1:1 mapping, but we can use it as a batch size hint.
+    : "${HF_HUB_MAX_BATCH_SIZE:=${HF_SPLIT}}"
+    export HF_HUB_MAX_BATCH_SIZE
+  fi
+
+  # HF_CHUNK = per-chunk size, e.g. 4M, 8M, 16M
+  if [[ -n "${HF_CHUNK:-}" ]]; then
+    # hf_transfer honors HF_HUB_MAX_CHUNK_SIZE (bytes or with suffix like 4MB)
+    # Your HF_CHUNK is already like "4M", which hf_transfer understands as "4MB".
+    : "${HF_HUB_MAX_CHUNK_SIZE:=${HF_CHUNK}}"
+    export HF_HUB_MAX_CHUNK_SIZE
+  fi
+
+  # Auth mode hint – HF CLI doesn’t use this natively, but your own helpers can.
+  # We just normalize it here.
+  case "${HF_AUTH_MODE:-auto}" in
+    auto|always|never)
+      export HF_AUTH_MODE
+      ;;
+    *)
+      # Fallback to auto if someone sets garbage
+      export HF_AUTH_MODE=auto
+      ;;
+  esac
+
+  # Make sure hub sees the token env
+  if [[ -n "${HF_TOKEN:-}" && -z "${HUGGINGFACE_HUB_TOKEN:-}" ]]; then
+    export HUGGINGFACE_HUB_TOKEN="$HF_TOKEN"
+  fi
+
+  hf_transfer_options_report
+
+}
+
+
+# ============================
+# Hugging Face download helpers
+# ============================
+
+# ---- simple colored output helpers ----
+_hf_supports_color() {
+  [[ -t 1 ]] && [[ "${NO_COLOR:-}" != "1" ]] && [[ "${HFGET_NO_COLOR:-}" != "1" ]]
+}
+
+_hf_echo_color() {
+  local level="$1"; shift
+  local msg="$*"
+  local color=""
+  if _hf_supports_color; then
+    case "$level" in
+      info)   color="\033[1;34m" ;;  # bold blue
+      warn)   color="\033[1;33m" ;;  # bold yellow
+      err)    color="\033[1;31m" ;;  # bold red
+      ok)     color="\033[1;32m" ;;  # bold green
+      header) color="\033[1;35m" ;;  # bold magenta
+      *)      color="" ;;
+    esac
+    printf "%b%s\033[0m\n" "$color" "$msg"
+  else
+    printf "%s\n" "$msg"
+  fi
+}
+
+_hf_info()   { _hf_echo_color info   "$*"; }
+_hf_warn()   { _hf_echo_color warn   "$*"; }
+_hf_err()    { _hf_echo_color err    "$*"; }
+_hf_ok()     { _hf_echo_color ok     "$*"; }
+_hf_header() { _hf_echo_color header "$*"; }
+
+# ---- optional auth helper ----
+hfauth() {
+  # hfauth [--login]
+  local DO_LOGIN=0
+  if [[ "${1:-}" == "--login" ]]; then
+    DO_LOGIN=1
+    shift
+  fi
+
+  if ! command -v hf >/dev/null 2>&1; then
+    _hf_err "hfauth: 'hf' CLI not found in PATH."
+    return 1
+  fi
+
+  # Export token envs if present
+  if [[ -n "${HF_TOKEN:-}" ]]; then
+    export HF_TOKEN
+    : "${HUGGINGFACE_HUB_TOKEN:=$HF_TOKEN}"
+    export HUGGINGFACE_HUB_TOKEN
+  fi
+
+  # Default username for convenience (can override)
+  : "${HF_USERNAME:=markwelshboyx}"
+  export HF_USERNAME
+
+  # One-time tip about hf_transfer
+  if [[ -z "${HFGET_TIP_SHOWN:-}" && -z "${HF_HUB_ENABLE_HF_TRANSFER:-}" ]]; then
+    _hf_info "hfget tip: set HF_HUB_ENABLE_HF_TRANSFER=1 (and install 'hf_transfer') for faster downloads."
+    HFGET_TIP_SHOWN=1
+  fi
+
+  # Only login if explicitly requested
+  if [[ $DO_LOGIN -eq 1 ]]; then
+    if [[ -z "${HF_TOKEN:-}" ]]; then
+      _hf_err "hfauth: --login requested but HF_TOKEN is not set."
+      return 1
+    fi
+
+    if hf whoami >/dev/null 2>&1; then
+      local who
+      who="$(hf whoami 2>/dev/null || true)"
+      _hf_info "hfauth: already logged in as ${who}."
+      return 0
+    fi
+
+    _hf_info "hfauth: logging in via 'hf login --token'..."
+    if ! hf login --token "$HF_TOKEN" </dev/null >/dev/null 2>&1; then
+      if command -v huggingface-cli >/dev/null 2>&1; then
+        _hf_warn "hfauth: 'hf login' failed, retrying with 'huggingface-cli login'..."
+        if ! huggingface-cli login --token "$HF_TOKEN" </dev/null >/dev/null 2>&1; then
+          _hf_warn "hfauth: login still failed; will rely on env token only."
+        fi
+      else
+        _hf_warn "hfauth: 'hf login' failed and 'huggingface-cli' not found; relying on env token only."
+      fi
+    fi
+  fi
+}
+
+# ---- internal URL parser: fills global-ish locals by name ----
+_hf_parse_url() {
+  # args: url
+  # sets: repo_id, revision, subpath, target_type, kind
+  local HF_URL="$1"
+
+  local url_no_q="${HF_URL%%\?*}"
+  url_no_q="${url_no_q%%\#*}"
+
+  if [[ "$url_no_q" != http://huggingface.co/* && "$url_no_q" != https://huggingface.co/* ]]; then
+    _hf_err "hfget: URL must point to huggingface.co (got: $HF_URL)"
+    return 1
+  fi
+
+  local path="${url_no_q#*://}"
+  path="${path#huggingface.co/}"
+
+  local user repo rest
+  local IFS='/'
+  read -r user repo rest <<<"$path"
+
+  if [[ -z "$user" || -z "$repo" ]]; then
+    _hf_err "hfget: unable to parse user/repo from: $HF_URL"
+    return 1
+  fi
+
+  repo_id="${user}/${repo}"
+  kind=""; revision=""; subpath=""
+
+  if [[ -z "$rest" ]]; then
+    kind="root"
+    revision="main"
+  else
+    local first rest2
+    IFS='/' read -r first rest2 <<<"$rest"
+    case "$first" in
+      blob|tree|resolve)
+        kind="$first"
+        IFS='/' read -r revision subpath <<<"$rest2"
+        ;;
+      *)
+        kind="revpath"
+        revision="$first"
+        subpath="$rest2"
+        ;;
+    esac
+  fi
+
+  revision="${revision:-main}"
+
+  # Decide what the URL represents
+  if [[ "$kind" == "tree" ]]; then
+    target_type="dir"
+  elif [[ "$kind" == "blob" || "$kind" == "resolve" ]]; then
+    target_type="file"
+  elif [[ "$kind" == "revpath" ]]; then
+    if [[ "$subpath" == *.* ]]; then
+      target_type="file"
+    else
+      target_type="dir"
+    fi
+  else
+    target_type="repo-root"
+  fi
+
+  return 0
+}
+
+# ---- internal worker for a single URL ----
+_hfget_one() {
+  # args: url dest_dir DRYRUN NO_CONFIRM only_patterns...
+  local HF_URL="$1"
+  local DEST_DIR="$2"
+  local DRYRUN="$3"
+  local NO_CONFIRM="$4"
+  shift 4
+  local ONLY_PATTERNS=("$@")
+
+  local repo_id revision subpath kind target_type
+
+  if ! _hf_parse_url "$HF_URL"; then
+    return 1
+  fi
+
+  # HEAD check with optional auth
+  local -a auth_args=()
+  if [[ -n "${HF_TOKEN:-}" ]]; then
+    auth_args=(-H "Authorization: Bearer $HF_TOKEN")
+  fi
+
+  _hf_info "HEAD → $HF_URL"
+  if ! curl -fsS -I "${auth_args[@]}" "$HF_URL" >/dev/null 2>&1; then
+    _hf_warn "curl HEAD failed (404/private/other) for $HF_URL."
+    if [[ "$DRYRUN" -eq 0 && "$NO_CONFIRM" -eq 0 ]]; then
+      read -r -p "Continue anyway for this URL? [y/N] " ans
+      [[ "$ans" =~ ^[Yy]$ ]] || return 1
+    fi
+  fi
+
+  _hf_info "Parsed:"
+  _hf_info "  Repo      : $repo_id"
+  _hf_info "  Revision  : $revision"
+  _hf_info "  Local dir : $DEST_DIR"
+
+  local -a cmd
+  if [[ "$target_type" == "file" ]]; then
+    local file_path="$subpath"
+    _hf_info "  Type      : file"
+    _hf_info "  File      : $file_path"
+
+    cmd=(hf download "$repo_id" "$file_path"
+         --revision "$revision"
+         --local-dir "$DEST_DIR"
+         --local-dir-use-symlinks False)
+  else
+    # dir or repo-root
+    local base_prefix=""
+    if [[ "$target_type" == "dir" && -n "$subpath" ]]; then
+      base_prefix="$subpath/"
+      _hf_info "  Type      : directory"
+      _hf_info "  Subpath   : $subpath"
+    else
+      _hf_info "  Type      : repo-root"
+    fi
+
+    cmd=(hf download "$repo_id"
+         --revision "$revision"
+         --local-dir "$DEST_DIR"
+         --local-dir-use-symlinks False)
+
+    if [[ "${#ONLY_PATTERNS[@]}" -eq 0 ]]; then
+      # no filter → everything under subpath
+      local default_pat="**"
+      if [[ -n "$base_prefix" ]]; then
+        default_pat="${base_prefix}**"
+      fi
+      _hf_info "  Include   : $default_pat"
+      cmd+=(--include "$default_pat")
+    else
+      _hf_info "  Include patterns:"
+      local pat full
+      for pat in "${ONLY_PATTERNS[@]}"; do
+        if [[ -n "$base_prefix" ]]; then
+          full="${base_prefix}${pat}"
+        else
+          full="$pat"
+        fi
+        _hf_info "    - $full"
+        cmd+=(--include "$full")
+      done
+    fi
+  fi
+
+  if [[ "$DRYRUN" -eq 1 ]]; then
+    cmd+=(--dry-run)
+  fi
+
+  printf "Command:\n  "
+  printf "%q " "${cmd[@]}"
+  printf "\n"
+
+  if [[ "$DRYRUN" -eq 1 ]]; then
+    _hf_info "Dry-run: executing without download."
+    "${cmd[@]}"
+    return $?
+  fi
+
+  if [[ "$NO_CONFIRM" -eq 0 ]]; then
+    read -r -p "Run this command for this URL? [y/N] " ans2
+    [[ "$ans2" =~ ^[Yy]$ ]] || { _hf_warn "Skipped."; return 0; }
+  fi
+
+  "${cmd[@]}"
+  local rc=$?
+  if [[ $rc -eq 0 ]]; then
+    _hf_ok "Done for $HF_URL."
+  else
+    _hf_err "hf download exited with status $rc for $HF_URL."
+  fi
+  return $rc
+}
+
+# ---- public entrypoint ----
+hfget() {
+  # hfget [--dry-run] [--login] [--no-confirm] [--dir DIR] [--only GLOB]... URL [URL...]
+  local DRYRUN=0
+  local FORCE_LOGIN=0
+  local NO_CONFIRM=0
+  local DEST_DIR="."
+  local -a ONLY_PATTERNS=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run)
+        DRYRUN=1; shift ;;
+      --login)
+        FORCE_LOGIN=1; shift ;;
+      --no-confirm)
+        NO_CONFIRM=1; shift ;;
+      --dir)
+        DEST_DIR="${2:-.}"; shift 2 ;;
+      --only)
+        ONLY_PATTERNS+=("$2"); shift 2 ;;
+      --help|-h)
+        cat <<EOF
+hfget: download from Hugging Face using 'hf download' by parsing URL(s).
+
+Usage:
+  hfget [options] URL [URL ...]
+
+Options:
+  --dir DIR        Download into DIR (default: .)
+  --only GLOB      Restrict to paths matching GLOB (relative to repo/subdir).
+                   Can be used multiple times. Examples:
+                     --only '*.safetensors'
+                     --only 'Wan22Animate/*.safetensors'
+  --dry-run        Pass --dry-run to hf download (no files written).
+  --login          Run hfauth --login first (hf login using HF_TOKEN).
+  --no-confirm     Do not prompt before running hf download.
+  --help           Show this help.
+
+Env:
+  HF_TOKEN                 Token for private repos (also used by curl HEAD).
+  HUGGINGFACE_HUB_TOKEN    Will default to HF_TOKEN if unset.
+  HF_USERNAME              Logical username (default: markwelshboyx).
+  HF_HUB_ENABLE_HF_TRANSFER=1 enables faster Rust backend if 'hf_transfer' is installed.
+  NO_COLOR / HFGET_NO_COLOR disable colored output.
+EOF
+        return 0
+        ;;
+      --)
+        shift; break ;;
+      *)
+        break ;;
+    esac
+  done
+
+  if [[ $# -lt 1 ]]; then
+    _hf_err "hfget: no URLs provided."
+    return 1
+  fi
+
+  if ! command -v hf >/dev/null 2>&1; then
+    _hf_err "hfget: 'hf' CLI not found in PATH."
+    return 1
+  fi
+
+  # auth setup (no-login by default)
+  if [[ $FORCE_LOGIN -eq 1 ]]; then
+    hfauth --login || return $?
+  else
+    hfauth >/dev/null 2>&1 || true
+  fi
+
+  mkdir -p "$DEST_DIR" 2>/dev/null || true
+
+  local url rc=0 this_rc
+  for url in "$@"; do
+    _hf_header "hfget → $url"
+    _hfget_one "$url" "$DEST_DIR" "$DRYRUN" "$NO_CONFIRM" "${ONLY_PATTERNS[@]}" || this_rc=$?
+    # keep last non-zero rc, but keep going
+    if [[ "${this_rc:-0}" -ne 0 ]]; then
+      rc=$this_rc
+    fi
+  done
+  return "$rc"
+}

@@ -31,7 +31,8 @@ VARS=(
   download_480p_native_models download_720p_native_models download_wan22 
   download_wan22_lightning download_vae
   download_wan_animate download_detection download_optimization_loras
-  download_wan22_animate_god_mode_25
+  download_wan22_animate_god_mode_25 download_gguf 
+  download_aio_mega download_vace_artofficial 
   wan_fun_and_sdxl_helper
 )
 
@@ -102,6 +103,18 @@ STARTUP_LOG="${COMFY_LOGS}/startup.log"
 exec > >(tee -a "$STARTUP_LOG") 2>&1
 
 echo "[bootstrap] Logging to: ${STARTUP_LOG}"
+
+#------------------------------------------------------------------------
+section 0.5 "Ensure HF Transfer is Utilized (if Possible)"
+#----------------------------------------------
+# 0.5) Install fast HF backend (safe, quiet)
+#----------------------------------------------
+
+# Map ouother helper knobs into hf_transfer / hub vars
+hf_transfer_tune
+
+hf_transfer_install
+hf_transfer_verify
 
 #------------------------------------------------------------------------
 section 1 "Status/Configuration Overview"
