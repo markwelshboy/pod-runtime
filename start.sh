@@ -105,22 +105,22 @@ exec > >(tee -a "$STARTUP_LOG") 2>&1
 echo "[bootstrap] Logging to: ${STARTUP_LOG}"
 
 #------------------------------------------------------------------------
-section 0.25 "Validate Numeric Stack - Fix if broken"
+section 0.5 "Basic Housekeeping"
+
 #----------------------------------------------
-# 0.25) Fix Numeric stack
+# Fix Numeric stack
 #----------------------------------------------
 
 fix_numeric_stack_if_broken
 
-#------------------------------------------------------------------------
-section 0.5 "Ensure HF Transfer is Utilized (if Possible)"
 #----------------------------------------------
-# 0.5) Install fast HF backend (safe, quiet)
+# Install fast HF backend (safe, quiet)
 #----------------------------------------------
 
 # Map ouother helper knobs into hf_transfer / hub vars
 hf_transfer_tune
 
+# Install / verify hf download backend
 hf_transfer_install
 hf_transfer_verify
 
