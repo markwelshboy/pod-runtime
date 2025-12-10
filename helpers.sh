@@ -4662,15 +4662,56 @@ _hf_parse_url() {
   return 0
 }
 
+_hf_normalize_url() {
+  # Takes a possibly-obfuscated URL and returns a clean HF URL if it can.
+  # Handles:
+  #  - YouTube redirect URLs with ?q=...huggingface...
+  #  - Percent-encoded HF URLs (https%3A%2F%2Fhuggingface.co%2F...)
+  #  - Extra trailing &v=... or other junk
+
+  local raw="$1"
+  local py="${PY:-python3}"
+
+  # 1) If it's a YouTube redirect, extract the q= parameter
+  if [[ "$raw" == *"youtube.com/redirect"* && "$raw" == *"q="* ]]; then
+    # Grab q=... up to the next &
+    local q="${raw#*q=}"
+    q="${q%%&*}"
+    raw="$q"
+  fi
+
+  # 2) If it looks like a percent-encoded HF URL, decode it
+  #    (e.g. https%3A%2F%2Fhuggingface.co%2F...)
+  if [[ "$raw" == https%3A%2F%2Fhuggingface.co* || "$raw" == http%3A%2F%2Fhuggingface.co* ]]; then
+    raw="$("$py" - << 'PY' "$raw"
+import sys, urllib.parse as u
+print(u.unquote(sys.argv[1]))
+PY
+)"
+  fi
+
+  # 3) If it now looks like a normal HF URL but still has trailing &junk,
+  #    strip everything after the first '&'.
+  if [[ "$raw" == http*://huggingface.co/* ]]; then
+    raw="${raw%%&*}"
+  fi
+
+  printf '%s\n' "$raw"
+}
+
 # ---- internal worker for a single URL ----
 _hfget_one() {
   # args: url dest_dir DRYRUN NO_CONFIRM only_patterns...
-  local HF_URL="$1"
+  local RAW_URL="$1"
   local DEST_DIR="$2"
   local DRYRUN="$3"
   local NO_CONFIRM="$4"
   shift 4
   local ONLY_PATTERNS=("$@")
+
+  # Normalize obfuscated / encoded URLs (YouTube redirect, %2F etc.)
+  local HF_URL
+  HF_URL="$(_hf_normalize_url "$RAW_URL")"
 
   local repo_id revision subpath kind target_type
 
@@ -4706,8 +4747,7 @@ _hfget_one() {
 
     cmd=(hf download "$repo_id" "$file_path"
          --revision "$revision"
-         --local-dir "$DEST_DIR"
-         --local-dir-use-symlinks False)
+         --local-dir "$DEST_DIR")
   else
     # dir or repo-root
     local base_prefix=""
@@ -4721,8 +4761,7 @@ _hfget_one() {
 
     cmd=(hf download "$repo_id"
          --revision "$revision"
-         --local-dir "$DEST_DIR"
-         --local-dir-use-symlinks False)
+         --local-dir "$DEST_DIR")
 
     if [[ "${#ONLY_PATTERNS[@]}" -eq 0 ]]; then
       # no filter → everything under subpath
@@ -4774,6 +4813,10 @@ _hfget_one() {
     _hf_err "hf download exited with status $rc for $HF_URL."
   fi
   return $rc
+}
+
+hfclean() {
+  _hf_normalize_url "$1"
 }
 
 # ---- public entrypoint ----
@@ -4860,6 +4903,225 @@ EOF
     fi
   done
   return "$rc"
+}
+
+# Uses your COMFY_HOME / model dirs to decide where to put a file
+_hf_class_dest() {
+  # Echoes: "<category>|<dest_dir>"
+  # category: diffusion_models, loras, vae, text_encoders, clip_vision, skip
+
+  local url="$1"
+  local lower="${url,,}"
+
+  # Base comfy path
+  local comfy="${COMFY_HOME:-/workspace/ComfyUI}"
+
+  # Resolve model dirs from your env, with sane fallbacks
+  local diff_dir="${DIFFUSION_MODELS_DIR:-${CHECKPOINTS_DIR:-$comfy/models/diffusion_models}}"
+  local lora_dir="${LORAS_DIR:-$comfy/models/loras}"
+  local vae_dir="${VAE_DIR:-$comfy/models/vae}"
+  local te_dir="${TEXT_ENCODERS_DIR:-$comfy/models/text_encoders}"
+  local clipv_dir="${CLIP_VISION_DIR:-$comfy/models/clip_vision}"
+
+  # Non-safetensors URLs (e.g. model card root) → skip
+  if [[ "$lower" != *".safetensors" ]]; then
+    echo "skip|"
+    return 0
+  fi
+
+  # --- Special cases for Flux / Wan naming ---
+
+  # Flux text encoders: flux_text_encoders repo
+  if [[ "$lower" == *"flux_text_encoders"* ]]; then
+    echo "text_encoders|$te_dir"
+    return 0
+  fi
+
+  # Flux diffusion weights
+  if [[ "$lower" == *"flux.1-krea-dev"* || "$lower" == *"flux1-krea-dev"* ]]; then
+    # e.g. .../split_files/diffusion_models/flux1-krea-dev_fp8_scaled.safetensors
+    echo "diffusion_models|$diff_dir"
+    return 0
+  fi
+
+  # Wan VAE (specific naming)
+  if [[ "$lower" == *"/wanvideo_comfy/resolve/main/"* && "$lower" == *"vae"* ]]; then
+    echo "vae|$vae_dir"
+    return 0
+  fi
+
+  # --- General rules ---
+
+  # LoRAs
+  if [[ "$lower" == *"/loras/"* || "$lower" == *"lora_"* || "$lower" == *"lora."* || "$lower" == *"lora-"* ]]; then
+    echo "loras|$lora_dir"
+    return 0
+  fi
+
+  # VAE
+  if [[ "$lower" == *"/vae/"* || "$lower" == *"vae.safetensors"* || "$lower" == *"/ae.safetensors"* || "$lower" == *"sdxl_vae"* ]]; then
+    echo "vae|$vae_dir"
+    return 0
+  fi
+
+  # clip_vision
+  if [[ "$lower" == *"/clip_vision/"* || "$lower" == *"clip_vision_"* || "$lower" == *"clip-vision"* ]]; then
+    echo "clip_vision|$clipv_dir"
+    return 0
+  fi
+
+  # text_encoders
+  if [[ "$lower" == *"/text_encoders/"* || "$lower" == *"text_encoder"* || "$lower" == *"umt5"* || "$lower" == *"t5xxl"* || "$lower" == *"t5_xl"* ]]; then
+    echo "text_encoders|$te_dir"
+    return 0
+  fi
+
+  # Default: diffusion models
+  echo "diffusion_models|$diff_dir"
+}
+
+hfget_links() {
+  # hfget_links [--dry-run] [--login] [--no-confirm] [--print-only] [--base DIR] [FILE|-]
+  #
+  # Reads a huggingface_links.txt-style list and calls hfget
+  # with an inferred --dir for each URL, OR prints commands.
+
+  local DRYRUN=0
+  local FORCE_LOGIN=0
+  local NO_CONFIRM=0
+  local PRINT_ONLY=0
+
+  # Base path: use your COMFY_HOME-based layouts
+  local comfy="${COMFY_HOME:-/workspace/ComfyUI}"
+  local BASE_MODELS_DIR="${MODELS_DIR:-$comfy/models}"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run)
+        DRYRUN=1; shift ;;
+      --login)
+        FORCE_LOGIN=1; shift ;;
+      --no-confirm)
+        NO_CONFIRM=1; shift ;;
+      --print-only)
+        PRINT_ONLY=1; shift ;;
+      --base)
+        BASE_MODELS_DIR="$2"; shift 2 ;;
+      --help|-h)
+        cat <<EOF
+hfget_links: download a list of HuggingFace URLs (like huggingface_links.txt)
+and place each into an appropriate ComfyUI models subdirectory.
+
+Usage:
+  hfget_links [options] FILE
+  hfget_links [options] -   # read from stdin
+
+Options:
+  --base DIR      Base models dir (default: \$MODELS_DIR or \$COMFY_HOME/models)
+  --dry-run       Pass --dry-run to hfget (no files written).
+  --login         Run hfauth --login first (hf login using HF_TOKEN).
+  --no-confirm    Pass --no-confirm to hfget (no prompts).
+  --print-only    Do not run hfget, just print the hfget commands that would run.
+EOF
+        return 0
+        ;;
+      --)
+        shift; break ;;
+      *)
+        break ;;
+    esac
+  done
+
+  local SRC="${1:--}"
+
+  if [[ "$SRC" != "-" && ! -f "$SRC" ]]; then
+    echo "hfget_links: file not found: $SRC" >&2
+    return 1
+  fi
+
+  # Optional login/auth bootstrap
+  if [[ $FORCE_LOGIN -eq 1 ]]; then
+    hfauth --login || return $?
+  else
+    hfauth >/dev/null 2>&1 || true
+  fi
+
+  mkdir -p "$BASE_MODELS_DIR" 2>/dev/null || true
+
+  # Build common hfget flags
+  local -a common_flags=()
+  [[ $DRYRUN -eq 1 ]]     && common_flags+=(--dry-run)
+  [[ $NO_CONFIRM -eq 1 ]] && common_flags+=(--no-confirm)
+
+  local line
+  if [[ "$SRC" == "-" ]]; then
+    # Read from stdin
+    while IFS= read -r line; do
+      _hf_handle_links_line "$line" "$BASE_MODELS_DIR" "$PRINT_ONLY" "${common_flags[@]}"
+    done
+  else
+    # Read from file
+    while IFS= read -r line; do
+      _hf_handle_links_line "$line" "$BASE_MODELS_DIR" "$PRINT_ONLY" "${common_flags[@]}"
+    done < "$SRC"
+  fi
+}
+
+_hf_handle_links_line() {
+  local line="$1"
+  local BASE_MODELS_DIR="$2"
+  local PRINT_ONLY="$3"
+  shift 3
+  local -a common_flags=("$@")
+
+  # Trim whitespace
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+
+  # Skip blanks and comments
+  [[ -z "$line" ]] && return 0
+  [[ "$line" == \#* ]] && return 0
+
+  # Must look like some kind of URL
+  if [[ "$line" != http*://* ]]; then
+    echo "hfget_links: skipping non-URL line: $line" >&2
+    return 0
+  fi
+
+  # Normalize obfuscated / encoded URLs (handles YouTube redirect/%2F etc.)
+  local HF_URL
+  HF_URL="$(_hf_normalize_url "$line")"
+
+  # Classify into category + concrete dest dir
+  local cat dest
+  IFS='|' read -r cat dest <<< "$(_hf_class_dest "$HF_URL")"
+
+  if [[ "$cat" == "skip" || -z "$dest" ]]; then
+    echo "hfget_links: skipping non-file URL: $HF_URL"
+    return 0
+  fi
+
+  mkdir -p "$dest" 2>/dev/null || true
+
+  echo ""
+  echo "=== hfget_links ==="
+  echo "URL      : $HF_URL"
+  echo "Category : $cat"
+  echo "Dest dir : $dest"
+
+  # Build the hfget command we would run
+  local -a cmd=(hfget "${common_flags[@]}" --dir "$dest" "$HF_URL")
+
+  if [[ "$PRINT_ONLY" -eq 1 ]]; then
+    # Print as a shell-usable command line
+    printf "CMD      : "
+    printf "%q " "${cmd[@]}"
+    printf "\n"
+    return 0
+  fi
+
+  # Actually run hfget
+  "${cmd[@]}"
 }
 
 fix_numeric_stack_if_broken() {
