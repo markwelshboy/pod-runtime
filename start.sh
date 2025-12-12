@@ -135,8 +135,8 @@ rsync_or_symlink_source_to_destination symlink "$HF_MYLORA_REPO_LOCAL" "$LORAS_D
 # Synchronize Hearmeman WAN git repo (and copy workflows into ComfyUI)
 
 init_repo --git "$GIT_HEARMEMAN_WAN_REPO_ID" "$GIT_HEARMEMAN_WAN_REPO_LOCAL" || true
-rsync_or_symlink_source_to_destination rsync "$GIT_HEARMEMAN_WAN_REPO_LOCAL/src/workflows/*" \
-                                             "$COMFY_HOME/user/default/workflows/"
+rsync_or_symlink_source_to_destination rsync "$GIT_HEARMEMAN_WAN_REPO_LOCAL/src/workflows/" \
+                                             "$COMFY_HOME/user/default/"
 
 #----------------------------------------------
 # Synchronize My WAN git repo (and copy workflows into ComfyUI)

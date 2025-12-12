@@ -5529,12 +5529,21 @@ sync_from_repo() {
 }
 
 # rsync_or_symlink_source_to_destination <symlink|rsync> <source_dir> <dest_root>
-#   symlink: creates dest_root/<basename(source_dir)> -> source_dir
-#   rsync  : rsyncs source_dir/ -> dest_root/<basename(source_dir)>/
+#   symlink:
+#       creates dest_root/<basename(source_dir)> -> source_dir
+#   rsync:
+#       normally: rsync source_dir/ -> dest_root/<basename(source_dir)>/
+#       BUT:
+#         if basename(source_dir) == basename(dest_root),
+#         auto-flatten: rsync source_dir/ -> dest_root/ (no extra nesting)
 rsync_or_symlink_source_to_destination() {
   local MODE="$1"
   local SRC="$2"
   local DEST_ROOT="$3"
+
+  echo ""
+  _sync_info "rsync_or_symlink_source_to_destination: mode='$MODE', src='$SRC', dest_root='$DEST_ROOT'"
+  echo ""
 
   if [[ -z "$MODE" || -z "$SRC" || -z "$DEST_ROOT" ]]; then
     _sync_err "rsync_or_symlink_source_to_destination: usage: <symlink|rsync> <source_dir> <dest_root>"
@@ -5546,12 +5555,19 @@ rsync_or_symlink_source_to_destination() {
     return 1
   fi
 
+  # Normalize roots
+  DEST_ROOT="${DEST_ROOT%/}"
   mkdir -p "$DEST_ROOT" 2>/dev/null || true
-  local NAME; NAME="$(basename "$SRC")"
-  local DEST_PATH="${DEST_ROOT%/}/${NAME}"
+
+  local SRC_NAME DEST_ROOT_NAME DEST_PATH
+  SRC_NAME="$(basename "$SRC")"
+  DEST_ROOT_NAME="$(basename "$DEST_ROOT")"
 
   case "$MODE" in
     symlink)
+      # Always create dest_root/<basename(src)> for symlink mode
+      DEST_PATH="${DEST_ROOT}/${SRC_NAME}"
+
       if [[ -L "$DEST_PATH" || -e "$DEST_PATH" ]]; then
         if [[ -L "$DEST_PATH" && "$(readlink -f "$DEST_PATH")" == "$(readlink -f "$SRC")" ]]; then
           _sync_info "Symlink already in place: $DEST_PATH -> $SRC"
@@ -5560,13 +5576,24 @@ rsync_or_symlink_source_to_destination() {
         _sync_warn "Destination '$DEST_PATH' already exists and is not the expected symlink. Leaving it as-is."
         return 0
       fi
+
       ln -s "$SRC" "$DEST_PATH"
       _sync_ok "Created symlink: $DEST_PATH -> $SRC"
       ;;
 
     rsync)
-      _sync_info "Rsyncing $SRC/ → $DEST_PATH/"
-      # You can tweak flags (e.g. add --delete) depending on how aggressive you want it.
+      # Auto-flatten if dest_root already "is" that directory by name.
+      if [[ "$SRC_NAME" == "$DEST_ROOT_NAME" ]]; then
+        DEST_PATH="$DEST_ROOT"
+        _sync_info "Auto-flatten: basename(SRC) == basename(DEST_ROOT), rsyncing into '$DEST_PATH/'"
+      else
+        DEST_PATH="${DEST_ROOT}/${SRC_NAME}"
+        _sync_info "Rsyncing into '$DEST_PATH/' (standard mode)"
+      fi
+
+      mkdir -p "$DEST_PATH" 2>/dev/null || true
+
+      # Merge-only: -a = archive, --update = don't overwrite newer dest files
       rsync -a --update "$SRC"/ "$DEST_PATH"/
       _sync_ok "Rsync complete: $SRC → $DEST_PATH"
       ;;
