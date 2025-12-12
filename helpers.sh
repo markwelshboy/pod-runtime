@@ -103,6 +103,8 @@ ensure_base_deps() {
 # -------------------------- #
 
 ensure_comfy_dirs() {
+  
+  #-- Core dirs
   mkdir -p \
     "${COMFY_HOME:?}" \
     "${CUSTOM_DIR:?}" \
@@ -112,6 +114,7 @@ ensure_comfy_dirs() {
     "${BUNDLES_DIR:?}" \
     "${COMFY_LOGS:?}"
 
+  #-- Model directories
   mkdir -p \
     "${MODELS_DIR:-${COMFY_HOME}/models}" \
     "${CHECKPOINTS_DIR:?}" \
@@ -124,13 +127,16 @@ ensure_comfy_dirs() {
     "${CTRL_DIR:?}" \
     "${UPSCALE_DIR:?}"
 
+  #-- Extras
+  mkdir -p \
+    "$COMFY_HOME/user/default/workflows"
 }
 
 # ------------------------- #
 #  Workflows / Icons import #
 # ------------------------- #
 copy_hearmeman_assets_if_any() {
-  local repo="${HEARMEMAN_REPO:-}"
+  local repo="${HEARMEMAN_REPO_URL:-}"
   if [[ -z "$repo" ]]; then
     return 0
   fi
@@ -3430,7 +3436,7 @@ show_env () {
 #  Workflows / Asset import #
 # ------------------------- #
 copy_hearmeman_files_from_repo_if_any() {
-  local repo="${HEARMEMAN_REPO:-}"
+  local repo="${HEARMEMAN_REPO_URL:-}"
   if [[ -z "$repo" ]]; then
     return 0
   fi
@@ -4594,6 +4600,72 @@ hfauth() {
   fi
 }
 
+_hfget_flatten_safetensors() {
+  local base="$1" mode="$2"
+  [[ -d "$base" ]] || return 0
+
+  local tail; tail="$(basename "$base")"
+
+  ( cd "$base" || exit 0
+    # Only care about .safetensors
+    find . -type f -name '*.safetensors' -print0 | while IFS= read -r -d '' rel; do
+      rel="${rel#./}"
+      case "$rel" in
+        */*)
+          local dir file new_rel
+          dir="${rel%/*}"
+          file="${rel##*/}"
+
+          case "$mode" in
+            none)
+              continue ;;  # leave as-is
+
+            all)
+              new_rel="$file" ;;  # always flatten
+
+            matching)
+              # Only flatten if last component of dir == basename(base)
+              # e.g. split_files/diffusion_models under .../diffusion_models
+              local last; last="${dir##*/}"
+              if [[ "$last" == "$tail" ]]; then
+                new_rel="$file"      # drop entire dir chain
+              else
+                continue             # keep this subdir layout
+              fi
+              ;;
+          esac
+
+          [[ "$new_rel" == "$rel" ]] && continue
+
+          local src dst
+          src="$rel"
+          dst="$new_rel"
+
+          # Avoid overwriting silently
+          if [[ -e "$dst" && "$src" != "$dst" ]]; then
+            echo "hfget: WARN: target '$base/$dst' already exists, skipping move for '$base/$src'" >&2
+            continue
+          fi
+
+          echo "hfget: flattening '$base/$src' → '$base/$dst'"
+          mkdir -p "$(dirname "$dst")" 2>/dev/null || true
+          mv -f -- "$src" "$dst" || echo "hfget: WARN: failed to move '$src' to '$dst'" >&2
+
+          # Clean up empty dirs up the chain
+          local d="$dir"
+          while [[ "$d" != "." && -n "$d" ]]; do
+            rmdir -p -- "$d" 2>/dev/null || break
+            d="${d%/*}"
+          done
+          ;;
+        *)
+          # already directly under base
+          ;;
+      esac
+    done
+  )
+}
+
 # ---- internal URL parser: fills global-ish locals by name ----
 _hf_parse_url() {
   # args: url
@@ -4699,6 +4771,7 @@ PY
   printf '%s\n' "$raw"
 }
 
+# ---- internal worker for a single URL ----
 # ---- internal worker for a single URL ----
 _hfget_one() {
   # args: url dest_dir DRYRUN NO_CONFIRM only_patterns...
@@ -4807,11 +4880,22 @@ _hfget_one() {
 
   "${cmd[@]}"
   local rc=$?
+
   if [[ $rc -eq 0 ]]; then
     _hf_ok "Done for $HF_URL."
+
+    # ---- NEW: apply flattening for *.safetensors under DEST_DIR ----
+    if [[ -n "$DEST_DIR" && -d "$DEST_DIR" ]]; then
+      local fm="${HFGET_FLATTEN_MODE:-matching}"
+      if [[ "$fm" != "none" ]]; then
+        _hfget_flatten_safetensors "$DEST_DIR" "$fm"
+      fi
+    fi
+    # ---------------------------------------------------------------
   else
     _hf_err "hf download exited with status $rc for $HF_URL."
   fi
+
   return $rc
 }
 
@@ -4821,12 +4905,14 @@ hfclean() {
 
 # ---- public entrypoint ----
 hfget() {
-  # hfget [--dry-run] [--login] [--no-confirm] [--dir DIR] [--only GLOB]... URL [URL...]
+  # hfget [--dry-run] [--login] [--no-confirm] [--dir DIR] [--only GLOB]... [--flatten=MODE] URL [URL...]
   local DRYRUN=0
   local FORCE_LOGIN=0
   local NO_CONFIRM=0
   local DEST_DIR="."
   local -a ONLY_PATTERNS=()
+  # flatten modes: matching (default) | none | all
+  local FLATTEN_MODE="matching"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -4840,6 +4926,15 @@ hfget() {
         DEST_DIR="${2:-.}"; shift 2 ;;
       --only)
         ONLY_PATTERNS+=("$2"); shift 2 ;;
+      --flatten=*)
+        FLATTEN_MODE="${1#--flatten=}"
+        case "$FLATTEN_MODE" in
+          matching|none|all) ;;  # ok
+          *)
+            _hf_err "hfget: invalid --flatten mode: $FLATTEN_MODE (use matching|none|all)"
+            return 2 ;;
+        esac
+        shift ;;
       --help|-h)
         cat <<EOF
 hfget: download from Hugging Face using 'hf download' by parsing URL(s).
@@ -4853,6 +4948,13 @@ Options:
                    Can be used multiple times. Examples:
                      --only '*.safetensors'
                      --only 'Wan22Animate/*.safetensors'
+  --flatten=MODE   Control path flattening for *.safetensors under DIR:
+                     matching (default): flatten only when the last subdir
+                       matches the basename of DIR (e.g. split_files/diffusion_models
+                       under .../diffusion_models).
+                     none              : keep all subdirectories as-is.
+                     all               : drop all subdirs; put *.safetensors
+                       directly under DIR.
   --dry-run        Pass --dry-run to hf download (no files written).
   --login          Run hfauth --login first (hf login using HF_TOKEN).
   --no-confirm     Do not prompt before running hf download.
@@ -4864,6 +4966,7 @@ Env:
   HF_USERNAME              Logical username (default: markwelshboyx).
   HF_HUB_ENABLE_HF_TRANSFER=1 enables faster Rust backend if 'hf_transfer' is installed.
   NO_COLOR / HFGET_NO_COLOR disable colored output.
+  HFGET_FLATTEN_MODE       Flatten mode override (matching|none|all).
 EOF
         return 0
         ;;
@@ -4883,6 +4986,12 @@ EOF
     _hf_err "hfget: 'hf' CLI not found in PATH."
     return 1
   fi
+
+  # allow env override if set
+  if [[ -n "${HFGET_FLATTEN_MODE:-}" ]]; then
+    FLATTEN_MODE="$HFGET_FLATTEN_MODE"
+  fi
+  export HFGET_FLATTEN_MODE="$FLATTEN_MODE"
 
   # auth setup (no-login by default)
   if [[ $FORCE_LOGIN -eq 1 ]]; then
@@ -5178,4 +5287,293 @@ PY
     echo "❌ NumPy/SciPy still failing after reinstall."
     return 1
   fi
+}
+
+_sync_info() { printf 'ℹ️  %s\n' "$*" >&2; }
+_sync_ok()   { printf '✅ %s\n' "$*" >&2; }
+_sync_warn() { printf '⚠️  %s\n' "$*" >&2; }
+_sync_err()  { printf '❌ %s\n' "$*" >&2; }
+
+# init_repo [--hf|--git] <repo-id-or-url> <local-dir> [track-patterns...]
+#   --hf  : repo-id like "user/repo" (or full https://huggingface.co/... URL)
+#   --git : repo-id like "user/repo" or full https:// / git@ URL (GitHub, etc.)
+#   default mode is --git if neither is provided.
+#
+#   track-patterns: one or more patterns for git-lfs, e.g.:
+#     '*.safetensors' '*.pth'
+#   Or a single quoted list:
+#     '*.safetensors *.pth'
+# init_repo [--hf|--git] <repo-id-or-url> <local-dir> [track-patterns...]
+#   --hf  : HF repo-id like "user/repo" or "datasets/user/repo" or full https URL
+#   --git : plain git repo (GitHub etc), default if neither flag given
+#   track-patterns: optional patterns for git-lfs, e.g.:
+#       '*.safetensors' '*.pth'
+#     or a single quoted list:
+#       '*.safetensors *.pth'
+init_repo() {
+  local MODE="git"
+
+  case "${1:-}" in
+    --hf)  MODE="hf";  shift ;;
+    --git) MODE="git"; shift ;;
+  esac
+
+  if [[ $# -lt 2 ]]; then
+    _sync_err "init_repo: missing arguments. Usage: init_repo [--hf|--git] <repo-id-or-url> <local-dir> [patterns...]"
+    return 1
+  fi
+
+  local REPO_ID="$1"
+  local LOCAL_DIR="$2"
+  shift 2
+
+  # Collect patterns (may be one arg with spaces)
+  local -a TRACK_SPECS=("$@")
+  if [[ ${#TRACK_SPECS[@]} -eq 1 && "${TRACK_SPECS[0]}" == *" "* ]]; then
+    read -r -a TRACK_SPECS <<<"${TRACK_SPECS[0]}"
+  fi
+
+  mkdir -p "$(dirname "$LOCAL_DIR")" 2>/dev/null || true
+
+  # Decide remote URL
+  local REMOTE_URL=""
+  local LOG_URL=""
+
+  case "$MODE" in
+    hf)
+      # If caller passed a full URL, trust it.
+      if [[ "$REPO_ID" == http*://* ]]; then
+        REMOTE_URL="$REPO_ID"
+      else
+        # Treat REPO_ID as path under huggingface.co (can be "user/repo" or "datasets/user/repo")
+        local HF_PATH="$REPO_ID"
+
+        # If HF_TOKEN is present, embed it to avoid prompts (private repos).
+        if [[ -n "${HF_TOKEN:-}" ]]; then
+          # Username can be __token__ or your HF_USERNAME
+          local HF_USER="${HF_GIT_USER:-${HF_USERNAME:-__token__}}"
+          REMOTE_URL="https://${HF_USER}:${HF_TOKEN}@huggingface.co/${HF_PATH}"
+          LOG_URL="https://***:***@huggingface.co/${HF_PATH}"
+        else
+          REMOTE_URL="https://huggingface.co/${HF_PATH}"
+          LOG_URL="$REMOTE_URL"
+        fi
+      fi
+      ;;
+
+    git)
+      # Generic git repo: if it's not already a URL/SSH, assume GitHub user/repo
+      if [[ "$REPO_ID" == http*://* || "$REPO_ID" == git@*:* ]]; then
+        REMOTE_URL="$REPO_ID"
+      else
+        REMOTE_URL="https://github.com/${REPO_ID}.git"
+      fi
+      LOG_URL="$REMOTE_URL"
+      ;;
+  esac
+
+  [[ -z "$LOG_URL" ]] && LOG_URL="$REMOTE_URL"
+
+  if [[ ! -d "$LOCAL_DIR/.git" ]]; then
+    _sync_info "Cloning $MODE repo: $LOG_URL → $LOCAL_DIR"
+    GIT_TERMINAL_PROMPT=0 git clone "$REMOTE_URL" "$LOCAL_DIR" || {
+      _sync_err "init_repo: failed to clone $LOG_URL"
+      return 1
+    }
+  else
+    _sync_info "init_repo: '$LOCAL_DIR' already a git repo, skipping clone."
+  fi
+
+  # Setup LFS tracking (if requested)
+  if ((${#TRACK_SPECS[@]} > 0)); then
+    ( cd "$LOCAL_DIR" || exit 1
+
+      if ! command -v git-lfs >/dev/null 2>&1; then
+        _sync_warn "git-lfs not found; cannot add LFS tracking for ${TRACK_SPECS[*]}"
+        exit 0
+      fi
+
+      git lfs install --local >/dev/null 2>&1 || true
+
+      local spec
+      for spec in "${TRACK_SPECS[@]}"; do
+        [[ -n "$spec" ]] || continue
+        _sync_info "Adding LFS tracking: $spec"
+        git lfs track "$spec" || _sync_warn "Failed to track '$spec' with git-lfs"
+      done
+
+      # Commit .gitattributes if changed
+      if [[ -f .gitattributes ]]; then
+        if ! git diff --cached --quiet -- .gitattributes 2>/dev/null; then
+          git add .gitattributes
+          git commit -m "Add LFS tracking: ${TRACK_SPECS[*]}" || true
+        fi
+      fi
+    )
+  fi
+
+  _sync_ok "init_repo: ready at $LOCAL_DIR (mode=$MODE)"
+}
+
+# sync_to_repo [--hf|--git] <local-dir> <branch> [force]
+#   Just uses git; mode is mainly for logging / future special-cases.
+sync_to_repo() {
+  local MODE="git"
+  case "${1:-}" in
+    --hf)  MODE="hf";  shift ;;
+    --git) MODE="git"; shift ;;
+  esac
+
+  if [[ $# -lt 2 ]]; then
+    _sync_err "sync_to_repo: usage: sync_to_repo [--hf|--git] <local-dir> <branch> [force]"
+    return 1
+  fi
+
+  local REPO_DIR="$1"
+  local BRANCH="$2"
+  local FORCE="${3:-}"
+
+  if [[ ! -d "$REPO_DIR/.git" ]]; then
+    _sync_err "sync_to_repo: '$REPO_DIR' is not a git repo."
+    return 1
+  fi
+
+  ( cd "$REPO_DIR" || exit 1
+
+    _sync_info "Syncing local repo ($MODE) to remote from $REPO_DIR (branch: $BRANCH)"
+
+    if ! git remote get-url origin >/dev/null 2>&1; then
+      _sync_err "sync_to_repo: no 'origin' remote configured."
+      exit 1
+    fi
+
+    git add -A
+
+    if ! git diff --cached --quiet; then
+      local msg="sync: $(date -Iseconds)"
+      _sync_info "Committing changes with message: $msg"
+      git commit -m "$msg"
+    else
+      _sync_info "No local changes to commit."
+    fi
+
+    if ! git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
+      _sync_warn "Branch '$BRANCH' does not exist locally, creating it."
+      git branch "$BRANCH" || exit 1
+    fi
+
+    local push_args=(origin "HEAD:${BRANCH}")
+    if [[ "$FORCE" == "force" || "$FORCE" == "--force" ]]; then
+      _sync_warn "Using --force-with-lease for push."
+      push_args=(--force-with-lease "${push_args[@]}")
+    fi
+
+    if ! git rev-parse --abbrev-ref "${BRANCH}@{upstream}" >/dev/null 2>&1; then
+      _sync_info "Setting upstream of '$BRANCH' to origin/$BRANCH"
+      push_args=(-u "${push_args[@]}")
+    fi
+
+    _sync_info "Running: git push ${push_args[*]}"
+    if git push "${push_args[@]}"; then
+      _sync_ok "sync_to_repo: remote now matches local ($REPO_DIR)."
+    else
+      _sync_err "sync_to_repo: git push failed."
+      exit 1
+    fi
+  )
+}
+
+# sync_from_repo [--hf|--git] <local-dir> <branch>
+sync_from_repo() {
+  local MODE="git"
+  case "${1:-}" in
+    --hf)  MODE="hf";  shift ;;
+    --git) MODE="git"; shift ;;
+  esac
+
+  if [[ $# -lt 2 ]]; then
+    _sync_err "sync_from_repo: usage: sync_from_repo [--hf|--git] <local-dir> <branch>"
+    return 1
+  fi
+
+  local REPO_DIR="$1"
+  local BRANCH="$2"
+
+  if [[ ! -d "$REPO_DIR/.git" ]]; then
+    _sync_err "sync_from_repo: '$REPO_DIR' is not a git repo."
+    return 1
+  fi
+
+  ( cd "$REPO_DIR" || exit 1
+    _sync_info "Pulling from remote ($MODE) into $REPO_DIR (branch: $BRANCH)"
+
+    if ! git remote get-url origin >/dev/null 2>&1; then
+      _sync_err "sync_from_repo: no 'origin' remote configured."
+      exit 1
+    fi
+
+    if ! git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
+      _sync_warn "Local branch '$BRANCH' missing, creating and tracking origin/$BRANCH"
+      git checkout -b "$BRANCH" "origin/$BRANCH" || exit 1
+    else
+      git checkout "$BRANCH" >/dev/null 2>&1 || git switch "$BRANCH" || exit 1
+    fi
+
+    if git pull --ff-only origin "$BRANCH"; then
+      _sync_ok "sync_from_repo: local '$REPO_DIR' is now up to date."
+    else
+      _sync_err "sync_from_repo: git pull failed (maybe history diverged)."
+      exit 1
+    fi
+  )
+}
+
+# rsync_or_symlink_source_to_destination <symlink|rsync> <source_dir> <dest_root>
+#   symlink: creates dest_root/<basename(source_dir)> -> source_dir
+#   rsync  : rsyncs source_dir/ -> dest_root/<basename(source_dir)>/
+rsync_or_symlink_source_to_destination() {
+  local MODE="$1"
+  local SRC="$2"
+  local DEST_ROOT="$3"
+
+  if [[ -z "$MODE" || -z "$SRC" || -z "$DEST_ROOT" ]]; then
+    _sync_err "rsync_or_symlink_source_to_destination: usage: <symlink|rsync> <source_dir> <dest_root>"
+    return 1
+  fi
+
+  if [[ ! -d "$SRC" ]]; then
+    _sync_err "Source directory '$SRC' does not exist."
+    return 1
+  fi
+
+  mkdir -p "$DEST_ROOT" 2>/dev/null || true
+  local NAME; NAME="$(basename "$SRC")"
+  local DEST_PATH="${DEST_ROOT%/}/${NAME}"
+
+  case "$MODE" in
+    symlink)
+      if [[ -L "$DEST_PATH" || -e "$DEST_PATH" ]]; then
+        if [[ -L "$DEST_PATH" && "$(readlink -f "$DEST_PATH")" == "$(readlink -f "$SRC")" ]]; then
+          _sync_info "Symlink already in place: $DEST_PATH -> $SRC"
+          return 0
+        fi
+        _sync_warn "Destination '$DEST_PATH' already exists and is not the expected symlink. Leaving it as-is."
+        return 0
+      fi
+      ln -s "$SRC" "$DEST_PATH"
+      _sync_ok "Created symlink: $DEST_PATH -> $SRC"
+      ;;
+
+    rsync)
+      _sync_info "Rsyncing $SRC/ → $DEST_PATH/"
+      # You can tweak flags (e.g. add --delete) depending on how aggressive you want it.
+      rsync -a --update "$SRC"/ "$DEST_PATH"/
+      _sync_ok "Rsync complete: $SRC → $DEST_PATH"
+      ;;
+
+    *)
+      _sync_err "Unknown mode '$MODE' (expected 'symlink' or 'rsync')."
+      return 1
+      ;;
+  esac
 }

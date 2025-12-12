@@ -106,6 +106,7 @@ echo "[bootstrap] Logging to: ${STARTUP_LOG}"
 
 #------------------------------------------------------------------------
 section 0.5 "Basic Housekeeping"
+#----------------------------------------------
 
 #----------------------------------------------
 # Fix Numeric stack
@@ -117,12 +118,32 @@ fix_numeric_stack_if_broken
 # Install fast HF backend (safe, quiet)
 #----------------------------------------------
 
-# Map ouother helper knobs into hf_transfer / hub vars
+# Map helper knobs into hf_transfer / hub vars
 hf_transfer_tune
 
 # Install / verify hf download backend
 hf_transfer_install
 hf_transfer_verify
+
+#----------------------------------------------
+# Synchronize 'MyLoras' from HF to local cache repo (and symlink into ComfyUI)
+
+init_repo --hf "$HF_LORA_REPO_ID" "$HF_LORA_LOCAL" '*.safetensors'
+rsync_or_symlink_source_to_destination symlink "$HF_LORA_LOCAL" "$LORAS_DIR"
+
+#----------------------------------------------
+# Synchronize Hearmeman WAN git repo (and copy workflows into ComfyUI)
+
+init_repo --git "$GIT_HEARMEMAN_WAN_REPO_ID" "$GIT_HEARMEMAN_WAN_REPO_LOCAL"
+rsync_or_symlink_source_to_destination rsync "$GIT_HEARMEMAN_WAN_REPO_LOCAL/src/workflows" \
+                                             "$COMFY_HOME/user/default/workflows"
+
+#----------------------------------------------
+# Synchronize My WAN git repo (and copy workflows into ComfyUI)
+
+init_repo --git "$GIT_MYWORKFLOW_REPO_ID" "$GIT_MYWORKFLOW_REPO_LOCAL"
+rsync_or_symlink_source_to_destination rsync "$GIT_MYWORKFLOW_REPO_LOCAL" \
+                                              "$COMFY_HOME/user/default/workflows/MyWorkflows"
 
 #------------------------------------------------------------------------
 section 1 "Status/Configuration Overview"
@@ -247,7 +268,7 @@ section 8 "Hearmeman24 Repo Files Copy"
 # Optional Hearmeman workflows/assets sync
 #----------------------------------------------
 
-copy_hearmeman_files_from_repo_if_any || true
+#copy_hearmeman_files_from_repo_if_any || true
 
 #------------------------------------------------------------------------
 section 9 "Aria2 (Manifest+CivitAI) Tracking"
@@ -283,9 +304,10 @@ section 11 "Comfy Flow/Methodology Specific Configurations"
 # Specific Hearmeman methodologies / setups
 #    Copy Hearmeman's workflows to ComfyUI & 
 #    configure sensible defaults
-#----------------------------------------------
+#-------------------------------------------
 
-copy_workflows_to_comfyui || true
+# Doneearlier
+#copy_workflows_to_comfyui || true
 
 change_latent_preview_method || true
 
