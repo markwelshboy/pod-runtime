@@ -125,26 +125,6 @@ hf_transfer_tune
 hf_transfer_install
 hf_transfer_verify
 
-#----------------------------------------------
-# Synchronize 'MyLoras' from HF to local cache repo (and symlink into ComfyUI)
-
-init_repo --hf "$HF_MYLORA_REPO_ID" "$HF_MYLORA_REPO_LOCAL" '*.safetensors' || true
-rsync_or_symlink_source_to_destination symlink "$HF_MYLORA_REPO_LOCAL" "$LORAS_DIR/$HF_MYLORA_REPO_NAME"
-
-#----------------------------------------------
-# Synchronize Hearmeman WAN git repo (and copy workflows into ComfyUI)
-
-init_repo --git "$GIT_HEARMEMAN_WAN_REPO_ID" "$GIT_HEARMEMAN_WAN_REPO_LOCAL" || true
-rsync_or_symlink_source_to_destination rsync "$GIT_HEARMEMAN_WAN_REPO_LOCAL/workflows/" \
-                                             "$COMFY_HOME/user/default/"
-
-#----------------------------------------------
-# Synchronize My WAN git repo (and copy workflows into ComfyUI)
-
-init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
-rsync_or_symlink_source_to_destination rsync "$GIT_MYWORKFLOWS_REPO_LOCAL/" \
-                                             "$COMFY_HOME/user/default/workflows/MyWorkflows/"
-
 #------------------------------------------------------------------------
 section 1 "Status/Configuration Overview"
 #----------------------------------------------
@@ -263,12 +243,30 @@ fi
 aria2_show_download_snapshot || true
 
 #------------------------------------------------------------------------
-section 8 "Hearmeman24 Repo Files Copy"
+section 8 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
 #----------------------------------------------
 # Optional Hearmeman workflows/assets sync
 #----------------------------------------------
 
-#copy_hearmeman_files_from_repo_if_any || true
+#----------------------------------------------
+# Synchronize 'MyLoras' from HF to local cache repo (and symlink into ComfyUI)
+
+init_repo --hf "$HF_MYLORA_REPO_ID" "$HF_MYLORA_REPO_LOCAL" '*.safetensors' || true
+rsync_or_symlink_source_to_destination symlink "$HF_MYLORA_REPO_LOCAL" "$LORAS_DIR"
+
+#----------------------------------------------
+# Synchronize Hearmeman WAN git repo (and copy workflows into ComfyUI - merge with existing 'workflows' dir)
+
+init_repo --git "$GIT_HEARMEMAN_WAN_REPO_ID" "$GIT_HEARMEMAN_WAN_REPO_LOCAL" || true
+rsync_or_symlink_source_to_destination rsync "$GIT_HEARMEMAN_WAN_REPO_LOCAL/workflows/" \
+                                             "$COMFY_HOME/user/default/"
+
+#----------------------------------------------
+# Synchronize My WAN git repo (and copy workflows into ComfyUI - repo_name subdir under 'workflows')
+
+init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
+rsync_or_symlink_source_to_destination rsync "$GIT_MYWORKFLOWS_REPO_LOCAL/" \
+                                             "$COMFY_HOME/user/default/workflows/"
 
 #------------------------------------------------------------------------
 section 9 "Aria2 (Manifest+CivitAI) Tracking"
@@ -278,10 +276,7 @@ section 9 "Aria2 (Manifest+CivitAI) Tracking"
 
 echo "[aria2-downloads-progress] Checking download progress..."
 
-aria2_monitor_progress \
-  "${ARIA2_PROGRESS_INTERVAL:-15}" \
-  "${ARIA2_PROGRESS_BAR_WIDTH:-40}" \
-  "${COMFY_LOGS:-/workspace/logs}/aria2_progress.log"
+aria2_monitor_progress || true
 
 aria2_clear_results >/dev/null 2>&1 || true
 
@@ -302,12 +297,7 @@ fi
 section 11 "Comfy Flow/Methodology Specific Configurations"
 #----------------------------------------------
 # Specific Hearmeman methodologies / setups
-#    Copy Hearmeman's workflows to ComfyUI & 
-#    configure sensible defaults
 #-------------------------------------------
-
-# Doneearlier
-#copy_workflows_to_comfyui || true
 
 change_latent_preview_method || true
 

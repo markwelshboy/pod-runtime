@@ -2428,7 +2428,7 @@ helpers_queue_empty() {
 
 # ---- Foreground progress with trap ----
 aria2_monitor_progress() {
-  local interval="${1:-10}" barw="${2:-40}" log="${3:-/workspace/logs/aria2_progress.log}"
+  local interval="${1:-${ARIA2_PROGRESS_INTERVAL}}" barw="${2:-${ARIA2_PROGRESS_BAR_WIDTH}}" log="${3:-/workspace/logs/aria2_progress.log}"
   mkdir -p "$(dirname "$log")"
 
   local _stop=0
