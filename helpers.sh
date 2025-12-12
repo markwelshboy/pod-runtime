@@ -746,31 +746,39 @@ install_custom_nodes_set() {
 # ======================================================================
 
 hf_ensure_local_repo() {
-  local repo="${HF_LOCAL_REPO:-${CACHE_DIR}/.hf_repo}"
-  local url display_url
+  # HF_LOCAL_REPO is treated as a ROOT for multiple repos now
+  local root="${HF_LOCAL_REPO:-${CACHE_DIR}/.hf_repo}"
+  local url repo_name repo display_url
 
   url="$(hf_remote_url 2>/dev/null || true)"
   if [[ -z "$url" ]]; then
-    echo "[hf-ensure-local-repo] hf_ensure_local_repo: hf_remote_url unresolved" >&2
+    echo "[hf-ensure-local-repo] hf_ensure_local_repos: hf_remote_url unresolved" >&2
     return 1
   fi
 
+  # Derive a stable repo name from the URL:
+  # e.g. https://.../datasets/markwelshboyx/hearmemanAI-comfyUI-workflows.git
+  #    -> hearmemanAI-comfyUI-workflows
+  repo_name="$(printf '%s\n' "$url" | sed -E 's#.*/([^/]+)(\.git)?$#\1#')"
+  repo="${root%/}/${repo_name}"
+
   # Redact token just for logging:
-  # transforms: https://oauth2:<TOKEN>@huggingface.co/...  ->  https://oauth2:***@huggingface.co/...
   display_url="$(printf '%s\n' "$url" | sed -E 's#(https://oauth2:)[^@]*@#\1***@#')"
   echo "[hf-ensure-local-repo] Master repo url=${display_url}" >&2
-
+  echo "[hf-ensure-local-repo] Using root=${root}" >&2
   echo "[hf-ensure-local-repo] Using local repo=${repo}" >&2
 
+  mkdir -p "$root"
+
   if [[ -d "$repo/.git" ]]; then
-    # Cheap refresh in case you’ve pushed new bundles
-    echo "[hf-ensure-local-repo] Refreshing repo" >&2
+    echo "[hf-ensure-local-repo] Refreshing repo $repo" >&2
     git -C "$repo" fetch --depth=1 origin main >/dev/null 2>&1 || true
     git -C "$repo" reset --hard origin/main >/dev/null 2>&1 || true
   else
     echo "[hf-ensure-local-repo] Cloning HF repo into $repo…" >&2
-    mkdir -p "$(dirname "$repo")"
-    if ! git clone --depth=1 "$url" "$repo" >/dev/null 2>&1; then
+    mkdir -p "$repo"
+    # Allow non-interactive; rely on token baked into URL
+    if ! GIT_TERMINAL_PROMPT=0 git clone --depth=1 "$url" "$repo" >/dev/null 2>&1; then
       echo "[hf-ensure-local-repo] ❌ Failed to clone HF repo into $repo" >&2
       return 1
     fi
@@ -5328,6 +5336,7 @@ init_repo() {
   shift 2
 
   echo ""
+  echo "------------------------------------------------------------------------------------------------------"
   _sync_info "init_repo (mode=$MODE) for repo: $REPO_ID at local dir: $LOCAL_DIR"
   echo ""
 
