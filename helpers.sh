@@ -5327,6 +5327,10 @@ init_repo() {
   local LOCAL_DIR="$2"
   shift 2
 
+  echo ""
+  _sync_info "init_repo (mode=$MODE) for repo: $REPO_ID at local dir: $LOCAL_DIR"
+  echo ""
+
   # Collect patterns (may be one arg with spaces)
   local -a TRACK_SPECS=("$@")
   if [[ ${#TRACK_SPECS[@]} -eq 1 && "${TRACK_SPECS[0]}" == *" "* ]]; then
