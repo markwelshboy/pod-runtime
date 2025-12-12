@@ -128,21 +128,21 @@ hf_transfer_verify
 #----------------------------------------------
 # Synchronize 'MyLoras' from HF to local cache repo (and symlink into ComfyUI)
 
-init_repo --hf "$HF_LORA_REPO_ID" "$HF_LORA_LOCAL" '*.safetensors'
-rsync_or_symlink_source_to_destination symlink "$HF_LORA_LOCAL" "$LORAS_DIR"
+init_repo --hf "$HF_MYLORA_REPO_ID" "$HF_MYLORA_REPO_LOCAL" '*.safetensors' || true
+rsync_or_symlink_source_to_destination symlink "$HF_MYLORA_REPO_LOCAL" "$LORAS_DIR/$HF_MYLORA_REPO_NAME"
 
 #----------------------------------------------
 # Synchronize Hearmeman WAN git repo (and copy workflows into ComfyUI)
 
-init_repo --git "$GIT_HEARMEMAN_WAN_REPO_ID" "$GIT_HEARMEMAN_WAN_REPO_LOCAL"
-rsync_or_symlink_source_to_destination rsync "$GIT_HEARMEMAN_WAN_REPO_LOCAL/src/workflows" \
-                                             "$COMFY_HOME/user/default/workflows"
+init_repo --git "$GIT_HEARMEMAN_WAN_REPO_ID" "$GIT_HEARMEMAN_WAN_REPO_LOCAL" || true
+rsync_or_symlink_source_to_destination rsync "$GIT_HEARMEMAN_WAN_REPO_LOCAL/src/workflows/*" \
+                                             "$COMFY_HOME/user/default/workflows/"
 
 #----------------------------------------------
 # Synchronize My WAN git repo (and copy workflows into ComfyUI)
 
-init_repo --git "$GIT_MYWORKFLOW_REPO_ID" "$GIT_MYWORKFLOW_REPO_LOCAL"
-rsync_or_symlink_source_to_destination rsync "$GIT_MYWORKFLOW_REPO_LOCAL" \
+init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
+rsync_or_symlink_source_to_destination rsync "$GIT_MYWORKFLOWS_REPO_LOCAL" \
                                               "$COMFY_HOME/user/default/workflows/MyWorkflows"
 
 #------------------------------------------------------------------------
