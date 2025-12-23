@@ -139,7 +139,7 @@ case "${TRAINING_RUNMODE}" in
     ;;
 
   MUSUBI-GUI)
-    tlog "Configuring venv for Musubi WAN 2.2 GUI..."
+    tlog "Configuring venv for SECourses Musubi trainer and GUI..."
     use_venv
     run_musubi_gui_mode "$@"
     ;;

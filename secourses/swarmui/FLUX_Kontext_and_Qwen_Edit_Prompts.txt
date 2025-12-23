@@ -1,0 +1,147 @@
+
+
+Image and Video Comparison Sliders App : https://www.patreon.com/posts/133935178
+
+Demo images with results containing metadata : https://www.patreon.com/file?h=114517862&m=522579192
+
+Qwen Image Edit Full Tutorial : https://youtu.be/gLCMhbsICEQ
+
+Gemini 2.5 Flash Image Model (Nano Banana) Full Tutorial : https://youtu.be/qPUreQxB8zQ
+
+QWEN IMAGE EDIT PROMPTS
+
+1) Change "slack" to "SECourses"
+
+2) Add a mid shot roaring lion to the scene, uncompressed raw photo
+
+3) Remove all the people, uncompressed raw photo
+
+4) Swap the man at the right with ironman, uncompressed raw photo
+
+5) Make wearing an expensive sports cap with the text "SECourses", make "SEC" uppercase, uncompressed raw photo
+
+6) Extract the person's clothes product image, uncompressed raw photo
+
+7) Turn right 90 degrees
+7) Turn backwards
+7) Turn left 90 degrees
+
+8) Make vibrant anime
+8) Make style of Studio Ghibli
+
+9) Change the background to the top of a mountain at sunrise, uncompressed raw photo
+9) Change background entirely into white and keep only image of the man, uncompressed raw photo
+
+10) Extend the image to show the person's full body, uncompressed raw photo
+
+11) Make laugh joyfully, uncompressed raw photo
+11) Make cry sadly, uncompressed raw photo
+11) Make surprised, uncompressed raw photo
+11) Make look 30 years older, adding realistic wrinkles and graying hair, uncompressed raw photo
+
+12) Make it GTA style
+12) Make it Pixar
+12) Make it GTA 5 GTA5 gta5 game character
+12) Make the image pixel art
+
+13) Recreate it as a detailed claymation figure in a scene
+
+14) Change t-shirt to a formal business suit, uncompressed raw photo
+
+15) Change the material of the table to be made of polished marble, uncompressed raw photo
+
+16) Make it look like it's snowing heavily, covering the ground and buildings in a layer of snow, uncompressed raw photo
+
+17) Add a wooden sign in the foreground in front of the penguins, the wooden sign has the "SECourses Channel Rocks" text on it, uncompressed raw photo
+
+18) Old photo to new photo, photo restoration, uncompressed raw photo
+
+19) Make the text bold 3D and glowing gold, it is floating on a city street, change the text to "SECourses"
+
+20) Convert image into a professional logo that has the text "SECourses", make the first S letter special and put it on a special gradient custom made intricate detailed background, uncompressed raw photo
+20) Convert image into a professional logo that has the text "SE Courses", make the "SE" part main top special and very big and rest bottom of it and put it on a special cel shading intricate detailed background, so "SE" letters are mainm big part and "Courses" is bottom of it, make the "SE" part fire glowing, "Courses" part ice freezing glowing with ice particles, all bold, metallic, 3d, uncompressed raw
+
+21) Convert text to an epic text and convert background to an epic dragon battle scene, make the text 3d burning and ice and freezing and bold, make the text centered on image and make it top of the head of the dragon, uncompressed raw photo
+
+22) Convert text to an epic 3d text and convert background to an epic galactic scene. make "UPSCALE" text freezing ice, "IMAGES" text fire burning, "TO" text water, "2X" text red glowing diamond texture, uncompressed raw photo
+
+23) Convert into depth map
+23) Convert into canny
+23) Convert into 3d mesh
+23) Convert into clay texture
+
+24) Cel shading colorize the creature, digital art, intricate details, white background
+
+25) Convert this sketch into a professional 4k photograph, there are trees and plants outside of house, sunlight coming through windows, uncompressed raw photo
+
+26) Convert into a professional technical sketch
+
+27) Make him wear the earphones
+
+FLUX KONTEXT PROMPTS
+
+FULL TUTORIAL FOR FLUX KONTEXT : https://youtu.be/adF9X9E0Chs
+
+1)
+Place both cute 3D characters together in one scene where they are hugging
+
+2)
+Transform this image into a Studio Ghibli-style artwork. Recreate the scene with vibrant yet soft, hand-painted colors, lush and detailed natural backgrounds, and whimsical, dreamlike elements. Emphasize smooth, clean lines, a warm and nostalgic atmosphere, and intricate textures inspired by films like Spirited Away and My Neighbor Totoro. Add subtle magical or fantastical touches, such as glowing fireflies, gentle wind effects, or faint sparkles, while preserving the core composition and subjects of the original image. Use a painterly, 2D anime style with a focus on emotional depth and serene beauty.
+
+3)
+remove eyeglasses from the person
+
+4)
+Colorize this old black-and-white photograph with natural, historically accurate colors, restoring it to look vibrant yet authentic for its era. Repair scratches, cracks, faded areas, and other imperfections while preserving the original texture and details. Enhance clarity, sharpness, and contrast without altering the composition or adding artificial elements. Ensure skin tones, clothing, and environmental colors (e.g., greenery, sky, buildings) are realistic and consistent with the time period of the photo. Output a clean, high-resolution image with a soft, nostalgic feel.
+
+5)
+transform this image into a anime-style artwork
+
+6)
+change the clothing of the man into a sports shirt and make him more muscular 
+
+7)
+make the man has big long beautiful black hair
+
+8)
+make the background of the image volcanic mountains
+
+9)
+make the man has blue eyes
+
+10)
+make the man wear a sports hat and hat has text SECourses
+
+11)
+make man wearing funny high degree eyeglasses 
+
+12)
+Apply classic Renaissance painting style with rich oil paint textures, warm golden lighting, and classical composition. Preserve the exact facial features, hairstyle, clothing, expression, and pose. Only change the artistic style and painting technique while maintaining all identifying characteristics.
+
+13)
+Combine these photos into one fluid scene. Make the man in the first image wear the futuristic headgear in the second image. Then put the same man the third image's scene.
+
+14)
+Put the man next to the house
+
+15)
+Put the man into a white t-shirt with the text on it
+
+16)
+Change the background to Times Square while keeping the person in the exact same position and pose. Preserve them facial features, hairstyle, clothing, and expression. Only replace the environment around them.
+
+17)
+Change the background and setting to: Floating in space as an astronaut. Keep the person in the exact same position, pose, scale, camera angle, and framing. Preserve them exact facial features, hairstyle, eye color, and facial expression. Add appropriate protective gear or outfit if needed for the scenario while maintaining them identity. Only replace the environment around them. Make it look realistic and dramatic as if them is actually in this extreme situation.
+
+18)
+Give them a Cornrows haircut with Ash Blonde colored hair
+
+19)
+Add golden hour lighting with background blur while keeping the person in the exact same position and pose. Preserve them facial features, hairstyle, clothing, and expression. Only blur the background dramatically around them.
+
+20)
+make man hair pure black colored
+
+21)
+make man has long hair
+

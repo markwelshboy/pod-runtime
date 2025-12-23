@@ -1,0 +1,144 @@
+
+Best parameters and usage configurations for FLUX, FLUX Depth, FLUX Canny, FLUX Redux, Stable Diffusion 3.5
+
+You can watch tutorials to learn more and all
+
+======================================
+
+FLUX DEV normal image generation : 
+
+CFG = 1
+
+40 steps
+
+sampler + scheduler = iPNDM + DDIM Uniform 
+
+Flux Guidance Scale = 4
+
+======================================
+
+FLUX Redux : 
+
+ReVision Strength : 0
+
+CFG = 1
+
+Use Style Model = FLUX Redux
+
+Style Model Merge Strength = Try 0.4, 0.5, 0.6
+
+Style Model Apply Start = 0
+
+Flux Guidance Scale = 6
+
+sampler + scheduler = default
+
+more steps better i recommend 40
+
+======================================
+
+flux1-fill-dev (inpainting & outpainting model) - this is a base model 23.8 GB
+
+CFG = 1 - both inpainting and outpainting 
+
+Init Image Creativity = 1 - both inpainting and outpainting 
+
+Init Image Reset To Norm = 1
+
+Flux Guidance Scale = 30 - both inpainting and outpainting 
+
+sampler + scheduler = default - both inpainting and outpainting 
+
+more steps better i recommend 40 - both inpainting and outpainting 
+
+Mask Shrink Grow : disabled (default)- both inpainting and outpainting 
+
+Mask Grow = 0 (default) is good - but you can grow your drawn mask if you need - Inpainting 
+
+Mask Grow = 16 for Outpainting
+
+Mask Blur : 12 default is good but you can go up to 20 and compared - inpainting
+
+Mask Blur : 4 = for outpainting 
+
+Mask Behavior : Differential default is better - both inpainting and outpainting 
+
+======================================
+ 
+FLUX Canny / Depth Checkpoint - these are base models 23.8 GB
+
+CFG = 1
+
+more steps better i recommend 40
+
+Init Image Reset To Norm : no difference set as 0
+
+Flux Guidance Scale = 30
+
+sampler + scheduler = default
+
+Zero Negative = no difference
+
+Init Image Creativity = 1
+
+I find using PyraCannyPreprocessor to generate canny image better than CannyEdgePreprocessor
+
+For generating Depth image the followings are working and each one is different - I can't say 1 better than other
+
+Zoe_DepthAnythingPreprocessor
+LeReS-DepthMapPreprocessor
+DepthAnythingV2Preprocessor
+DepthAnythingPreprocessor
+
+Their comparison posted here : https://imgsli.com/MzIyMzA5
+
+Most accurate is feels like : DepthAnythingPreprocessor and DepthAnythingV2Preprocessor
+
+======================================
+
+Stable Diffusion 3.5: 
+
+CFG = 7
+
+more steps better i recommend 40
+
+For realism : DPM++ 2S Ancestral + SGM Uniform - This takes 2x time compared to Eular
+
+For stylization like anime : Eular + Beta
+
+======================================
+
+FLUX Canny / Depth LoRA
+
+CFG = 1
+
+Init Image Reset To Norm : no difference set as 0
+
+Flux Guidance Scale = 30
+
+sampler + scheduler = default
+
+Zero Negative = no difference
+
+Init Image Creativity = 1
+
+I find using PyraCannyPreprocessor to generate canny image better than CannyEdgePreprocessor
+
+LoRA weights 0.95-1.0 - however quality of LoRA way worse than full checkpoints so i don't recommend
+
+Use FLUX Base Dev Model
+
+more steps better i recommend 40
+
+For generating Depth image the followings are working and each one is different - I can't say 1 better than other
+
+Zoe_DepthAnythingPreprocessor
+LeReS-DepthMapPreprocessor
+DepthAnythingV2Preprocessor
+DepthAnythingPreprocessor
+
+Their comparison posted here (tests done on full model, LoRA is way worse) : https://imgsli.com/MzIyMzA5
+
+Most accurate is feels like : DepthAnythingPreprocessor and DepthAnythingV2Preprocessor
+
+======================================

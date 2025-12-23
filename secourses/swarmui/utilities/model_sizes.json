@@ -1,0 +1,3742 @@
+{
+  "models": {
+    "Image Generation Models::Z Image Turbo Models::Z Image Turbo BF16": {
+      "name": "Z Image Turbo BF16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Z-Image-Turbo-Models/Z_Image_Turbo_BF16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 12309932329,
+      "size_gb": 11.46,
+      "category": "Image Generation Models",
+      "sub_category": "Z Image Turbo Models"
+    },
+    "Image Generation Models::Z Image Turbo Models::Z Image Turbo FP8 Scaled": {
+      "name": "Z Image Turbo FP8 Scaled",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Z-Image-Turbo-Models/Z_Image_Turbo_FP8_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 6156098082,
+      "size_gb": 5.73,
+      "category": "Image Generation Models",
+      "sub_category": "Z Image Turbo Models"
+    },
+    "Image Generation Models::Z Image Turbo Models::Qwen 3 4B Text Encoder (For Z Image Turbo)": {
+      "name": "Qwen 3 4B Text Encoder (For Z Image Turbo)",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Z-Image-Turbo-Models/qwen_3_4b.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 8044982048,
+      "size_gb": 7.49,
+      "category": "Image Generation Models",
+      "sub_category": "Z Image Turbo Models"
+    },
+    "Image Generation Models::Z Image Turbo Models::Z-Image-Turbo-Fun-Controlnet-Union": {
+      "name": "Z-Image-Turbo-Fun-Controlnet-Union",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Z-Image-Turbo-Fun-Controlnet-Union.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 3101638265,
+      "size_gb": 2.89,
+      "category": "Image Generation Models",
+      "sub_category": "Z Image Turbo Models"
+    },
+    "Image Generation Models::Z Image Turbo Models::FLUX VAE ae.safetensors (For Z Image Turbo)": {
+      "name": "FLUX VAE ae.safetensors (For Z Image Turbo)",
+      "repo_id": "MonsterMMORPG/Kohya_Train",
+      "filename": "ae.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 335304388,
+      "size_gb": 0.31,
+      "category": "Image Generation Models",
+      "sub_category": "Z Image Turbo Models"
+    },
+    "Image Generation Models::FLUX 2 Models::FLUX 2 Dev FP8 Mixed Scaled High Quality": {
+      "name": "FLUX 2 Dev FP8 Mixed Scaled High Quality",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "FLUX_2_Models/FLUX_2_Dev_FP8_Mixed_Scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 35455665662,
+      "size_gb": 33.02,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX 2 Models"
+    },
+    "Image Generation Models::FLUX 2 Models::FLUX 2 Dev BF16": {
+      "name": "FLUX 2 Dev BF16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "FLUX_2_Models/FLUX_2_Dev_BF16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 64446707150,
+      "size_gb": 60.02,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX 2 Models"
+    },
+    "Image Generation Models::FLUX 2 Models::FLUX 2 VAE": {
+      "name": "FLUX 2 VAE",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "FLUX_2_Models/flux2-vae.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 336213556,
+      "size_gb": 0.31,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX 2 Models"
+    },
+    "Image Generation Models::FLUX 2 Models::Mistral 3 Small FLUX 2 Text Encoder BF16": {
+      "name": "Mistral 3 Small FLUX 2 Text Encoder BF16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "FLUX_2_Models/mistral_3_small_flux2_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 35584897447,
+      "size_gb": 33.14,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX 2 Models"
+    },
+    "Image Generation Models::FLUX 2 Models::Mistral 3 Small FLUX 2 Text Encoder FP8": {
+      "name": "Mistral 3 Small FLUX 2 Text Encoder FP8",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "FLUX_2_Models/mistral_3_small_flux2_fp8.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 18034640095,
+      "size_gb": 16.8,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX 2 Models"
+    },
+    "Image Generation Models::FLUX 2 Models::FLUX 2 Dev GGUF Q4_1": {
+      "name": "FLUX 2 Dev GGUF Q4_1",
+      "repo_id": "city96/FLUX.2-dev-gguf",
+      "filename": "flux2-dev-Q4_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 21262062560,
+      "size_gb": 19.8,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX 2 Models"
+    },
+    "Image Generation Models::FLUX 2 Models::FLUX 2 Dev GGUF Q3_K_M": {
+      "name": "FLUX 2 Dev GGUF Q3_K_M",
+      "repo_id": "city96/FLUX.2-dev-gguf",
+      "filename": "flux2-dev-Q3_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 15960134624,
+      "size_gb": 14.86,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX 2 Models"
+    },
+    "Image Generation Models::FLUX 2 Models::FLUX 2 Dev GGUF Q2_K": {
+      "name": "FLUX 2 Dev GGUF Q2_K",
+      "repo_id": "city96/FLUX.2-dev-gguf",
+      "filename": "flux2-dev-Q2_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12858250208,
+      "size_gb": 11.98,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX 2 Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen_Image_BF16": {
+      "name": "Qwen_Image_BF16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "qwen_image_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 40861031488,
+      "size_gb": 38.05,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen_Image_FP8_Scaled": {
+      "name": "Qwen_Image_FP8_Scaled",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_FP8_Scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 20436342742,
+      "size_gb": 19.03,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen_Image_Q8_0": {
+      "name": "Qwen_Image_Q8_0",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "qwen-image-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 21761817120,
+      "size_gb": 20.27,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen_Image_Q6_K": {
+      "name": "Qwen_Image_Q6_K",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "qwen-image-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 16824990240,
+      "size_gb": 15.67,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen_Image_FP8_e4m3f": {
+      "name": "Qwen_Image_FP8_e4m3f",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "qwen_image_fp8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 20430635136,
+      "size_gb": 19.03,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen_Image_Q5_1": {
+      "name": "Qwen_Image_Q5_1",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "qwen-image-Q5_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 15391717920,
+      "size_gb": 14.33,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen_Image_Q4_1": {
+      "name": "Qwen_Image_Q4_1",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "qwen-image-Q4_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12843678240,
+      "size_gb": 11.96,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen-Image-FP8-Lightning-4steps-V1.0-fp32.safetensors": {
+      "name": "Qwen-Image-FP8-Lightning-4steps-V1.0-fp32.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-FP8-Lightning-4steps-V1.0-fp32.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1698951104,
+      "size_gb": 1.58,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen Image Lightning 8steps-V2 LoRA": {
+      "name": "Qwen Image Lightning 8steps-V2 LoRA",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Lightning-8steps-V2.0.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1698951104,
+      "size_gb": 1.58,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen Image Lightning 8steps V1.1 LoRA": {
+      "name": "Qwen Image Lightning 8steps V1.1 LoRA",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Lightning-8steps-V1.1.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1698951104,
+      "size_gb": 1.58,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen_LoRA_Amateur_Photo_v1.safetensors": {
+      "name": "Qwen_LoRA_Amateur_Photo_v1.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_LoRA_Amateur_Photo_v1.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1179978384,
+      "size_gb": 1.1,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Models::Qwen_LoRA_Skin_Fix_v2.safetensors": {
+      "name": "Qwen_LoRA_Skin_Fix_v2.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_LoRA_Skin_Fix_v2.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 589940887,
+      "size_gb": 0.55,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_Plus_2509_BF16": {
+      "name": "Qwen_Image_Edit_Plus_2509_BF16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_Edit_Plus_2509_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 40861081399,
+      "size_gb": 38.05,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_Plus_2509_FP8_Scaled": {
+      "name": "Qwen_Image_Edit_Plus_2509_FP8_Scaled",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_Edit_Plus_2509_FP8_Scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 20436356154,
+      "size_gb": 19.03,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors": {
+      "name": "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1698951104,
+      "size_gb": 1.58,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors": {
+      "name": "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1698951104,
+      "size_gb": 1.58,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors": {
+      "name": "Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 236223610,
+      "size_gb": 0.22,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen-Image-Edit-2509-Relight-LoRA.safetensors": {
+      "name": "Qwen-Image-Edit-2509-Relight-LoRA.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Edit-2509-Relight-LoRA.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 236183059,
+      "size_gb": 0.22,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen-Image-Edit-2509-Fusion-LoRA.safetensors": {
+      "name": "Qwen-Image-Edit-2509-Fusion-LoRA.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Edit-2509-Fusion-LoRA.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 236183067,
+      "size_gb": 0.22,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_Plus_2509_Q8_0": {
+      "name": "Qwen_Image_Edit_Plus_2509_Q8_0",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Edit-Plus-2509-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 21761817120,
+      "size_gb": 20.27,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_Plus_2509_Q6_K": {
+      "name": "Qwen_Image_Edit_Plus_2509_Q6_K",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Edit-Plus-2509-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 16824990240,
+      "size_gb": 15.67,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_Plus_2509_FP8_e4m3fn": {
+      "name": "Qwen_Image_Edit_Plus_2509_FP8_e4m3fn",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_Edit_Plus_2509_fp8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 20430748326,
+      "size_gb": 19.03,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_Plus_2509_Q5_1": {
+      "name": "Qwen_Image_Edit_Plus_2509_Q5_1",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Edit-Plus-2509-Q5_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 15391717920,
+      "size_gb": 14.33,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_Plus_2509_Q4_1": {
+      "name": "Qwen_Image_Edit_Plus_2509_Q4_1",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Edit-Plus-2509-Q4_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12843678240,
+      "size_gb": 11.96,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_Plus_2509_Q3_K_M": {
+      "name": "Qwen_Image_Edit_Plus_2509_Q3_K_M",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen-Image-Edit-Plus-2509-Q3_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 9679567392,
+      "size_gb": 9.01,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_BF16": {
+      "name": "Qwen_Image_Edit_BF16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_Edit_BF16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 40861031488,
+      "size_gb": 38.05,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_FP8_e4m3fn": {
+      "name": "Qwen_Image_Edit_FP8_e4m3fn",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_Edit_FP8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 20430635136,
+      "size_gb": 19.03,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_GGUF_Q8_0": {
+      "name": "Qwen_Image_Edit_GGUF_Q8_0",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_Edit_GGUF_Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 21761817120,
+      "size_gb": 20.27,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_GGUF_Q6_K": {
+      "name": "Qwen_Image_Edit_GGUF_Q6_K",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_Edit_GGUF_Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 16824990240,
+      "size_gb": 15.67,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_GGUF_Q5_1": {
+      "name": "Qwen_Image_Edit_GGUF_Q5_1",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_Edit_GGUF_Q5_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 15391717920,
+      "size_gb": 14.33,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_GGUF_Q4_K_M": {
+      "name": "Qwen_Image_Edit_GGUF_Q4_K_M",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_Edit_GGUF_Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 13065746976,
+      "size_gb": 12.17,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX SRPO": {
+      "name": "FLUX SRPO",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "FLUX-SRPO-bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 23802997117,
+      "size_gb": 22.17,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX Krea DEV": {
+      "name": "FLUX Krea DEV",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "flux1-krea-dev.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 23802958224,
+      "size_gb": 22.17,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX Kontext DEV BF16": {
+      "name": "FLUX Kontext DEV BF16",
+      "repo_id": "MonsterMMORPG/Best_FLUX_Models",
+      "filename": "flux1-kontext-dev.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 23802947360,
+      "size_gb": 22.17,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX DEV 1.0 FP16": {
+      "name": "FLUX DEV 1.0 FP16",
+      "repo_id": "OwlMaster/FLUX_LoRA_Train",
+      "filename": "flux1-dev.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 23802932552,
+      "size_gb": 22.17,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX DEV Fill (In/Out-Painting)": {
+      "name": "FLUX DEV Fill (In/Out-Painting)",
+      "repo_id": "OwlMaster/SD3New",
+      "filename": "flux1-fill-dev.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 23804922408,
+      "size_gb": 22.17,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX DEV Depth": {
+      "name": "FLUX DEV Depth",
+      "repo_id": "OwlMaster/SD3New",
+      "filename": "flux1-depth-dev.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 23803351200,
+      "size_gb": 22.17,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX DEV Canny": {
+      "name": "FLUX DEV Canny",
+      "repo_id": "OwlMaster/SD3New",
+      "filename": "flux1-canny-dev.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 23803351736,
+      "size_gb": 22.17,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX DEV Redux (Style/Mix)": {
+      "name": "FLUX DEV Redux (Style/Mix)",
+      "repo_id": "OwlMaster/SD3New",
+      "filename": "flux1-redux-dev.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 129063232,
+      "size_gb": 0.12,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX DEV 1.0 FP8 Scaled": {
+      "name": "FLUX DEV 1.0 FP8 Scaled",
+      "repo_id": "comfyanonymous/flux_dev_scaled_fp8_test",
+      "filename": "flux_dev_fp8_scaled_diffusion_model.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 11901607560,
+      "size_gb": 11.08,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX DEV PixelWave V3": {
+      "name": "FLUX DEV PixelWave V3",
+      "repo_id": "mikeyandfriends/PixelWave_FLUX.1-dev_03",
+      "filename": "pixelwave_flux1_dev_bf16_03.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 23802920672,
+      "size_gb": 22.17,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX DEV De-Distilled (Normal CFG 3.5)": {
+      "name": "FLUX DEV De-Distilled (Normal CFG 3.5)",
+      "repo_id": "nyanko7/flux-dev-de-distill",
+      "filename": "consolidated_s6700.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 23782443544,
+      "size_gb": 22.15,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::Flux Sigma Vision Alpha1 FP16 (Normal CFG 3.5)": {
+      "name": "Flux Sigma Vision Alpha1 FP16 (Normal CFG 3.5)",
+      "repo_id": "MonsterMMORPG/Best_FLUX_Models",
+      "filename": "fluxSigmaVision_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 23782443112,
+      "size_gb": 22.15,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLEX 1 Alpha (New Arch)": {
+      "name": "FLEX 1 Alpha (New Arch)",
+      "repo_id": "ostris/Flex.1-alpha",
+      "filename": "Flex.1-alpha.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 21671579036,
+      "size_gb": 20.18,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX Models::FLUX DEV ControlNet Inpainting Beta (Alimama)": {
+      "name": "FLUX DEV ControlNet Inpainting Beta (Alimama)",
+      "repo_id": "alimama-creative/FLUX.1-dev-Controlnet-Inpainting-Beta",
+      "filename": "diffusion_pytorch_model.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 4281803800,
+      "size_gb": 3.99,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX SRPO GGUF Q8_0": {
+      "name": "FLUX SRPO GGUF Q8_0",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "FLUX-SRPO-GGUF_Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12714452256,
+      "size_gb": 11.84,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX SRPO GGUF Q6_K": {
+      "name": "FLUX SRPO GGUF Q6_K",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "FLUX-SRPO-GGUF_Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 9848349984,
+      "size_gb": 9.17,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX SRPO GGUF Q5_K": {
+      "name": "FLUX SRPO GGUF Q5_K",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "FLUX-SRPO-GGUF_Q5_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8419501344,
+      "size_gb": 7.84,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX SRPO GGUF Q4_K": {
+      "name": "FLUX SRPO GGUF Q4_K",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "FLUX-SRPO-GGUF_Q4_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 6931817760,
+      "size_gb": 6.46,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX Krea DEV GGUF Q8_0": {
+      "name": "FLUX Krea DEV GGUF Q8_0",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "flux1_krea_dev_BF16_Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12714452256,
+      "size_gb": 11.84,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX Krea DEV GGUF Q6_K": {
+      "name": "FLUX Krea DEV GGUF Q6_K",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "flux1_krea_dev_BF16_Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 9848349984,
+      "size_gb": 9.17,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX Krea DEV GGUF Q5_1": {
+      "name": "FLUX Krea DEV GGUF Q5_1",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "flux1_krea_dev_BF16_Q5_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 9016255776,
+      "size_gb": 8.4,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX Krea DEV GGUF Q4_1": {
+      "name": "FLUX Krea DEV GGUF Q4_1",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "flux1_krea_dev_BF16_Q4_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 7536977184,
+      "size_gb": 7.02,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX DEV 1.0 GGUF Q8": {
+      "name": "FLUX DEV 1.0 GGUF Q8",
+      "repo_id": "city96/FLUX.1-dev-gguf",
+      "filename": "flux1-dev-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12708281504,
+      "size_gb": 11.84,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX DEV 1.0 GGUF Q6_K": {
+      "name": "FLUX DEV 1.0 GGUF Q6_K",
+      "repo_id": "city96/FLUX.1-dev-gguf",
+      "filename": "flux1-dev-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 9857000736,
+      "size_gb": 9.18,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX DEV 1.0 GGUF Q5_K_S": {
+      "name": "FLUX DEV 1.0 GGUF Q5_K_S",
+      "repo_id": "city96/FLUX.1-dev-gguf",
+      "filename": "flux1-dev-Q5_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8285267232,
+      "size_gb": 7.72,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX DEV 1.0 GGUF Q4_K_S": {
+      "name": "FLUX DEV 1.0 GGUF Q4_K_S",
+      "repo_id": "city96/FLUX.1-dev-gguf",
+      "filename": "flux1-dev-Q4_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 6805988640,
+      "size_gb": 6.34,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX DEV Fill GGUF Q8_0": {
+      "name": "FLUX DEV Fill GGUF Q8_0",
+      "repo_id": "YarvixPA/FLUX.1-Fill-dev-gguf",
+      "filename": "flux1-fill-dev-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12727035168,
+      "size_gb": 11.85,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX DEV Fill GGUF Q6_K": {
+      "name": "FLUX DEV Fill GGUF Q6_K",
+      "repo_id": "YarvixPA/FLUX.1-Fill-dev-gguf",
+      "filename": "flux1-fill-dev-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 9860932896,
+      "size_gb": 9.18,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX DEV Fill GGUF Q5_K_S": {
+      "name": "FLUX DEV Fill GGUF Q5_K_S",
+      "repo_id": "YarvixPA/FLUX.1-Fill-dev-gguf",
+      "filename": "flux1-fill-dev-Q5_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8289199392,
+      "size_gb": 7.72,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX DEV Fill GGUF Q4_K_S": {
+      "name": "FLUX DEV Fill GGUF Q4_K_S",
+      "repo_id": "YarvixPA/FLUX.1-Fill-dev-gguf",
+      "filename": "flux1-fill-dev-Q4_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 6809920800,
+      "size_gb": 6.34,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX Kontext DEV GGUF Q8_0": {
+      "name": "FLUX Kontext DEV GGUF Q8_0",
+      "repo_id": "bullerwins/FLUX.1-Kontext-dev-GGUF",
+      "filename": "flux1-kontext-dev-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12714452256,
+      "size_gb": 11.84,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX Kontext DEV GGUF Q6_K": {
+      "name": "FLUX Kontext DEV GGUF Q6_K",
+      "repo_id": "bullerwins/FLUX.1-Kontext-dev-GGUF",
+      "filename": "flux1-kontext-dev-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 9848349984,
+      "size_gb": 9.17,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX Kontext DEV GGUF Q5_K_M": {
+      "name": "FLUX Kontext DEV GGUF Q5_K_M",
+      "repo_id": "bullerwins/FLUX.1-Kontext-dev-GGUF",
+      "filename": "flux1-kontext-dev-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8419501344,
+      "size_gb": 7.84,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::FLUX GGUF Models::FLUX Kontext DEV GGUF Q4_K_M": {
+      "name": "FLUX Kontext DEV GGUF Q4_K_M",
+      "repo_id": "bullerwins/FLUX.1-Kontext-dev-GGUF",
+      "filename": "flux1-kontext-dev-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 6931817760,
+      "size_gb": 6.46,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX GGUF Models"
+    },
+    "Image Generation Models::HiDream-I1 Image Editing Models::HiDream-I1-E1 BF16 Image Editing": {
+      "name": "HiDream-I1-E1 BF16 Image Editing",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "filename": "split_files/diffusion_models/hidream_e1_full_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 34211675392,
+      "size_gb": 31.86,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Image Editing Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full FP16": {
+      "name": "HiDream-I1 Full FP16",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "filename": "split_files/diffusion_models/hidream_i1_full_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 34211673776,
+      "size_gb": 31.86,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full FP8": {
+      "name": "HiDream-I1 Full FP8",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "filename": "split_files/diffusion_models/hidream_i1_full_fp8.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 17105946040,
+      "size_gb": 15.93,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF F16": {
+      "name": "HiDream-I1 Full GGUF F16",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-F16.gguf",
+      "is_snapshot": false,
+      "size_bytes": 34211609152,
+      "size_gb": 31.86,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q8_0": {
+      "name": "HiDream-I1 Full GGUF Q8_0",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 18689407552,
+      "size_gb": 17.41,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q6_K": {
+      "name": "HiDream-I1 Full GGUF Q6_K",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 14679505472,
+      "size_gb": 13.67,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q5_K_M": {
+      "name": "HiDream-I1 Full GGUF Q5_K_M",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 13032012352,
+      "size_gb": 12.14,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q5_K_S": {
+      "name": "HiDream-I1 Full GGUF Q5_K_S",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q5_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12480526912,
+      "size_gb": 11.62,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q5_1": {
+      "name": "HiDream-I1 Full GGUF Q5_1",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q5_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 13515340352,
+      "size_gb": 12.59,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q5_0": {
+      "name": "HiDream-I1 Full GGUF Q5_0",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q5_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12720388672,
+      "size_gb": 11.85,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q4_K_M": {
+      "name": "HiDream-I1 Full GGUF Q4_K_M",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 11481430592,
+      "size_gb": 10.69,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q4_K_S": {
+      "name": "HiDream-I1 Full GGUF Q4_K_S",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q4_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10893900352,
+      "size_gb": 10.15,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q4_1": {
+      "name": "HiDream-I1 Full GGUF Q4_1",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q4_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 11445713472,
+      "size_gb": 10.66,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q4_0": {
+      "name": "HiDream-I1 Full GGUF Q4_0",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q4_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10650761792,
+      "size_gb": 9.92,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q3_K_M": {
+      "name": "HiDream-I1 Full GGUF Q3_K_M",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q3_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8765045312,
+      "size_gb": 8.16,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q3_K_S": {
+      "name": "HiDream-I1 Full GGUF Q3_K_S",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q3_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8211921472,
+      "size_gb": 7.65,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Full Models::HiDream-I1 Full GGUF Q2_K": {
+      "name": "HiDream-I1 Full GGUF Q2_K",
+      "repo_id": "city96/HiDream-I1-Full-gguf",
+      "filename": "hidream-i1-full-Q2_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 6562298432,
+      "size_gb": 6.11,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Full Models"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev BF16": {
+      "name": "HiDream-I1 Dev BF16",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "filename": "split_files/diffusion_models/hidream_i1_dev_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 34211675392,
+      "size_gb": 31.86,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev FP8": {
+      "name": "HiDream-I1 Dev FP8",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "filename": "split_files/diffusion_models/hidream_i1_dev_fp8.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 17105946040,
+      "size_gb": 15.93,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF BF16": {
+      "name": "HiDream-I1 Dev GGUF BF16",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-BF16.gguf",
+      "is_snapshot": false,
+      "size_bytes": 34216560320,
+      "size_gb": 31.87,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q8_0": {
+      "name": "HiDream-I1 Dev GGUF Q8_0",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 18694358720,
+      "size_gb": 17.41,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q6_K": {
+      "name": "HiDream-I1 Dev GGUF Q6_K",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 14684456640,
+      "size_gb": 13.68,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q5_K_M": {
+      "name": "HiDream-I1 Dev GGUF Q5_K_M",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 13036963520,
+      "size_gb": 12.14,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q5_K_S": {
+      "name": "HiDream-I1 Dev GGUF Q5_K_S",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q5_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12485478080,
+      "size_gb": 11.63,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q5_1": {
+      "name": "HiDream-I1 Dev GGUF Q5_1",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q5_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 13520291520,
+      "size_gb": 12.59,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q5_0": {
+      "name": "HiDream-I1 Dev GGUF Q5_0",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q5_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12725339840,
+      "size_gb": 11.85,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q4_K_M": {
+      "name": "HiDream-I1 Dev GGUF Q4_K_M",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 11486381760,
+      "size_gb": 10.7,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q4_K_S": {
+      "name": "HiDream-I1 Dev GGUF Q4_K_S",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q4_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10898851520,
+      "size_gb": 10.15,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q4_1": {
+      "name": "HiDream-I1 Dev GGUF Q4_1",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q4_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 11450664640,
+      "size_gb": 10.66,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q4_0": {
+      "name": "HiDream-I1 Dev GGUF Q4_0",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q4_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10655712960,
+      "size_gb": 9.92,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q3_K_M": {
+      "name": "HiDream-I1 Dev GGUF Q3_K_M",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q3_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8769996480,
+      "size_gb": 8.17,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q3_K_S": {
+      "name": "HiDream-I1 Dev GGUF Q3_K_S",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q3_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8216872640,
+      "size_gb": 7.65,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Dev Models (Recommended)::HiDream-I1 Dev GGUF Q2_K": {
+      "name": "HiDream-I1 Dev GGUF Q2_K",
+      "repo_id": "city96/HiDream-I1-Dev-gguf",
+      "filename": "hidream-i1-dev-Q2_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 6567249600,
+      "size_gb": 6.12,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Dev Models (Recommended)"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast BF16": {
+      "name": "HiDream-I1 Fast BF16",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "filename": "split_files/diffusion_models/hidream_i1_fast_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 34211675392,
+      "size_gb": 31.86,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast FP8": {
+      "name": "HiDream-I1 Fast FP8",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "filename": "split_files/diffusion_models/hidream_i1_fast_fp8.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 17105946040,
+      "size_gb": 15.93,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF BF16": {
+      "name": "HiDream-I1 Fast GGUF BF16",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-BF16.gguf",
+      "is_snapshot": false,
+      "size_bytes": 34216560320,
+      "size_gb": 31.87,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q8_0": {
+      "name": "HiDream-I1 Fast GGUF Q8_0",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 18694358720,
+      "size_gb": 17.41,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q6_K": {
+      "name": "HiDream-I1 Fast GGUF Q6_K",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 14684456640,
+      "size_gb": 13.68,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q5_K_M": {
+      "name": "HiDream-I1 Fast GGUF Q5_K_M",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 13036963520,
+      "size_gb": 12.14,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q5_K_S": {
+      "name": "HiDream-I1 Fast GGUF Q5_K_S",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q5_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12485478080,
+      "size_gb": 11.63,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q5_1": {
+      "name": "HiDream-I1 Fast GGUF Q5_1",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q5_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 13520291520,
+      "size_gb": 12.59,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q5_0": {
+      "name": "HiDream-I1 Fast GGUF Q5_0",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q5_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12725339840,
+      "size_gb": 11.85,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q4_K_M": {
+      "name": "HiDream-I1 Fast GGUF Q4_K_M",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 11486381760,
+      "size_gb": 10.7,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q4_K_S": {
+      "name": "HiDream-I1 Fast GGUF Q4_K_S",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q4_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10898851520,
+      "size_gb": 10.15,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q4_1": {
+      "name": "HiDream-I1 Fast GGUF Q4_1",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q4_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 11450664640,
+      "size_gb": 10.66,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q4_0": {
+      "name": "HiDream-I1 Fast GGUF Q4_0",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q4_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10655712960,
+      "size_gb": 9.92,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q3_K_M": {
+      "name": "HiDream-I1 Fast GGUF Q3_K_M",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q3_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8769996480,
+      "size_gb": 8.17,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q3_K_S": {
+      "name": "HiDream-I1 Fast GGUF Q3_K_S",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q3_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8216872640,
+      "size_gb": 7.65,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::HiDream-I1 Fast Models::HiDream-I1 Fast GGUF Q2_K": {
+      "name": "HiDream-I1 Fast GGUF Q2_K",
+      "repo_id": "city96/HiDream-I1-Fast-gguf",
+      "filename": "hidream-i1-fast-Q2_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 6567249600,
+      "size_gb": 6.12,
+      "category": "Image Generation Models",
+      "sub_category": "HiDream-I1 Fast Models"
+    },
+    "Image Generation Models::Stable Diffusion 1.5 Models::Realistic Vision V6": {
+      "name": "Realistic Vision V6",
+      "repo_id": "SG161222/Realistic_Vision_V6.0_B1_noVAE",
+      "filename": "Realistic_Vision_V6.0_NV_B1.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 4265096996,
+      "size_gb": 3.97,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion 1.5 Models"
+    },
+    "Image Generation Models::Stable Diffusion 1.5 Models::RealCartoon3D V18": {
+      "name": "RealCartoon3D V18",
+      "repo_id": "OwlMaster/Some_best_SDXL",
+      "filename": "realcartoon3dv18.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 5672745460,
+      "size_gb": 5.28,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion 1.5 Models"
+    },
+    "Image Generation Models::Stable Diffusion 1.5 Models::CyberRealistic V8": {
+      "name": "CyberRealistic V8",
+      "repo_id": "OwlMaster/Some_best_SDXL",
+      "filename": "cyberrealistic_v80.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 4265146268,
+      "size_gb": 3.97,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion 1.5 Models"
+    },
+    "Image Generation Models::Stable Diffusion 1.5 Models::epiCPhotoGasm Ultimate Fidelity": {
+      "name": "epiCPhotoGasm Ultimate Fidelity",
+      "repo_id": "OwlMaster/Some_best_SDXL",
+      "filename": "epicphotogasm_ultimateFidelity.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 2132625628,
+      "size_gb": 1.99,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion 1.5 Models"
+    },
+    "Image Generation Models::Stable Diffusion XL (SDXL) Models::SDXL Base 1.0 (Official)": {
+      "name": "SDXL Base 1.0 (Official)",
+      "repo_id": "OwlMaster/Some_best_SDXL",
+      "filename": "sd_xl_base_1.0_0.9vae.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 6938078334,
+      "size_gb": 6.46,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion XL (SDXL) Models"
+    },
+    "Image Generation Models::Stable Diffusion XL (SDXL) Models::Juggernaut XL V11": {
+      "name": "Juggernaut XL V11",
+      "repo_id": "OwlMaster/Some_best_SDXL",
+      "filename": "Juggernaut-XI-byRunDiffusion.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 7105350536,
+      "size_gb": 6.62,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion XL (SDXL) Models"
+    },
+    "Image Generation Models::Stable Diffusion XL (SDXL) Models::epiCRealism XL LastFame": {
+      "name": "epiCRealism XL LastFame",
+      "repo_id": "OwlMaster/Some_best_SDXL",
+      "filename": "epicrealismXL_vxviLastfameRealism.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 6938041144,
+      "size_gb": 6.46,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion XL (SDXL) Models"
+    },
+    "Image Generation Models::Stable Diffusion XL (SDXL) Models::RealVisXL V5": {
+      "name": "RealVisXL V5",
+      "repo_id": "OwlMaster/Some_best_SDXL",
+      "filename": "realvisxlV50_v50Bakedvae.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 6938065488,
+      "size_gb": 6.46,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion XL (SDXL) Models"
+    },
+    "Image Generation Models::Stable Diffusion XL (SDXL) Models::Real Dream SDXL 5": {
+      "name": "Real Dream SDXL 5",
+      "repo_id": "OwlMaster/Some_best_SDXL",
+      "filename": "realDream_sdxl5.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 6938420770,
+      "size_gb": 6.46,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion XL (SDXL) Models"
+    },
+    "Image Generation Models::Stable Diffusion XL (SDXL) Models::Eldritch Photography V1": {
+      "name": "Eldritch Photography V1",
+      "repo_id": "OwlMaster/Some_best_SDXL",
+      "filename": "eldritchPhotography_v1.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 7140740154,
+      "size_gb": 6.65,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion XL (SDXL) Models"
+    },
+    "Image Generation Models::Stable Diffusion 3.5 Large Models::Stable Diffusion 3.5 Large (Official) - FP16": {
+      "name": "Stable Diffusion 3.5 Large (Official) - FP16",
+      "repo_id": "OwlMaster/SD3New",
+      "filename": "sd3.5_large.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 16460379262,
+      "size_gb": 15.33,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion 3.5 Large Models"
+    },
+    "Image Generation Models::Stable Diffusion 3.5 Large Models::Stable Diffusion 3.5 Large (Official) - FP8 Scaled": {
+      "name": "Stable Diffusion 3.5 Large (Official) - FP8 Scaled",
+      "repo_id": "OwlMaster/SD3New",
+      "filename": "sd3.5_large_fp8_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 14934922866,
+      "size_gb": 13.91,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion 3.5 Large Models"
+    },
+    "Image Generation Models::Stable Diffusion 3.5 Large Models::Stable Diffusion 3.5 Large (Official) - GGUF Q8": {
+      "name": "Stable Diffusion 3.5 Large (Official) - GGUF Q8",
+      "repo_id": "city96/stable-diffusion-3.5-large-gguf",
+      "filename": "sd3.5_large-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8779212512,
+      "size_gb": 8.18,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion 3.5 Large Models"
+    },
+    "Image Generation Models::Stable Diffusion 3.5 Large Models::Stable Diffusion 3.5 Large (Official) - GGUF Q5_1": {
+      "name": "Stable Diffusion 3.5 Large (Official) - GGUF Q5_1",
+      "repo_id": "city96/stable-diffusion-3.5-large-gguf",
+      "filename": "sd3.5_large-Q5_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 6274738912,
+      "size_gb": 5.84,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion 3.5 Large Models"
+    },
+    "Image Generation Models::Stable Diffusion 3.5 Large Models::Stable Diffusion 3.5 Large (Official) - GGUF Q4_1": {
+      "name": "Stable Diffusion 3.5 Large (Official) - GGUF Q4_1",
+      "repo_id": "city96/stable-diffusion-3.5-large-gguf",
+      "filename": "sd3.5_large-Q4_1.gguf",
+      "is_snapshot": false,
+      "size_bytes": 5272949472,
+      "size_gb": 4.91,
+      "category": "Image Generation Models",
+      "sub_category": "Stable Diffusion 3.5 Large Models"
+    },
+    "Other Models (e.g. Yolo Face Segment, Image Upscaling)::Image Upscaling Models::Best Upscaler Models (Full Set Snapshot)": {
+      "name": "Best Upscaler Models (Full Set Snapshot)",
+      "repo_id": "MonsterMMORPG/BestImageUpscalers",
+      "filename": null,
+      "is_snapshot": true,
+      "size_bytes": 922668050,
+      "size_gb": 0.86,
+      "category": "Other Models (e.g. Yolo Face Segment, Image Upscaling)",
+      "sub_category": "Image Upscaling Models"
+    },
+    "Other Models (e.g. Yolo Face Segment, Image Upscaling)::Image Upscaling Models::LTX Spatial Upscaler 0.9.7 (Lightricks)": {
+      "name": "LTX Spatial Upscaler 0.9.7 (Lightricks)",
+      "repo_id": "Lightricks/LTX-Video",
+      "filename": "ltxv-spatial-upscaler-0.9.7.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 505024432,
+      "size_gb": 0.47,
+      "category": "Other Models (e.g. Yolo Face Segment, Image Upscaling)",
+      "sub_category": "Image Upscaling Models"
+    },
+    "Other Models (e.g. Yolo Face Segment, Image Upscaling)::Image Upscaling Models::LTX Temporal Upscaler 0.9.7 (Lightricks)": {
+      "name": "LTX Temporal Upscaler 0.9.7 (Lightricks)",
+      "repo_id": "Lightricks/LTX-Video",
+      "filename": "ltxv-temporal-upscaler-0.9.7.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 523894768,
+      "size_gb": 0.49,
+      "category": "Other Models (e.g. Yolo Face Segment, Image Upscaling)",
+      "sub_category": "Image Upscaling Models"
+    },
+    "Other Models (e.g. Yolo Face Segment, Image Upscaling)::Auto Yolo Masking/Segment Models::Face YOLOv9c Detection Model": {
+      "name": "Face YOLOv9c Detection Model",
+      "repo_id": "MonsterMMORPG/FaceSegments",
+      "filename": "face_yolov9c.pt",
+      "is_snapshot": false,
+      "size_bytes": 87645310,
+      "size_gb": 0.08,
+      "category": "Other Models (e.g. Yolo Face Segment, Image Upscaling)",
+      "sub_category": "Auto Yolo Masking/Segment Models"
+    },
+    "Other Models (e.g. Yolo Face Segment, Image Upscaling)::Auto Yolo Masking/Segment Models::YOLOv12L Face Detection Model": {
+      "name": "YOLOv12L Face Detection Model",
+      "repo_id": "MonsterMMORPG/FaceSegments",
+      "filename": "yolov12l-face.pt",
+      "is_snapshot": false,
+      "size_bytes": 53507770,
+      "size_gb": 0.05,
+      "category": "Other Models (e.g. Yolo Face Segment, Image Upscaling)",
+      "sub_category": "Auto Yolo Masking/Segment Models"
+    },
+    "Other Models (e.g. Yolo Face Segment, Image Upscaling)::Auto Yolo Masking/Segment Models::Male Face Segmentation Model": {
+      "name": "Male Face Segmentation Model",
+      "repo_id": "MonsterMMORPG/FaceSegments",
+      "filename": "man_face.pt",
+      "is_snapshot": false,
+      "size_bytes": 6354855,
+      "size_gb": 0.01,
+      "category": "Other Models (e.g. Yolo Face Segment, Image Upscaling)",
+      "sub_category": "Auto Yolo Masking/Segment Models"
+    },
+    "Other Models (e.g. Yolo Face Segment, Image Upscaling)::Auto Yolo Masking/Segment Models::Female Face Segmentation Model": {
+      "name": "Female Face Segmentation Model",
+      "repo_id": "MonsterMMORPG/FaceSegments",
+      "filename": "woman_face.pt",
+      "is_snapshot": false,
+      "size_bytes": 6363111,
+      "size_gb": 0.01,
+      "category": "Other Models (e.g. Yolo Face Segment, Image Upscaling)",
+      "sub_category": "Auto Yolo Masking/Segment Models"
+    },
+    "Text Encoder Models::T5 XXL Models::T5 XXL FP16": {
+      "name": "T5 XXL FP16",
+      "repo_id": "OwlMaster/SD3New",
+      "filename": "t5xxl_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 9787841024,
+      "size_gb": 9.12,
+      "category": "Text Encoder Models",
+      "sub_category": "T5 XXL Models"
+    },
+    "Text Encoder Models::T5 XXL Models::T5 XXL FP8 (e4m3fn)": {
+      "name": "T5 XXL FP8 (e4m3fn)",
+      "repo_id": "OwlMaster/SD3New",
+      "filename": "t5xxl_fp8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 4893934904,
+      "size_gb": 4.56,
+      "category": "Text Encoder Models",
+      "sub_category": "T5 XXL Models"
+    },
+    "Text Encoder Models::T5 XXL Models::T5 XXL FP8 Scaled (e4m3fn)": {
+      "name": "T5 XXL FP8 Scaled (e4m3fn)",
+      "repo_id": "OwlMaster/SD3New",
+      "filename": "t5xxl_fp8_e4m3fn_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 5157348688,
+      "size_gb": 4.8,
+      "category": "Text Encoder Models",
+      "sub_category": "T5 XXL Models"
+    },
+    "Text Encoder Models::T5 XXL Models::T5 XXL FP16 (Save As t5xxl_enconly for SwarmUI default name)": {
+      "name": "T5 XXL FP16 (Save As t5xxl_enconly for SwarmUI default name)",
+      "repo_id": "OwlMaster/SD3New",
+      "filename": "t5xxl_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 9787841024,
+      "size_gb": 9.12,
+      "category": "Text Encoder Models",
+      "sub_category": "T5 XXL Models"
+    },
+    "Text Encoder Models::T5 XXL Models::T5 XXL GGUF Q8": {
+      "name": "T5 XXL GGUF Q8",
+      "repo_id": "calcuis/mochi",
+      "filename": "t5xxl_fp16-q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 5061584064,
+      "size_gb": 4.71,
+      "category": "Text Encoder Models",
+      "sub_category": "T5 XXL Models"
+    },
+    "Text Encoder Models::T5 XXL Models::T5 XXL GGUF Q4_0": {
+      "name": "T5 XXL GGUF Q4_0",
+      "repo_id": "calcuis/mochi",
+      "filename": "t5xxl_fp16-q4_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 2896123072,
+      "size_gb": 2.7,
+      "category": "Text Encoder Models",
+      "sub_category": "T5 XXL Models"
+    },
+    "Text Encoder Models::UMT5 XXL Models::UMT5 XXL BF16 (Used by Wan 2.1)": {
+      "name": "UMT5 XXL BF16 (Used by Wan 2.1)",
+      "repo_id": "Kijai/WanVideo_comfy",
+      "filename": "umt5-xxl-enc-bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 11361845464,
+      "size_gb": 10.58,
+      "category": "Text Encoder Models",
+      "sub_category": "UMT5 XXL Models"
+    },
+    "Text Encoder Models::UMT5 XXL Models::UMT5 XXL BF16 (Save As default for SwarmUI)": {
+      "name": "UMT5 XXL BF16 (Save As default for SwarmUI)",
+      "repo_id": "Kijai/WanVideo_comfy",
+      "filename": "umt5-xxl-enc-bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 11361845464,
+      "size_gb": 10.58,
+      "category": "Text Encoder Models",
+      "sub_category": "UMT5 XXL Models"
+    },
+    "Text Encoder Models::UMT5 XXL Models::UMT5 XXL FP16 (Save As default for SwarmUI)": {
+      "name": "UMT5 XXL FP16 (Save As default for SwarmUI)",
+      "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+      "filename": "split_files/text_encoders/umt5_xxl_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 11366399385,
+      "size_gb": 10.59,
+      "category": "Text Encoder Models",
+      "sub_category": "UMT5 XXL Models"
+    },
+    "Text Encoder Models::UMT5 XXL Models::UMT5 XXL FP8 Scaled (Default for SwarmUI)": {
+      "name": "UMT5 XXL FP8 Scaled (Default for SwarmUI)",
+      "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+      "filename": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 6735906897,
+      "size_gb": 6.27,
+      "category": "Text Encoder Models",
+      "sub_category": "UMT5 XXL Models"
+    },
+    "Text Encoder Models::UMT5 XXL Models::UMT5 XXL GGUF Q8 (Manual Setup)": {
+      "name": "UMT5 XXL GGUF Q8 (Manual Setup)",
+      "repo_id": "city96/umt5-xxl-encoder-gguf",
+      "filename": "umt5-xxl-encoder-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 6043068256,
+      "size_gb": 5.63,
+      "category": "Text Encoder Models",
+      "sub_category": "UMT5 XXL Models"
+    },
+    "Text Encoder Models::UMT5 XXL Models::UMT5 XXL GGUF Q6_K (Manual Setup)": {
+      "name": "UMT5 XXL GGUF Q6_K (Manual Setup)",
+      "repo_id": "city96/umt5-xxl-encoder-gguf",
+      "filename": "umt5-xxl-encoder-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 4667283296,
+      "size_gb": 4.35,
+      "category": "Text Encoder Models",
+      "sub_category": "UMT5 XXL Models"
+    },
+    "Text Encoder Models::UMT5 XXL Models::UMT5 XXL GGUF Q5_K_M (Manual Setup)": {
+      "name": "UMT5 XXL GGUF Q5_K_M (Manual Setup)",
+      "repo_id": "city96/umt5-xxl-encoder-gguf",
+      "filename": "umt5-xxl-encoder-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 4145878880,
+      "size_gb": 3.86,
+      "category": "Text Encoder Models",
+      "sub_category": "UMT5 XXL Models"
+    },
+    "Text Encoder Models::UMT5 XXL Models::UMT5 XXL GGUF Q4_K_M (Manual Setup)": {
+      "name": "UMT5 XXL GGUF Q4_K_M (Manual Setup)",
+      "repo_id": "city96/umt5-xxl-encoder-gguf",
+      "filename": "umt5-xxl-encoder-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 3655145312,
+      "size_gb": 3.4,
+      "category": "Text Encoder Models",
+      "sub_category": "UMT5 XXL Models"
+    },
+    "Text Encoder Models::Clip Models::CLIP-SAE-ViT-L-14 (Save As clip_l.safetensors - SwarmUI default name)": {
+      "name": "CLIP-SAE-ViT-L-14 (Save As clip_l.safetensors - SwarmUI default name)",
+      "repo_id": "OwlMaster/zer0int-CLIP-SAE-ViT-L-14",
+      "filename": "clip_l.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1710537716,
+      "size_gb": 1.59,
+      "category": "Text Encoder Models",
+      "sub_category": "Clip Models"
+    },
+    "Text Encoder Models::Clip Models::CLIP-SAE-ViT-L-14 (Save As CLIP_SAE_ViT_L_14)": {
+      "name": "CLIP-SAE-ViT-L-14 (Save As CLIP_SAE_ViT_L_14)",
+      "repo_id": "OwlMaster/zer0int-CLIP-SAE-ViT-L-14",
+      "filename": "clip_l.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1710537716,
+      "size_gb": 1.59,
+      "category": "Text Encoder Models",
+      "sub_category": "Clip Models"
+    },
+    "Text Encoder Models::Clip Models::Default Clip L": {
+      "name": "Default Clip L",
+      "repo_id": "MonsterMMORPG/Kohya_Train",
+      "filename": "clip_l.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 246144152,
+      "size_gb": 0.23,
+      "category": "Text Encoder Models",
+      "sub_category": "Clip Models"
+    },
+    "Text Encoder Models::Clip Models::Clip G": {
+      "name": "Clip G",
+      "repo_id": "OwlMaster/SD3New",
+      "filename": "clip_g.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1389382176,
+      "size_gb": 1.29,
+      "category": "Text Encoder Models",
+      "sub_category": "Clip Models"
+    },
+    "Text Encoder Models::Clip Models::Long Clip L for HiDream-I1": {
+      "name": "Long Clip L for HiDream-I1",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "filename": "split_files/text_encoders/clip_l_hidream.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 247586528,
+      "size_gb": 0.23,
+      "category": "Text Encoder Models",
+      "sub_category": "Clip Models"
+    },
+    "Text Encoder Models::Clip Models::Long Clip G for HiDream-I1": {
+      "name": "Long Clip G for HiDream-I1",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "filename": "split_files/text_encoders/clip_g_hidream.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1389743104,
+      "size_gb": 1.29,
+      "category": "Text Encoder Models",
+      "sub_category": "Clip Models"
+    },
+    "Text Encoder Models::Clip Models::Qwen 3 4B Text Encoder (For Z Image Turbo)": {
+      "name": "Qwen 3 4B Text Encoder (For Z Image Turbo)",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Z-Image-Turbo-Models/qwen_3_4b.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 8044982048,
+      "size_gb": 7.49,
+      "category": "Text Encoder Models",
+      "sub_category": "Clip Models"
+    },
+    "Text Encoder Models::Clip Models::qwen_2.5_vl_7b_fp16": {
+      "name": "qwen_2.5_vl_7b_fp16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "qwen_2.5_vl_7b_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 16584415576,
+      "size_gb": 15.45,
+      "category": "Text Encoder Models",
+      "sub_category": "Clip Models"
+    },
+    "Text Encoder Models::Clip Models::qwen_2.5_vl_7b_fp8_scaled.safetensors": {
+      "name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 9384670680,
+      "size_gb": 8.74,
+      "category": "Text Encoder Models",
+      "sub_category": "Clip Models"
+    },
+    "Text Encoder Models::LLM Text Encoders::LLAMA 3.1 8b Instruct FP8 Scaled for HiDream-I1": {
+      "name": "LLAMA 3.1 8b Instruct FP8 Scaled for HiDream-I1",
+      "repo_id": "Comfy-Org/HiDream-I1_ComfyUI",
+      "filename": "split_files/text_encoders/llama_3.1_8b_instruct_fp8_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 9081258056,
+      "size_gb": 8.46,
+      "category": "Text Encoder Models",
+      "sub_category": "LLM Text Encoders"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 T2V 1.3B FP16": {
+      "name": "Wan 2.1 T2V 1.3B FP16",
+      "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+      "filename": "split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 2838303560,
+      "size_gb": 2.64,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 T2V 14B 720p FP16": {
+      "name": "Wan 2.1 T2V 14B 720p FP16",
+      "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+      "filename": "split_files/diffusion_models/wan2.1_t2v_14B_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 28577761176,
+      "size_gb": 26.62,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 T2V 14B 720p FP8": {
+      "name": "Wan 2.1 T2V 14B 720p FP8",
+      "repo_id": "Kijai/WanVideo_comfy",
+      "filename": "Wan2_1-T2V-14B_fp8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 14859762840,
+      "size_gb": 13.84,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 480p FP16": {
+      "name": "Wan 2.1 I2V 14B 480p FP16",
+      "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+      "filename": "split_files/diffusion_models/wan2.1_i2v_480p_14B_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 32791377504,
+      "size_gb": 30.54,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 480p FP8": {
+      "name": "Wan 2.1 I2V 14B 480p FP8",
+      "repo_id": "Kijai/WanVideo_comfy",
+      "filename": "Wan2_1-I2V-14B-480P_fp8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 16993877896,
+      "size_gb": 15.83,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 720p FP16": {
+      "name": "Wan 2.1 I2V 14B 720p FP16",
+      "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+      "filename": "split_files/diffusion_models/wan2.1_i2v_720p_14B_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 32791377504,
+      "size_gb": 30.54,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 720p FP8": {
+      "name": "Wan 2.1 I2V 14B 720p FP8",
+      "repo_id": "Kijai/WanVideo_comfy",
+      "filename": "Wan2_1-I2V-14B-720P_fp8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 16993877896,
+      "size_gb": 15.83,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::WanVideo 2.1 MultiTalk 14B FP32": {
+      "name": "WanVideo 2.1 MultiTalk 14B FP32",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "WanVideo_2_1_Multitalk_14B_fp32.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 9947889040,
+      "size_gb": 9.26,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 T2V 14B 720p GGUF Q8": {
+      "name": "Wan 2.1 T2V 14B 720p GGUF Q8",
+      "repo_id": "city96/Wan2.1-T2V-14B-gguf",
+      "filename": "wan2.1-t2v-14b-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 15879461504,
+      "size_gb": 14.79,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 T2V 14B 720p GGUF Q6_K": {
+      "name": "Wan 2.1 T2V 14B 720p GGUF Q6_K",
+      "repo_id": "city96/Wan2.1-T2V-14B-gguf",
+      "filename": "wan2.1-t2v-14b-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12476504704,
+      "size_gb": 11.62,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 T2V 14B 720p GGUF Q5_K_M": {
+      "name": "Wan 2.1 T2V 14B 720p GGUF Q5_K_M",
+      "repo_id": "city96/Wan2.1-T2V-14B-gguf",
+      "filename": "wan2.1-t2v-14b-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 11264907904,
+      "size_gb": 10.49,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 T2V 14B 720p GGUF Q4_K_M": {
+      "name": "Wan 2.1 T2V 14B 720p GGUF Q4_K_M",
+      "repo_id": "city96/Wan2.1-T2V-14B-gguf",
+      "filename": "wan2.1-t2v-14b-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10124581504,
+      "size_gb": 9.43,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 480p GGUF Q8": {
+      "name": "Wan 2.1 I2V 14B 480p GGUF Q8",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan21_i2v_480p_14B_Q8.gguf",
+      "is_snapshot": false,
+      "size_bytes": 18144640384,
+      "size_gb": 16.9,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 480p GGUF Q6_K": {
+      "name": "Wan 2.1 I2V 14B 480p GGUF Q6_K",
+      "repo_id": "city96/Wan2.1-I2V-14B-480P-gguf",
+      "filename": "wan2.1-i2v-14b-480p-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 14233779584,
+      "size_gb": 13.26,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 480p GGUF Q5_K_M": {
+      "name": "Wan 2.1 I2V 14B 480p GGUF Q5_K_M",
+      "repo_id": "city96/Wan2.1-I2V-14B-480P-gguf",
+      "filename": "wan2.1-i2v-14b-480p-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12743654784,
+      "size_gb": 11.87,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 480p GGUF Q4_K_M": {
+      "name": "Wan 2.1 I2V 14B 480p GGUF Q4_K_M",
+      "repo_id": "city96/Wan2.1-I2V-14B-480P-gguf",
+      "filename": "wan2.1-i2v-14b-480p-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 11341184384,
+      "size_gb": 10.56,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 720p GGUF Q8": {
+      "name": "Wan 2.1 I2V 14B 720p GGUF Q8",
+      "repo_id": "city96/Wan2.1-I2V-14B-720P-gguf",
+      "filename": "wan2.1-i2v-14b-720p-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 18144640384,
+      "size_gb": 16.9,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 720p GGUF Q6_K": {
+      "name": "Wan 2.1 I2V 14B 720p GGUF Q6_K",
+      "repo_id": "city96/Wan2.1-I2V-14B-720P-gguf",
+      "filename": "wan2.1-i2v-14b-720p-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 14233779584,
+      "size_gb": 13.26,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 720p GGUF Q5_K_M": {
+      "name": "Wan 2.1 I2V 14B 720p GGUF Q5_K_M",
+      "repo_id": "city96/Wan2.1-I2V-14B-720P-gguf",
+      "filename": "wan2.1-i2v-14b-720p-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12743654784,
+      "size_gb": 11.87,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 Official Models::Wan 2.1 I2V 14B 720p GGUF Q4_K_M": {
+      "name": "Wan 2.1 I2V 14B 720p GGUF Q4_K_M",
+      "repo_id": "city96/Wan2.1-I2V-14B-720P-gguf",
+      "filename": "wan2.1-i2v-14b-720p-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 11341184384,
+      "size_gb": 10.56,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 Official Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX T2V 14B FP16": {
+      "name": "Wan 2.1 FusionX T2V 14B FP16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2_1_14B_FusionX_T2V_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 28577792224,
+      "size_gb": 26.62,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX T2V 14B FP8": {
+      "name": "Wan 2.1 FusionX T2V 14B FP8",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2_1_14B_FusionX_T2V_fp8.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 14289641560,
+      "size_gb": 13.31,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX I2V 14B FP16": {
+      "name": "Wan 2.1 FusionX I2V 14B FP16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2_1_14B_FusionX_I2V_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 32791417192,
+      "size_gb": 30.54,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX I2V 14B FP8": {
+      "name": "Wan 2.1 FusionX I2V 14B FP8",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2_1_14B_FusionX_I2V_fp8.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 16397285160,
+      "size_gb": 15.27,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX T2V 14B GGUF Q8_0": {
+      "name": "Wan 2.1 FusionX T2V 14B GGUF Q8_0",
+      "repo_id": "QuantStack/Wan2.1_T2V_14B_FusionX-GGUF",
+      "filename": "Wan2.1_T2V_14B_FusionX-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 15404980736,
+      "size_gb": 14.35,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX T2V 14B GGUF Q6_K": {
+      "name": "Wan 2.1 FusionX T2V 14B GGUF Q6_K",
+      "repo_id": "QuantStack/Wan2.1_T2V_14B_FusionX-GGUF",
+      "filename": "Wan2.1_T2V_14B_FusionX-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12002023936,
+      "size_gb": 11.18,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX T2V 14B GGUF Q5_K_M": {
+      "name": "Wan 2.1 FusionX T2V 14B GGUF Q5_K_M",
+      "repo_id": "QuantStack/Wan2.1_T2V_14B_FusionX-GGUF",
+      "filename": "Wan2.1_T2V_14B_FusionX-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10790427136,
+      "size_gb": 10.05,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX T2V 14B GGUF Q4_K_M": {
+      "name": "Wan 2.1 FusionX T2V 14B GGUF Q4_K_M",
+      "repo_id": "QuantStack/Wan2.1_T2V_14B_FusionX-GGUF",
+      "filename": "Wan2.1_T2V_14B_FusionX-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 9650100736,
+      "size_gb": 8.99,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX I2V 14B GGUF Q8": {
+      "name": "Wan 2.1 FusionX I2V 14B GGUF Q8",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.1_14b_FusionX_Image_to_Video_GGUF_Q8.gguf",
+      "is_snapshot": false,
+      "size_bytes": 17652508416,
+      "size_gb": 16.44,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX I2V 14B GGUF Q6_K": {
+      "name": "Wan 2.1 FusionX I2V 14B GGUF Q6_K",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.1_14b_FusionX_Image_to_Video_GGUF_Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 13741647616,
+      "size_gb": 12.8,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX I2V 14B GGUF Q5_K_M": {
+      "name": "Wan 2.1 FusionX I2V 14B GGUF Q5_K_M",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.1_14b_FusionX_Image_to_Video_GGUF_Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 12251522816,
+      "size_gb": 11.41,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 FusionX Models::Wan 2.1 FusionX I2V 14B GGUF Q4_K_M": {
+      "name": "Wan 2.1 FusionX I2V 14B GGUF Q4_K_M",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.1_14b_FusionX_Image_to_Video_GGUF_Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10849052416,
+      "size_gb": 10.1,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 FusionX Models"
+    },
+    "Video Generation Models::Wan 2.1 LoRAs::Wan 2.1 CausVid T2V/I2V LoRA v2 14B (Rank 32) - Companion": {
+      "name": "Wan 2.1 CausVid T2V/I2V LoRA v2 14B (Rank 32) - Companion",
+      "repo_id": "Kijai/WanVideo_comfy",
+      "filename": "Wan21_CausVid_14B_T2V_lora_rank32_v2.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 204551064,
+      "size_gb": 0.19,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "Video Generation Models::Wan 2.1 LoRAs::Wan 2.1 CausVid T2V/I2V LoRA 14B (Rank 32) - Companion": {
+      "name": "Wan 2.1 CausVid T2V/I2V LoRA 14B (Rank 32) - Companion",
+      "repo_id": "Kijai/WanVideo_comfy",
+      "filename": "Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 319116504,
+      "size_gb": 0.3,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "Video Generation Models::Wan 2.1 LoRAs::Wan 2.1 CausVid T2V LoRA 1.3B (Rank 32) - Companion": {
+      "name": "Wan 2.1 CausVid T2V LoRA 1.3B (Rank 32) - Companion",
+      "repo_id": "Kijai/WanVideo_comfy",
+      "filename": "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 91233416,
+      "size_gb": 0.08,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "Video Generation Models::Wan 2.1 LoRAs::Wan 2.1 14B Self Forcing LoRA T2V/I2V": {
+      "name": "Wan 2.1 14B Self Forcing LoRA T2V/I2V",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan21_14B_Self_Forcing_LoRA_T2V_I2V.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 316822831,
+      "size_gb": 0.3,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "Video Generation Models::Wan 2.1 LoRAs::Phantom Wan 14B FusionX LoRA": {
+      "name": "Phantom Wan 14B FusionX LoRA",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Phantom_Wan_14B_FusionX_LoRA.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 316822496,
+      "size_gb": 0.3,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "Video Generation Models::Wan 2.1 LoRAs::Wan 2.1 I2V 14B FusionX LoRA": {
+      "name": "Wan 2.1 I2V 14B FusionX LoRA",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.1_Image_to_Video_14B_FusionX_LoRA.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 371128616,
+      "size_gb": 0.35,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "Video Generation Models::Wan 2.1 LoRAs::Wan 2.1 T2V 14B FusionX LoRA": {
+      "name": "Wan 2.1 T2V 14B FusionX LoRA",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.1_Text_to_Video_14B_FusionX_LoRA.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 316822496,
+      "size_gb": 0.3,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "Video Generation Models::Wan 2.1 LoRAs::Wan 2.1 14B LightX2V CFG Step Distill LoRA V2 (T2V + I2V) (Rank 64)": {
+      "name": "Wan 2.1 14B LightX2V CFG Step Distill LoRA V2 (T2V + I2V) (Rank 64)",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64_fixed.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 739472104,
+      "size_gb": 0.69,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "Video Generation Models::Wan 2.2 Official Models::Wan 2.2 T2V High Noise 14B BF16": {
+      "name": "Wan 2.2 T2V High Noise 14B BF16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan-2.2-T2V-High-Noise-BF16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 28577158629,
+      "size_gb": 26.61,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Official Models"
+    },
+    "Video Generation Models::Wan 2.2 Official Models::Wan 2.2 I2V High Noise 14B FP16": {
+      "name": "Wan 2.2 I2V High Noise 14B FP16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2.2_i2v_high_noise_14B_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 28577914792,
+      "size_gb": 26.62,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Official Models"
+    },
+    "Video Generation Models::Wan 2.2 Official Models::Wan 2.2 I2V High Noise 14B FP8 Scaled": {
+      "name": "Wan 2.2 I2V High Noise 14B FP8 Scaled",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 14294742832,
+      "size_gb": 13.31,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Official Models"
+    },
+    "Video Generation Models::Wan 2.2 Official Models::Wan 2.2 T2V Low Noise 14B BF16": {
+      "name": "Wan 2.2 T2V Low Noise 14B BF16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan-2.2-T2V-Low-Noise-BF16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 28577155588,
+      "size_gb": 26.61,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Official Models"
+    },
+    "Video Generation Models::Wan 2.2 Official Models::Wan 2.2 I2V Low Noise 14B FP16": {
+      "name": "Wan 2.2 I2V Low Noise 14B FP16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2.2_i2v_low_noise_14B_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 28577914792,
+      "size_gb": 26.62,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Official Models"
+    },
+    "Video Generation Models::Wan 2.2 Official Models::Wan 2.2 I2V Low Noise 14B FP8 Scaled": {
+      "name": "Wan 2.2 I2V Low Noise 14B FP8 Scaled",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 14294742832,
+      "size_gb": 13.31,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Official Models"
+    },
+    "Video Generation Models::Wan 2.2 Official Models::Wan 2.2 T2V High Noise 14B FP16": {
+      "name": "Wan 2.2 T2V High Noise 14B FP16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2.2_t2v_high_noise_14B_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 28577095592,
+      "size_gb": 26.61,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Official Models"
+    },
+    "Video Generation Models::Wan 2.2 Official Models::Wan 2.2 T2V High Noise 14B FP8 Scaled": {
+      "name": "Wan 2.2 T2V High Noise 14B FP8 Scaled",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 14293923632,
+      "size_gb": 13.31,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Official Models"
+    },
+    "Video Generation Models::Wan 2.2 Official Models::Wan 2.2 T2V Low Noise 14B FP16": {
+      "name": "Wan 2.2 T2V Low Noise 14B FP16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2.2_t2v_low_noise_14B_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 28577095592,
+      "size_gb": 26.61,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Official Models"
+    },
+    "Video Generation Models::Wan 2.2 Official Models::Wan 2.2 T2V Low Noise 14B FP8 Scaled": {
+      "name": "Wan 2.2 T2V Low Noise 14B FP8 Scaled",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 14293923632,
+      "size_gb": 13.31,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Official Models"
+    },
+    "Video Generation Models::Wan 2.2 Official Models::Wan 2.2 TI2V 5B FP16": {
+      "name": "Wan 2.2 TI2V 5B FP16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2.2_ti2v_5B_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 9999658848,
+      "size_gb": 9.31,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Official Models"
+    },
+    "Video Generation Models::Wan 2.2 Fast Models::Wan2.2-I2V-A14B-Moe-Distill-Lightx2v-Low_fp8_scaled.safetensors": {
+      "name": "Wan2.2-I2V-A14B-Moe-Distill-Lightx2v-Low_fp8_scaled.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.2-I2V-A14B-Moe-Distill-Lightx2v-Low_fp8_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 15003000250,
+      "size_gb": 13.97,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Fast Models"
+    },
+    "Video Generation Models::Wan 2.2 Fast Models::Wan2.2-I2V-A14B-Moe-Distill-Lightx2v-High_fp8_scaled.safetensors": {
+      "name": "Wan2.2-I2V-A14B-Moe-Distill-Lightx2v-High_fp8_scaled.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.2-I2V-A14B-Moe-Distill-Lightx2v-High_fp8_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 15003000250,
+      "size_gb": 13.97,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 Fast Models"
+    },
+    "Video Generation Models::Wan 2.2 LoRAs::Wan2.2-T2V-A14B-4steps-lora-250928-Low.safetensors": {
+      "name": "Wan2.2-T2V-A14B-4steps-lora-250928-Low.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.2-T2V-A14B-4steps-lora-250928-Low.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1226977424,
+      "size_gb": 1.14,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 LoRAs"
+    },
+    "Video Generation Models::Wan 2.2 LoRAs::Wan2.2-T2V-A14B-4steps-lora-250928-High.safetensors": {
+      "name": "Wan2.2-T2V-A14B-4steps-lora-250928-High.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.2-T2V-A14B-4steps-lora-250928-High.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 2453812864,
+      "size_gb": 2.29,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 LoRAs"
+    },
+    "Video Generation Models::Wan 2.2 LoRAs::Wan2_2-I2V-A14B-4steps-lora-rank64-Seko-V1_Low": {
+      "name": "Wan2_2-I2V-A14B-4steps-lora-rank64-Seko-V1_Low",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2_2-I2V-A14B-4steps-lora-rank64-Seko-V1_Low.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1226977424,
+      "size_gb": 1.14,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 LoRAs"
+    },
+    "Video Generation Models::Wan 2.2 LoRAs::Wan2_2-I2V-A14B-4steps-lora-rank64-Seko-V1_High": {
+      "name": "Wan2_2-I2V-A14B-4steps-lora-rank64-Seko-V1_High",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2_2-I2V-A14B-4steps-lora-rank64-Seko-V1_High.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1226977424,
+      "size_gb": 1.14,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 LoRAs"
+    },
+    "Video Generation Models::Wan 2.2 LoRAs::Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V2.0-Low.safetensors": {
+      "name": "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V2.0-Low.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V2.0-Low.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1227043302,
+      "size_gb": 1.14,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 LoRAs"
+    },
+    "Video Generation Models::Wan 2.2 LoRAs::Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V2.0-High.safetensors": {
+      "name": "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V2.0-High.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V2.0-High.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1227043303,
+      "size_gb": 1.14,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 LoRAs"
+    },
+    "Video Generation Models::Wan 2.2 LoRAs::Wan2.2_T2V_High_Noise_Lightx2v_4steps_LoRA_1217.safetensors": {
+      "name": "Wan2.2_T2V_High_Noise_Lightx2v_4steps_LoRA_1217.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.2_T2V_High_Noise_Lightx2v_4steps_LoRA_1217.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 613584209,
+      "size_gb": 0.57,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 LoRAs"
+    },
+    "Video Generation Models::Wan 2.2 LoRAs::Wan2.2_T2V_Low_Noise_Lightx2v_4steps_LoRA_1217.safetensors": {
+      "name": "Wan2.2_T2V_Low_Noise_Lightx2v_4steps_LoRA_1217.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.2_T2V_Low_Noise_Lightx2v_4steps_LoRA_1217.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 613584208,
+      "size_gb": 0.57,
+      "category": "Video Generation Models",
+      "sub_category": "Wan 2.2 LoRAs"
+    },
+    "Video Generation Models::Hunyuan Models::HunYuan T2V 720p BF16": {
+      "name": "HunYuan T2V 720p BF16",
+      "repo_id": "Comfy-Org/HunyuanVideo_repackaged",
+      "filename": "split_files/diffusion_models/hunyuan_video_t2v_720p_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 25642131432,
+      "size_gb": 23.88,
+      "category": "Video Generation Models",
+      "sub_category": "Hunyuan Models"
+    },
+    "Video Generation Models::Hunyuan Models::HunYuan I2V 720p BF16": {
+      "name": "HunYuan I2V 720p BF16",
+      "repo_id": "Kijai/HunyuanVideo_comfy",
+      "filename": "hunyuan_video_I2V_720_fixed_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 25642120840,
+      "size_gb": 23.88,
+      "category": "Video Generation Models",
+      "sub_category": "Hunyuan Models"
+    },
+    "Video Generation Models::Hunyuan Models::HunYuan T2V 720p CFG Distill BF16": {
+      "name": "HunYuan T2V 720p CFG Distill BF16",
+      "repo_id": "Kijai/HunyuanVideo_comfy",
+      "filename": "hunyuan_video_720_cfgdistill_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 25642120840,
+      "size_gb": 23.88,
+      "category": "Video Generation Models",
+      "sub_category": "Hunyuan Models"
+    },
+    "Video Generation Models::Hunyuan Models::HunYuan T2V 720p CFG Distill FP8 Scaled": {
+      "name": "HunYuan T2V 720p CFG Distill FP8 Scaled",
+      "repo_id": "Kijai/HunyuanVideo_comfy",
+      "filename": "hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 13185035336,
+      "size_gb": 12.28,
+      "category": "Video Generation Models",
+      "sub_category": "Hunyuan Models"
+    },
+    "Video Generation Models::Hunyuan Models::HunYuan I2V 720p FP8 Scaled": {
+      "name": "HunYuan I2V 720p FP8 Scaled",
+      "repo_id": "Kijai/HunyuanVideo_comfy",
+      "filename": "hunyuan_video_I2V_720_fixed_fp8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 13185035336,
+      "size_gb": 12.28,
+      "category": "Video Generation Models",
+      "sub_category": "Hunyuan Models"
+    },
+    "Video Generation Models::Hunyuan Models::HunYuan I2V 720p GGUF Q8": {
+      "name": "HunYuan I2V 720p GGUF Q8",
+      "repo_id": "Kijai/HunyuanVideo_comfy",
+      "filename": "hunyuan_video_I2V-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 13951027744,
+      "size_gb": 12.99,
+      "category": "Video Generation Models",
+      "sub_category": "Hunyuan Models"
+    },
+    "Video Generation Models::Hunyuan Models::HunYuan I2V 720p GGUF Q6_K": {
+      "name": "HunYuan I2V 720p GGUF Q6_K",
+      "repo_id": "Kijai/HunyuanVideo_comfy",
+      "filename": "hunyuan_video_I2V-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10934077984,
+      "size_gb": 10.18,
+      "category": "Video Generation Models",
+      "sub_category": "Hunyuan Models"
+    },
+    "Video Generation Models::Hunyuan Models::HunYuan I2V 720p GGUF Q4_K_S": {
+      "name": "HunYuan I2V 720p GGUF Q4_K_S",
+      "repo_id": "Kijai/HunyuanVideo_comfy",
+      "filename": "hunyuan_video_I2V-Q4_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 7722486304,
+      "size_gb": 7.19,
+      "category": "Video Generation Models",
+      "sub_category": "Hunyuan Models"
+    },
+    "Video Generation Models::Fast Hunyuan Models - 6 Steps::FAST HunYuan T2V 720p GGUF BF16": {
+      "name": "FAST HunYuan T2V 720p GGUF BF16",
+      "repo_id": "city96/FastHunyuan-gguf",
+      "filename": "fast-hunyuan-video-t2v-720p-BF16.gguf",
+      "is_snapshot": false,
+      "size_bytes": 25649179392,
+      "size_gb": 23.89,
+      "category": "Video Generation Models",
+      "sub_category": "Fast Hunyuan Models - 6 Steps"
+    },
+    "Video Generation Models::Fast Hunyuan Models - 6 Steps::FAST HunYuan T2V 720p FP8": {
+      "name": "FAST HunYuan T2V 720p FP8",
+      "repo_id": "Kijai/HunyuanVideo_comfy",
+      "filename": "hunyuan_video_FastVideo_720_fp8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 13185035336,
+      "size_gb": 12.28,
+      "category": "Video Generation Models",
+      "sub_category": "Fast Hunyuan Models - 6 Steps"
+    },
+    "Video Generation Models::Fast Hunyuan Models - 6 Steps::FAST HunYuan T2V 720p GGUF Q8": {
+      "name": "FAST HunYuan T2V 720p GGUF Q8",
+      "repo_id": "city96/FastHunyuan-gguf",
+      "filename": "fast-hunyuan-video-t2v-720p-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 13970664192,
+      "size_gb": 13.01,
+      "category": "Video Generation Models",
+      "sub_category": "Fast Hunyuan Models - 6 Steps"
+    },
+    "Video Generation Models::Fast Hunyuan Models - 6 Steps::FAST HunYuan T2V 720p GGUF Q6_K": {
+      "name": "FAST HunYuan T2V 720p GGUF Q6_K",
+      "repo_id": "city96/FastHunyuan-gguf",
+      "filename": "fast-hunyuan-video-t2v-720p-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10953714432,
+      "size_gb": 10.2,
+      "category": "Video Generation Models",
+      "sub_category": "Fast Hunyuan Models - 6 Steps"
+    },
+    "Video Generation Models::Fast Hunyuan Models - 6 Steps::FAST HunYuan T2V 720p GGUF Q5_K_M": {
+      "name": "FAST HunYuan T2V 720p GGUF Q5_K_M",
+      "repo_id": "city96/FastHunyuan-gguf",
+      "filename": "fast-hunyuan-video-t2v-720p-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 9449663232,
+      "size_gb": 8.8,
+      "category": "Video Generation Models",
+      "sub_category": "Fast Hunyuan Models - 6 Steps"
+    },
+    "Video Generation Models::Fast Hunyuan Models - 6 Steps::FAST HunYuan T2V 720p GGUF Q4_K_M": {
+      "name": "FAST HunYuan T2V 720p GGUF Q4_K_M",
+      "repo_id": "city96/FastHunyuan-gguf",
+      "filename": "fast-hunyuan-video-t2v-720p-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 7883680512,
+      "size_gb": 7.34,
+      "category": "Video Generation Models",
+      "sub_category": "Fast Hunyuan Models - 6 Steps"
+    },
+    "Video Generation Models::SkyReels HunYuan Models::SkyReels HunYuan T2V 720p BF16": {
+      "name": "SkyReels HunYuan T2V 720p BF16",
+      "repo_id": "Kijai/SkyReels-V1-Hunyuan_comfy",
+      "filename": "skyreels_hunyuan_t2v_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 25642120808,
+      "size_gb": 23.88,
+      "category": "Video Generation Models",
+      "sub_category": "SkyReels HunYuan Models"
+    },
+    "Video Generation Models::SkyReels HunYuan Models::SkyReels HunYuan I2V 720p BF16": {
+      "name": "SkyReels HunYuan I2V 720p BF16",
+      "repo_id": "Kijai/SkyReels-V1-Hunyuan_comfy",
+      "filename": "skyreels_hunyuan_i2v_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 25642514024,
+      "size_gb": 23.88,
+      "category": "Video Generation Models",
+      "sub_category": "SkyReels HunYuan Models"
+    },
+    "Video Generation Models::SkyReels HunYuan Models::SkyReels HunYuan T2V 720p FP8": {
+      "name": "SkyReels HunYuan T2V 720p FP8",
+      "repo_id": "Kijai/SkyReels-V1-Hunyuan_comfy",
+      "filename": "skyreels_hunyuan_t2v_fp8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 13165964352,
+      "size_gb": 12.26,
+      "category": "Video Generation Models",
+      "sub_category": "SkyReels HunYuan Models"
+    },
+    "Video Generation Models::SkyReels HunYuan Models::SkyReels HunYuan I2V 720p FP8": {
+      "name": "SkyReels HunYuan I2V 720p FP8",
+      "repo_id": "Kijai/SkyReels-V1-Hunyuan_comfy",
+      "filename": "skyreels_hunyuan_i2v_fp8_e4m3fn.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 13166357568,
+      "size_gb": 12.26,
+      "category": "Video Generation Models",
+      "sub_category": "SkyReels HunYuan Models"
+    },
+    "Video Generation Models::SkyReels HunYuan Models::SkyReels HunYuan I2V 720p GGUF Q8": {
+      "name": "SkyReels HunYuan I2V 720p GGUF Q8",
+      "repo_id": "Kijai/SkyReels-V1-Hunyuan_comfy",
+      "filename": "skyreels-hunyuan-I2V-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 13971450624,
+      "size_gb": 13.01,
+      "category": "Video Generation Models",
+      "sub_category": "SkyReels HunYuan Models"
+    },
+    "Video Generation Models::SkyReels HunYuan Models::SkyReels HunYuan I2V 720p GGUF Q6_K": {
+      "name": "SkyReels HunYuan I2V 720p GGUF Q6_K",
+      "repo_id": "Kijai/SkyReels-V1-Hunyuan_comfy",
+      "filename": "skyreels-hunyuan-I2V-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10954500864,
+      "size_gb": 10.2,
+      "category": "Video Generation Models",
+      "sub_category": "SkyReels HunYuan Models"
+    },
+    "Video Generation Models::SkyReels HunYuan Models::SkyReels HunYuan I2V 720p GGUF Q5_K_M": {
+      "name": "SkyReels HunYuan I2V 720p GGUF Q5_K_M",
+      "repo_id": "Kijai/SkyReels-V1-Hunyuan_comfy",
+      "filename": "skyreels-hunyuan-I2V-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 9450449664,
+      "size_gb": 8.8,
+      "category": "Video Generation Models",
+      "sub_category": "SkyReels HunYuan Models"
+    },
+    "Video Generation Models::SkyReels HunYuan Models::SkyReels HunYuan I2V 720p GGUF Q4_K_S": {
+      "name": "SkyReels HunYuan I2V 720p GGUF Q4_K_S",
+      "repo_id": "Kijai/SkyReels-V1-Hunyuan_comfy",
+      "filename": "skyreels-hunyuan-I2V-Q4_K_S.gguf",
+      "is_snapshot": false,
+      "size_bytes": 7742909184,
+      "size_gb": 7.21,
+      "category": "Video Generation Models",
+      "sub_category": "SkyReels HunYuan Models"
+    },
+    "Video Generation Models::Genmo Mochi 1 Models::Genmo Mochi 1 Preview T2V BF16": {
+      "name": "Genmo Mochi 1 Preview T2V BF16",
+      "repo_id": "Comfy-Org/mochi_preview_repackaged",
+      "filename": "split_files/diffusion_models/mochi_preview_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 20055467768,
+      "size_gb": 18.68,
+      "category": "Video Generation Models",
+      "sub_category": "Genmo Mochi 1 Models"
+    },
+    "Video Generation Models::Genmo Mochi 1 Models::Genmo Mochi 1 Preview T2V FP8 Scaled": {
+      "name": "Genmo Mochi 1 Preview T2V FP8 Scaled",
+      "repo_id": "Comfy-Org/mochi_preview_repackaged",
+      "filename": "split_files/diffusion_models/mochi_preview_fp8_scaled.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 10028084160,
+      "size_gb": 9.34,
+      "category": "Video Generation Models",
+      "sub_category": "Genmo Mochi 1 Models"
+    },
+    "Video Generation Models::Lightricks LTX Video Models - Ultra Fast::LTX 2b T2V+I2V 768x512 v0.9.5": {
+      "name": "LTX 2b T2V+I2V 768x512 v0.9.5",
+      "repo_id": "Lightricks/LTX-Video",
+      "filename": "ltx-video-2b-v0.9.5.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 6340729500,
+      "size_gb": 5.91,
+      "category": "Video Generation Models",
+      "sub_category": "Lightricks LTX Video Models - Ultra Fast"
+    },
+    "Video Generation Models::Lightricks LTX Video Models - Ultra Fast::LTX 13B Dev T2V+I2V 0.9.7 (FP16/BF16)": {
+      "name": "LTX 13B Dev T2V+I2V 0.9.7 (FP16/BF16)",
+      "repo_id": "Lightricks/LTX-Video",
+      "filename": "ltxv-13b-0.9.7-dev.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 28579183340,
+      "size_gb": 26.62,
+      "category": "Video Generation Models",
+      "sub_category": "Lightricks LTX Video Models - Ultra Fast"
+    },
+    "Video Generation Models::Lightricks LTX Video Models - Ultra Fast::LTX 13B Dev T2V+I2V 0.9.7 FP8": {
+      "name": "LTX 13B Dev T2V+I2V 0.9.7 FP8",
+      "repo_id": "Lightricks/LTX-Video",
+      "filename": "ltxv-13b-0.9.7-dev-fp8.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 15694279916,
+      "size_gb": 14.62,
+      "category": "Video Generation Models",
+      "sub_category": "Lightricks LTX Video Models - Ultra Fast"
+    },
+    "Video Generation Models::Lightricks LTX Video Models - Ultra Fast::LTX 13B Dev T2V+I2V 0.9.7 GGUF Q8_0": {
+      "name": "LTX 13B Dev T2V+I2V 0.9.7 GGUF Q8_0",
+      "repo_id": "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
+      "filename": "ltxv-13b-0.9.7-dev-Q8_0.gguf",
+      "is_snapshot": false,
+      "size_bytes": 14014784512,
+      "size_gb": 13.05,
+      "category": "Video Generation Models",
+      "sub_category": "Lightricks LTX Video Models - Ultra Fast"
+    },
+    "Video Generation Models::Lightricks LTX Video Models - Ultra Fast::LTX 13B Dev T2V+I2V 0.9.7 GGUF Q6_K": {
+      "name": "LTX 13B Dev T2V+I2V 0.9.7 GGUF Q6_K",
+      "repo_id": "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
+      "filename": "ltxv-13b-0.9.7-dev-Q6_K.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10894222336,
+      "size_gb": 10.15,
+      "category": "Video Generation Models",
+      "sub_category": "Lightricks LTX Video Models - Ultra Fast"
+    },
+    "Video Generation Models::Lightricks LTX Video Models - Ultra Fast::LTX 13B Dev T2V+I2V 0.9.7 GGUF Q5_K_M": {
+      "name": "LTX 13B Dev T2V+I2V 0.9.7 GGUF Q5_K_M",
+      "repo_id": "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
+      "filename": "ltxv-13b-0.9.7-dev-Q5_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 9824674816,
+      "size_gb": 9.15,
+      "category": "Video Generation Models",
+      "sub_category": "Lightricks LTX Video Models - Ultra Fast"
+    },
+    "Video Generation Models::Lightricks LTX Video Models - Ultra Fast::LTX 13B Dev T2V+I2V 0.9.7 GGUF Q4_K_M": {
+      "name": "LTX 13B Dev T2V+I2V 0.9.7 GGUF Q4_K_M",
+      "repo_id": "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
+      "filename": "ltxv-13b-0.9.7-dev-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 8818041856,
+      "size_gb": 8.21,
+      "category": "Video Generation Models",
+      "sub_category": "Lightricks LTX Video Models - Ultra Fast"
+    },
+    "Video Generation Models::Lightricks LTX Video Models - Ultra Fast::LTX VAE (BF16) - Companion for LTX 13B Dev Models": {
+      "name": "LTX VAE (BF16) - Companion for LTX 13B Dev Models",
+      "repo_id": "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
+      "filename": "ltxv-13b-0.9.7-vae-BF16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 2493857180,
+      "size_gb": 2.32,
+      "category": "Video Generation Models",
+      "sub_category": "Lightricks LTX Video Models - Ultra Fast"
+    },
+    "LoRA Models::Wan 2.1 LoRAs::Wan 2.1 CausVid T2V/I2V LoRA v2 14B (Rank 32) - Companion": {
+      "name": "Wan 2.1 CausVid T2V/I2V LoRA v2 14B (Rank 32) - Companion",
+      "repo_id": "Kijai/WanVideo_comfy",
+      "filename": "Wan21_CausVid_14B_T2V_lora_rank32_v2.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 204551064,
+      "size_gb": 0.19,
+      "category": "LoRA Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "LoRA Models::Wan 2.1 LoRAs::Wan 2.1 CausVid T2V/I2V LoRA 14B (Rank 32) - Companion": {
+      "name": "Wan 2.1 CausVid T2V/I2V LoRA 14B (Rank 32) - Companion",
+      "repo_id": "Kijai/WanVideo_comfy",
+      "filename": "Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 319116504,
+      "size_gb": 0.3,
+      "category": "LoRA Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "LoRA Models::Wan 2.1 LoRAs::Wan 2.1 CausVid T2V LoRA 1.3B (Rank 32) - Companion": {
+      "name": "Wan 2.1 CausVid T2V LoRA 1.3B (Rank 32) - Companion",
+      "repo_id": "Kijai/WanVideo_comfy",
+      "filename": "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 91233416,
+      "size_gb": 0.08,
+      "category": "LoRA Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "LoRA Models::Wan 2.1 LoRAs::Phantom Wan 14B FusionX LoRA": {
+      "name": "Phantom Wan 14B FusionX LoRA",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Phantom_Wan_14B_FusionX_LoRA.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 316822496,
+      "size_gb": 0.3,
+      "category": "LoRA Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "LoRA Models::Wan 2.1 LoRAs::Wan 2.1 I2V 14B FusionX LoRA": {
+      "name": "Wan 2.1 I2V 14B FusionX LoRA",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.1_Image_to_Video_14B_FusionX_LoRA.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 371128616,
+      "size_gb": 0.35,
+      "category": "LoRA Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "LoRA Models::Wan 2.1 LoRAs::Wan 2.1 T2V 14B FusionX LoRA": {
+      "name": "Wan 2.1 T2V 14B FusionX LoRA",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2.1_Text_to_Video_14B_FusionX_LoRA.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 316822496,
+      "size_gb": 0.3,
+      "category": "LoRA Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "LoRA Models::Wan 2.1 LoRAs::Wan 2.1 14B Self Forcing LoRA T2V/I2V": {
+      "name": "Wan 2.1 14B Self Forcing LoRA T2V/I2V",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan21_14B_Self_Forcing_LoRA_T2V_I2V.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 316822831,
+      "size_gb": 0.3,
+      "category": "LoRA Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "LoRA Models::Wan 2.1 LoRAs::Wan 2.1 14B LightX2V CFG Step Distill LoRA V2 (T2V + I2V) (Rank 64)": {
+      "name": "Wan 2.1 14B LightX2V CFG Step Distill LoRA V2 (T2V + I2V) (Rank 64)",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64_fixed.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 739472104,
+      "size_gb": 0.69,
+      "category": "LoRA Models",
+      "sub_category": "Wan 2.1 LoRAs"
+    },
+    "LoRA Models::Various LoRAs::Migration LoRA Cloth (TTPlanet)": {
+      "name": "Migration LoRA Cloth (TTPlanet)",
+      "repo_id": "TTPlanet/Migration_Lora_flux",
+      "filename": "Migration_Lora_cloth.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 171969344,
+      "size_gb": 0.16,
+      "category": "LoRA Models",
+      "sub_category": "Various LoRAs"
+    },
+    "LoRA Models::Various LoRAs::Figures TTP Migration LoRA (TTPlanet)": {
+      "name": "Figures TTP Migration LoRA (TTPlanet)",
+      "repo_id": "TTPlanet/Migration_Lora_flux",
+      "filename": "figures_TTP_Migration.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 343805384,
+      "size_gb": 0.32,
+      "category": "LoRA Models",
+      "sub_category": "Various LoRAs"
+    },
+    "ControlNet Models::Various ControlNets::Wan 2.1 Uni3C ControlNet": {
+      "name": "Wan 2.1 Uni3C ControlNet",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan21_Uni3C_controlnet_fp16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1997314376,
+      "size_gb": 1.86,
+      "category": "ControlNet Models",
+      "sub_category": "Various ControlNets"
+    },
+    "LLM Models::General LLMs::Meta-Llama-3.1-8B-Instruct (Full Repo)": {
+      "name": "Meta-Llama-3.1-8B-Instruct (Full Repo)",
+      "repo_id": "unsloth/Meta-Llama-3.1-8B-Instruct",
+      "filename": null,
+      "is_snapshot": true,
+      "size_bytes": 16077852512,
+      "size_gb": 14.97,
+      "category": "LLM Models",
+      "sub_category": "General LLMs"
+    },
+    "VAE Models::Most Common VAEs (e.g. FLUX and HiDream-I1)::Flux AE (Saved as Flux/ae.safetensors - SwarmUI default)": {
+      "name": "Flux AE (Saved as Flux/ae.safetensors - SwarmUI default)",
+      "repo_id": "MonsterMMORPG/Kohya_Train",
+      "filename": "ae.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 335304388,
+      "size_gb": 0.31,
+      "category": "VAE Models",
+      "sub_category": "Most Common VAEs (e.g. FLUX and HiDream-I1)"
+    },
+    "VAE Models::Most Common VAEs (e.g. FLUX and HiDream-I1)::LTX VAE (BF16) - Companion for LTX 13B Dev Models": {
+      "name": "LTX VAE (BF16) - Companion for LTX 13B Dev Models",
+      "repo_id": "wsbagnsv1/ltxv-13b-0.9.7-dev-GGUF",
+      "filename": "ltxv-13b-0.9.7-vae-BF16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 2493857180,
+      "size_gb": 2.32,
+      "category": "VAE Models",
+      "sub_category": "Most Common VAEs (e.g. FLUX and HiDream-I1)"
+    },
+    "VAE Models::Most Common VAEs (e.g. FLUX and HiDream-I1)::Wan 2.1 VAE BF16": {
+      "name": "Wan 2.1 VAE BF16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Wan2_1_VAE_bf16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 253806278,
+      "size_gb": 0.24,
+      "category": "VAE Models",
+      "sub_category": "Most Common VAEs (e.g. FLUX and HiDream-I1)"
+    },
+    "VAE Models::Most Common VAEs (e.g. FLUX and HiDream-I1)::Wan 2.2 VAE": {
+      "name": "Wan 2.2 VAE",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "wan2.2_vae.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1409400960,
+      "size_gb": 1.31,
+      "category": "VAE Models",
+      "sub_category": "Most Common VAEs (e.g. FLUX and HiDream-I1)"
+    },
+    "VAE Models::Most Common VAEs (e.g. FLUX and HiDream-I1)::qwen_image_vae.safetensors": {
+      "name": "qwen_image_vae.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "qwen_image_vae.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 253806246,
+      "size_gb": 0.24,
+      "category": "VAE Models",
+      "sub_category": "Most Common VAEs (e.g. FLUX and HiDream-I1)"
+    },
+    "Clip Vision Models::Standard Clip Vision Models::CLIP Vision H (Used by Wan 2.1)": {
+      "name": "CLIP Vision H (Used by Wan 2.1)",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "clip_vision_h.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 1264219396,
+      "size_gb": 1.18,
+      "category": "Clip Vision Models",
+      "sub_category": "Standard Clip Vision Models"
+    },
+    "Clip Vision Models::SigLIP Vision Models::SigLIP Vision Patch14 384px": {
+      "name": "SigLIP Vision Patch14 384px",
+      "repo_id": "Comfy-Org/sigclip_vision_384",
+      "filename": "sigclip_vision_patch14_384.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 856505640,
+      "size_gb": 0.8,
+      "category": "Clip Vision Models",
+      "sub_category": "SigLIP Vision Models"
+    },
+    "Clip Vision Models::SigLIP Vision Models::SigLIP SO400M Patch14 384px (Full Repo)": {
+      "name": "SigLIP SO400M Patch14 384px (Full Repo)",
+      "repo_id": "google/siglip-so400m-patch14-384",
+      "filename": null,
+      "is_snapshot": true,
+      "size_bytes": 3515156215,
+      "size_gb": 3.27,
+      "category": "Clip Vision Models",
+      "sub_category": "SigLIP Vision Models"
+    },
+    "ComfyUI Workflows::Captioning Workflows::Joy Caption Alpha Two (Full Repo)": {
+      "name": "Joy Caption Alpha Two (Full Repo)",
+      "repo_id": "MonsterMMORPG/joy-caption-alpha-two",
+      "filename": null,
+      "is_snapshot": true,
+      "size_bytes": 1799137904,
+      "size_gb": 1.68,
+      "category": "ComfyUI Workflows",
+      "sub_category": "Captioning Workflows"
+    }
+  },
+  "bundles": {
+    "SwarmUI Bundles::bundle_0": {
+      "name": "Complete Image Generation and Editing Bundle",
+      "category": "SwarmUI Bundles",
+      "total_size_bytes": 226137401621,
+      "total_size_gb": 210.61,
+      "models": [
+        {
+          "name": "Z Image Turbo BF16",
+          "size_bytes": 12309932329,
+          "size_gb": 11.46
+        },
+        {
+          "name": "Qwen 3 4B Text Encoder (For Z Image Turbo)",
+          "size_bytes": 8044982048,
+          "size_gb": 7.49
+        },
+        {
+          "name": "Z-Image-Turbo-Fun-Controlnet-Union",
+          "size_bytes": 3101638265,
+          "size_gb": 2.89
+        },
+        {
+          "name": "Qwen_Image_Edit_Plus_2509_FP8_Scaled",
+          "size_bytes": 20436356154,
+          "size_gb": 19.03
+        },
+        {
+          "name": "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors",
+          "size_bytes": 1698951104,
+          "size_gb": 1.58
+        },
+        {
+          "name": "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors",
+          "size_bytes": 1698951104,
+          "size_gb": 1.58
+        },
+        {
+          "name": "Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors",
+          "size_bytes": 236223610,
+          "size_gb": 0.22
+        },
+        {
+          "name": "Qwen-Image-Edit-2509-Relight-LoRA.safetensors",
+          "size_bytes": 236183059,
+          "size_gb": 0.22
+        },
+        {
+          "name": "Qwen-Image-Edit-2509-Fusion-LoRA.safetensors",
+          "size_bytes": 236183067,
+          "size_gb": 0.22
+        },
+        {
+          "name": "Qwen-Image-FP8-Lightning-4steps-V1.0-fp32.safetensors",
+          "size_bytes": 1698951104,
+          "size_gb": 1.58
+        },
+        {
+          "name": "Qwen_Image_FP8_Scaled",
+          "size_bytes": 20436342742,
+          "size_gb": 19.03
+        },
+        {
+          "name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+          "size_bytes": 9384670680,
+          "size_gb": 8.74
+        },
+        {
+          "name": "qwen_image_vae.safetensors",
+          "size_bytes": 253806246,
+          "size_gb": 0.24
+        },
+        {
+          "name": "Qwen Image Lightning 8steps-V2 LoRA",
+          "size_bytes": 1698951104,
+          "size_gb": 1.58
+        },
+        {
+          "name": "Qwen_LoRA_Amateur_Photo_v1.safetensors",
+          "size_bytes": 1179978384,
+          "size_gb": 1.1
+        },
+        {
+          "name": "Qwen_LoRA_Skin_Fix_v2.safetensors",
+          "size_bytes": 589940887,
+          "size_gb": 0.55
+        },
+        {
+          "name": "Face YOLOv9c Detection Model",
+          "size_bytes": 87645310,
+          "size_gb": 0.08
+        },
+        {
+          "name": "YOLOv12L Face Detection Model",
+          "size_bytes": 53507770,
+          "size_gb": 0.05
+        },
+        {
+          "name": "Male Face Segmentation Model",
+          "size_bytes": 6354855,
+          "size_gb": 0.01
+        },
+        {
+          "name": "Female Face Segmentation Model",
+          "size_bytes": 6363111,
+          "size_gb": 0.01
+        },
+        {
+          "name": "Best Upscaler Models (Full Set Snapshot)",
+          "size_bytes": 922668050,
+          "size_gb": 0.86
+        },
+        {
+          "name": "Wan 2.2 T2V Low Noise 14B FP8 Scaled",
+          "size_bytes": 14293923632,
+          "size_gb": 13.31
+        },
+        {
+          "name": "Wan2.2_T2V_High_Noise_Lightx2v_4steps_LoRA_1217.safetensors",
+          "size_bytes": 613584209,
+          "size_gb": 0.57
+        },
+        {
+          "name": "Wan2.2_T2V_Low_Noise_Lightx2v_4steps_LoRA_1217.safetensors",
+          "size_bytes": 613584208,
+          "size_gb": 0.57
+        },
+        {
+          "name": "Wan 2.2 VAE",
+          "size_bytes": 1409400960,
+          "size_gb": 1.31
+        },
+        {
+          "name": "Wan 2.1 VAE BF16",
+          "size_bytes": 253806278,
+          "size_gb": 0.24
+        },
+        {
+          "name": "UMT5 XXL FP16 (Save As default for SwarmUI)",
+          "size_bytes": 11366399385,
+          "size_gb": 10.59
+        },
+        {
+          "name": "FLUX SRPO",
+          "size_bytes": 23802997117,
+          "size_gb": 22.17
+        },
+        {
+          "name": "FLUX DEV Fill (In/Out-Painting)",
+          "size_bytes": 23804922408,
+          "size_gb": 22.17
+        },
+        {
+          "name": "T5 XXL FP16 (Save As t5xxl_enconly for SwarmUI default name)",
+          "size_bytes": 9787841024,
+          "size_gb": 9.12
+        },
+        {
+          "name": "Flux AE (Saved as Flux/ae.safetensors - SwarmUI default)",
+          "size_bytes": 335304388,
+          "size_gb": 0.31
+        },
+        {
+          "name": "CLIP-SAE-ViT-L-14 (Save As clip_l.safetensors - SwarmUI default name)",
+          "size_bytes": 1710537716,
+          "size_gb": 1.59
+        },
+        {
+          "name": "FLUX 2 Dev FP8 Mixed Scaled High Quality",
+          "size_bytes": 35455665662,
+          "size_gb": 33.02
+        },
+        {
+          "name": "FLUX 2 VAE",
+          "size_bytes": 336213556,
+          "size_gb": 0.31
+        },
+        {
+          "name": "Mistral 3 Small FLUX 2 Text Encoder FP8",
+          "size_bytes": 18034640095,
+          "size_gb": 16.8
+        }
+      ],
+      "model_count": 35
+    },
+    "SwarmUI Bundles::bundle_1": {
+      "name": "Z Image Turbo Core Bundle",
+      "category": "SwarmUI Bundles",
+      "total_size_bytes": 23791857030,
+      "total_size_gb": 22.16,
+      "models": [
+        {
+          "name": "Z Image Turbo BF16",
+          "size_bytes": 12309932329,
+          "size_gb": 11.46
+        },
+        {
+          "name": "Qwen 3 4B Text Encoder (For Z Image Turbo)",
+          "size_bytes": 8044982048,
+          "size_gb": 7.49
+        },
+        {
+          "name": "Z-Image-Turbo-Fun-Controlnet-Union",
+          "size_bytes": 3101638265,
+          "size_gb": 2.89
+        },
+        {
+          "name": "Flux AE (Saved as Flux/ae.safetensors - SwarmUI default)",
+          "size_bytes": 335304388,
+          "size_gb": 0.31
+        }
+      ],
+      "model_count": 4
+    },
+    "SwarmUI Bundles::bundle_2": {
+      "name": "FLUX 2 Core Bundle",
+      "category": "SwarmUI Bundles",
+      "total_size_bytes": 53826519313,
+      "total_size_gb": 50.13,
+      "models": [
+        {
+          "name": "FLUX 2 Dev FP8 Mixed Scaled High Quality",
+          "size_bytes": 35455665662,
+          "size_gb": 33.02
+        },
+        {
+          "name": "FLUX 2 VAE",
+          "size_bytes": 336213556,
+          "size_gb": 0.31
+        },
+        {
+          "name": "Mistral 3 Small FLUX 2 Text Encoder FP8",
+          "size_bytes": 18034640095,
+          "size_gb": 16.8
+        }
+      ],
+      "model_count": 3
+    },
+    "SwarmUI Bundles::bundle_3": {
+      "name": "Qwen Image Core Bundle",
+      "category": "SwarmUI Bundles",
+      "total_size_bytes": 60862028341,
+      "total_size_gb": 56.68,
+      "models": [
+        {
+          "name": "Qwen_Image_FP8_Scaled",
+          "size_bytes": 20436342742,
+          "size_gb": 19.03
+        },
+        {
+          "name": "Qwen_Image_Edit_Plus_2509_FP8_Scaled",
+          "size_bytes": 20436356154,
+          "size_gb": 19.03
+        },
+        {
+          "name": "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors",
+          "size_bytes": 1698951104,
+          "size_gb": 1.58
+        },
+        {
+          "name": "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors",
+          "size_bytes": 1698951104,
+          "size_gb": 1.58
+        },
+        {
+          "name": "Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors",
+          "size_bytes": 236223610,
+          "size_gb": 0.22
+        },
+        {
+          "name": "Qwen-Image-Edit-2509-Relight-LoRA.safetensors",
+          "size_bytes": 236183059,
+          "size_gb": 0.22
+        },
+        {
+          "name": "Qwen-Image-Edit-2509-Fusion-LoRA.safetensors",
+          "size_bytes": 236183067,
+          "size_gb": 0.22
+        },
+        {
+          "name": "Qwen-Image-FP8-Lightning-4steps-V1.0-fp32.safetensors",
+          "size_bytes": 1698951104,
+          "size_gb": 1.58
+        },
+        {
+          "name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+          "size_bytes": 9384670680,
+          "size_gb": 8.74
+        },
+        {
+          "name": "qwen_image_vae.safetensors",
+          "size_bytes": 253806246,
+          "size_gb": 0.24
+        },
+        {
+          "name": "Qwen Image Lightning 8steps-V2 LoRA",
+          "size_bytes": 1698951104,
+          "size_gb": 1.58
+        },
+        {
+          "name": "Qwen_LoRA_Amateur_Photo_v1.safetensors",
+          "size_bytes": 1179978384,
+          "size_gb": 1.1
+        },
+        {
+          "name": "Qwen_LoRA_Skin_Fix_v2.safetensors",
+          "size_bytes": 589940887,
+          "size_gb": 0.55
+        },
+        {
+          "name": "Face YOLOv9c Detection Model",
+          "size_bytes": 87645310,
+          "size_gb": 0.08
+        },
+        {
+          "name": "YOLOv12L Face Detection Model",
+          "size_bytes": 53507770,
+          "size_gb": 0.05
+        },
+        {
+          "name": "Male Face Segmentation Model",
+          "size_bytes": 6354855,
+          "size_gb": 0.01
+        },
+        {
+          "name": "Female Face Segmentation Model",
+          "size_bytes": 6363111,
+          "size_gb": 0.01
+        },
+        {
+          "name": "Best Upscaler Models (Full Set Snapshot)",
+          "size_bytes": 922668050,
+          "size_gb": 0.86
+        }
+      ],
+      "model_count": 18
+    },
+    "SwarmUI Bundles::bundle_4": {
+      "name": "Wan 2.2 Core 4 Steps Bundle",
+      "category": "SwarmUI Bundles",
+      "total_size_bytes": 111844951409,
+      "total_size_gb": 104.16,
+      "models": [
+        {
+          "name": "Wan 2.2 I2V High Noise 14B FP8 Scaled",
+          "size_bytes": 14294742832,
+          "size_gb": 13.31
+        },
+        {
+          "name": "Wan 2.2 I2V Low Noise 14B FP8 Scaled",
+          "size_bytes": 14294742832,
+          "size_gb": 13.31
+        },
+        {
+          "name": "Wan 2.2 T2V High Noise 14B FP8 Scaled",
+          "size_bytes": 14293923632,
+          "size_gb": 13.31
+        },
+        {
+          "name": "Wan 2.2 T2V Low Noise 14B FP8 Scaled",
+          "size_bytes": 14293923632,
+          "size_gb": 13.31
+        },
+        {
+          "name": "Wan2.2-I2V-A14B-Moe-Distill-Lightx2v-Low_fp8_scaled.safetensors",
+          "size_bytes": 15003000250,
+          "size_gb": 13.97
+        },
+        {
+          "name": "Wan2.2-I2V-A14B-Moe-Distill-Lightx2v-High_fp8_scaled.safetensors",
+          "size_bytes": 15003000250,
+          "size_gb": 13.97
+        },
+        {
+          "name": "Wan 2.2 VAE",
+          "size_bytes": 1409400960,
+          "size_gb": 1.31
+        },
+        {
+          "name": "Wan 2.1 VAE BF16",
+          "size_bytes": 253806278,
+          "size_gb": 0.24
+        },
+        {
+          "name": "UMT5 XXL FP16 (Save As default for SwarmUI)",
+          "size_bytes": 11366399385,
+          "size_gb": 10.59
+        },
+        {
+          "name": "Wan2.2-T2V-A14B-4steps-lora-250928-Low.safetensors",
+          "size_bytes": 1226977424,
+          "size_gb": 1.14
+        },
+        {
+          "name": "Wan2.2-T2V-A14B-4steps-lora-250928-High.safetensors",
+          "size_bytes": 2453812864,
+          "size_gb": 2.29
+        },
+        {
+          "name": "Wan2_2-I2V-A14B-4steps-lora-rank64-Seko-V1_Low",
+          "size_bytes": 1226977424,
+          "size_gb": 1.14
+        },
+        {
+          "name": "Wan2_2-I2V-A14B-4steps-lora-rank64-Seko-V1_High",
+          "size_bytes": 1226977424,
+          "size_gb": 1.14
+        },
+        {
+          "name": "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V2.0-Low.safetensors",
+          "size_bytes": 1227043302,
+          "size_gb": 1.14
+        },
+        {
+          "name": "Wan2.2-T2V-A14B-4steps-lora-rank64-Seko-V2.0-High.safetensors",
+          "size_bytes": 1227043303,
+          "size_gb": 1.14
+        },
+        {
+          "name": "Wan2.2_T2V_High_Noise_Lightx2v_4steps_LoRA_1217.safetensors",
+          "size_bytes": 613584209,
+          "size_gb": 0.57
+        },
+        {
+          "name": "Wan2.2_T2V_Low_Noise_Lightx2v_4steps_LoRA_1217.safetensors",
+          "size_bytes": 613584208,
+          "size_gb": 0.57
+        },
+        {
+          "name": "Wan 2.1 14B LightX2V CFG Step Distill LoRA V2 (T2V + I2V) (Rank 64)",
+          "size_bytes": 739472104,
+          "size_gb": 0.69
+        },
+        {
+          "name": "Best Upscaler Models (Full Set Snapshot)",
+          "size_bytes": 922668050,
+          "size_gb": 0.86
+        },
+        {
+          "name": "Face YOLOv9c Detection Model",
+          "size_bytes": 87645310,
+          "size_gb": 0.08
+        },
+        {
+          "name": "YOLOv12L Face Detection Model",
+          "size_bytes": 53507770,
+          "size_gb": 0.05
+        },
+        {
+          "name": "Male Face Segmentation Model",
+          "size_bytes": 6354855,
+          "size_gb": 0.01
+        },
+        {
+          "name": "Female Face Segmentation Model",
+          "size_bytes": 6363111,
+          "size_gb": 0.01
+        }
+      ],
+      "model_count": 23
+    },
+    "SwarmUI Bundles::bundle_5": {
+      "name": "Wan 2.1 Core Models Bundle (GGUF Q6_K + Best LoRAs)",
+      "category": "SwarmUI Bundles",
+      "total_size_bytes": 40940128058,
+      "total_size_gb": 38.13,
+      "models": [
+        {
+          "name": "Wan 2.1 T2V 1.3B FP16",
+          "size_bytes": 2838303560,
+          "size_gb": 2.64
+        },
+        {
+          "name": "Wan 2.1 T2V 14B FusionX LoRA",
+          "size_bytes": 316822496,
+          "size_gb": 0.3
+        },
+        {
+          "name": "Wan 2.1 14B LightX2V CFG Step Distill LoRA V2 (T2V + I2V) (Rank 64)",
+          "size_bytes": 739472104,
+          "size_gb": 0.69
+        },
+        {
+          "name": "Phantom Wan 14B FusionX LoRA",
+          "size_bytes": 316822496,
+          "size_gb": 0.3
+        },
+        {
+          "name": "Wan 2.1 I2V 14B FusionX LoRA",
+          "size_bytes": 371128616,
+          "size_gb": 0.35
+        },
+        {
+          "name": "Wan 2.1 14B Self Forcing LoRA T2V/I2V",
+          "size_bytes": 316822831,
+          "size_gb": 0.3
+        },
+        {
+          "name": "Wan 2.1 T2V 14B 720p GGUF Q6_K",
+          "size_bytes": 12476504704,
+          "size_gb": 11.62
+        },
+        {
+          "name": "Wan 2.1 I2V 14B 720p GGUF Q6_K",
+          "size_bytes": 14233779584,
+          "size_gb": 13.26
+        },
+        {
+          "name": "Wan 2.1 VAE BF16",
+          "size_bytes": 253806278,
+          "size_gb": 0.24
+        },
+        {
+          "name": "UMT5 XXL FP8 Scaled (Default for SwarmUI)",
+          "size_bytes": 6735906897,
+          "size_gb": 6.27
+        },
+        {
+          "name": "CLIP Vision H (Used by Wan 2.1)",
+          "size_bytes": 1264219396,
+          "size_gb": 1.18
+        },
+        {
+          "name": "Best Upscaler Models (Full Set Snapshot)",
+          "size_bytes": 922668050,
+          "size_gb": 0.86
+        },
+        {
+          "name": "Face YOLOv9c Detection Model",
+          "size_bytes": 87645310,
+          "size_gb": 0.08
+        },
+        {
+          "name": "YOLOv12L Face Detection Model",
+          "size_bytes": 53507770,
+          "size_gb": 0.05
+        },
+        {
+          "name": "Male Face Segmentation Model",
+          "size_bytes": 6354855,
+          "size_gb": 0.01
+        },
+        {
+          "name": "Female Face Segmentation Model",
+          "size_bytes": 6363111,
+          "size_gb": 0.01
+        }
+      ],
+      "model_count": 16
+    },
+    "SwarmUI Bundles::bundle_6": {
+      "name": "FLUX Models Bundle",
+      "category": "SwarmUI Bundles",
+      "total_size_bytes": 132056043117,
+      "total_size_gb": 122.99,
+      "models": [
+        {
+          "name": "FLUX SRPO",
+          "size_bytes": 23802997117,
+          "size_gb": 22.17
+        },
+        {
+          "name": "FLUX Kontext DEV BF16",
+          "size_bytes": 23802947360,
+          "size_gb": 22.17
+        },
+        {
+          "name": "FLUX DEV 1.0 FP16",
+          "size_bytes": 23802932552,
+          "size_gb": 22.17
+        },
+        {
+          "name": "FLUX DEV Fill (In/Out-Painting)",
+          "size_bytes": 23804922408,
+          "size_gb": 22.17
+        },
+        {
+          "name": "FLUX DEV Redux (Style/Mix)",
+          "size_bytes": 129063232,
+          "size_gb": 0.12
+        },
+        {
+          "name": "FLUX Krea DEV",
+          "size_bytes": 23802958224,
+          "size_gb": 22.17
+        },
+        {
+          "name": "T5 XXL FP16 (Save As t5xxl_enconly for SwarmUI default name)",
+          "size_bytes": 9787841024,
+          "size_gb": 9.12
+        },
+        {
+          "name": "Flux AE (Saved as Flux/ae.safetensors - SwarmUI default)",
+          "size_bytes": 335304388,
+          "size_gb": 0.31
+        },
+        {
+          "name": "CLIP-SAE-ViT-L-14 (Save As clip_l.safetensors - SwarmUI default name)",
+          "size_bytes": 1710537716,
+          "size_gb": 1.59
+        },
+        {
+          "name": "Best Upscaler Models (Full Set Snapshot)",
+          "size_bytes": 922668050,
+          "size_gb": 0.86
+        },
+        {
+          "name": "Face YOLOv9c Detection Model",
+          "size_bytes": 87645310,
+          "size_gb": 0.08
+        },
+        {
+          "name": "YOLOv12L Face Detection Model",
+          "size_bytes": 53507770,
+          "size_gb": 0.05
+        },
+        {
+          "name": "Male Face Segmentation Model",
+          "size_bytes": 6354855,
+          "size_gb": 0.01
+        },
+        {
+          "name": "Female Face Segmentation Model",
+          "size_bytes": 6363111,
+          "size_gb": 0.01
+        }
+      ],
+      "model_count": 14
+    },
+    "SwarmUI Bundles::bundle_7": {
+      "name": "HiDream-I1 Dev Bundle (Recommended)",
+      "category": "SwarmUI Bundles",
+      "total_size_bytes": 40612630916,
+      "total_size_gb": 37.82,
+      "models": [
+        {
+          "name": "HiDream-I1 Dev GGUF Q8_0",
+          "size_bytes": 18694358720,
+          "size_gb": 17.41
+        },
+        {
+          "name": "T5 XXL FP16 (Save As t5xxl_enconly for SwarmUI default name)",
+          "size_bytes": 9787841024,
+          "size_gb": 9.12
+        },
+        {
+          "name": "Long Clip L for HiDream-I1",
+          "size_bytes": 247586528,
+          "size_gb": 0.23
+        },
+        {
+          "name": "Long Clip G for HiDream-I1",
+          "size_bytes": 1389743104,
+          "size_gb": 1.29
+        },
+        {
+          "name": "LLAMA 3.1 8b Instruct FP8 Scaled for HiDream-I1",
+          "size_bytes": 9081258056,
+          "size_gb": 8.46
+        },
+        {
+          "name": "Flux AE (Saved as Flux/ae.safetensors - SwarmUI default)",
+          "size_bytes": 335304388,
+          "size_gb": 0.31
+        },
+        {
+          "name": "Best Upscaler Models (Full Set Snapshot)",
+          "size_bytes": 922668050,
+          "size_gb": 0.86
+        },
+        {
+          "name": "Face YOLOv9c Detection Model",
+          "size_bytes": 87645310,
+          "size_gb": 0.08
+        },
+        {
+          "name": "YOLOv12L Face Detection Model",
+          "size_bytes": 53507770,
+          "size_gb": 0.05
+        },
+        {
+          "name": "Male Face Segmentation Model",
+          "size_bytes": 6354855,
+          "size_gb": 0.01
+        },
+        {
+          "name": "Female Face Segmentation Model",
+          "size_bytes": 6363111,
+          "size_gb": 0.01
+        }
+      ],
+      "model_count": 11
+    },
+    "SwarmUI Bundles::bundle_8": {
+      "name": "Trained Models Min Requirements",
+      "category": "SwarmUI Bundles",
+      "total_size_bytes": 33424385576,
+      "total_size_gb": 31.13,
+      "models": [
+        {
+          "name": "Flux AE (Saved as Flux/ae.safetensors - SwarmUI default)",
+          "size_bytes": 335304388,
+          "size_gb": 0.31
+        },
+        {
+          "name": "qwen_image_vae.safetensors",
+          "size_bytes": 253806246,
+          "size_gb": 0.24
+        },
+        {
+          "name": "Wan 2.2 VAE",
+          "size_bytes": 1409400960,
+          "size_gb": 1.31
+        },
+        {
+          "name": "Wan 2.1 VAE BF16",
+          "size_bytes": 253806278,
+          "size_gb": 0.24
+        },
+        {
+          "name": "T5 XXL FP16 (Save As t5xxl_enconly for SwarmUI default name)",
+          "size_bytes": 9787841024,
+          "size_gb": 9.12
+        },
+        {
+          "name": "UMT5 XXL FP8 Scaled (Default for SwarmUI)",
+          "size_bytes": 6735906897,
+          "size_gb": 6.27
+        },
+        {
+          "name": "CLIP-SAE-ViT-L-14 (Save As clip_l.safetensors - SwarmUI default name)",
+          "size_bytes": 1710537716,
+          "size_gb": 1.59
+        },
+        {
+          "name": "CLIP Vision H (Used by Wan 2.1)",
+          "size_bytes": 1264219396,
+          "size_gb": 1.18
+        },
+        {
+          "name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+          "size_bytes": 9384670680,
+          "size_gb": 8.74
+        },
+        {
+          "name": "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors",
+          "size_bytes": 1698951104,
+          "size_gb": 1.58
+        },
+        {
+          "name": "Qwen_LoRA_Skin_Fix_v2.safetensors",
+          "size_bytes": 589940887,
+          "size_gb": 0.55
+        }
+      ],
+      "model_count": 11
+    },
+    "ComfyUI Bundles::bundle_0": {
+      "name": "Clothing Migration Workflow Bundle",
+      "category": "ComfyUI Bundles",
+      "total_size_bytes": 38023408287,
+      "total_size_gb": 35.41,
+      "models": [
+        {
+          "name": "Joy Caption Alpha Two (Full Repo)",
+          "size_bytes": 1799137904,
+          "size_gb": 1.68
+        },
+        {
+          "name": "Migration LoRA Cloth (TTPlanet)",
+          "size_bytes": 171969344,
+          "size_gb": 0.16
+        },
+        {
+          "name": "Figures TTP Migration LoRA (TTPlanet)",
+          "size_bytes": 343805384,
+          "size_gb": 0.32
+        },
+        {
+          "name": "SigLIP SO400M Patch14 384px (Full Repo)",
+          "size_bytes": 3515156215,
+          "size_gb": 3.27
+        },
+        {
+          "name": "Meta-Llama-3.1-8B-Instruct (Full Repo)",
+          "size_bytes": 16077852512,
+          "size_gb": 14.97
+        },
+        {
+          "name": "Flux AE (Saved as Flux/ae.safetensors - SwarmUI default)",
+          "size_bytes": 335304388,
+          "size_gb": 0.31
+        },
+        {
+          "name": "FLUX DEV ControlNet Inpainting Beta (Alimama)",
+          "size_bytes": 4281803800,
+          "size_gb": 3.99
+        },
+        {
+          "name": "T5 XXL FP16",
+          "size_bytes": 9787841024,
+          "size_gb": 9.12
+        },
+        {
+          "name": "CLIP-SAE-ViT-L-14 (Save As clip_l.safetensors - SwarmUI default name)",
+          "size_bytes": 1710537716,
+          "size_gb": 1.59
+        }
+      ],
+      "model_count": 9
+    },
+    "ComfyUI Bundles::bundle_1": {
+      "name": "ComfyUI MultiTalk Bundle",
+      "category": "ComfyUI Bundles",
+      "total_size_bytes": 79510889763,
+      "total_size_gb": 74.05,
+      "models": [
+        {
+          "name": "Wan 2.1 14B LightX2V CFG Step Distill LoRA V2 (T2V + I2V) (Rank 64)",
+          "size_bytes": 739472104,
+          "size_gb": 0.69
+        },
+        {
+          "name": "Wan 2.1 Uni3C ControlNet",
+          "size_bytes": 1997314376,
+          "size_gb": 1.86
+        },
+        {
+          "name": "WanVideo 2.1 MultiTalk 14B FP32",
+          "size_bytes": 9947889040,
+          "size_gb": 9.26
+        },
+        {
+          "name": "Wan 2.1 I2V 14B 480p GGUF Q8",
+          "size_bytes": 18144640384,
+          "size_gb": 16.9
+        },
+        {
+          "name": "Wan 2.1 I2V 14B 720p GGUF Q8",
+          "size_bytes": 18144640384,
+          "size_gb": 16.9
+        },
+        {
+          "name": "Wan 2.1 FusionX I2V 14B GGUF Q8",
+          "size_bytes": 17652508416,
+          "size_gb": 16.44
+        },
+        {
+          "name": "CLIP Vision H (Used by Wan 2.1)",
+          "size_bytes": 1264219396,
+          "size_gb": 1.18
+        },
+        {
+          "name": "UMT5 XXL FP16 (Save As default for SwarmUI)",
+          "size_bytes": 11366399385,
+          "size_gb": 10.59
+        },
+        {
+          "name": "Wan 2.1 VAE BF16",
+          "size_bytes": 253806278,
+          "size_gb": 0.24
+        }
+      ],
+      "model_count": 9
+    }
+  },
+  "fetch_timestamp": 1766087414.2596235,
+  "fetch_date": "2025-12-18 22:50:14"
+}

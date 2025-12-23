@@ -4379,12 +4379,14 @@ run_ai_toolkit_mode() {
 # MUSUBI GUI mode (MUSUBI_GUI)
 # ---------------------------------------------------------
 run_musubi_gui_mode() {
-  sub_section 5.1 "Launch Musubi WAN 2.2 GUI"
+  sub_section 5.1 "Launch SECourses Musubi trainer and GUI"
 
   # Optional Sage prebuild
-  if declare -f ensure_sage_from_bundle_or_build >/dev/null 2>&1; then
-    tlog "Ensuring SageAttention cache (MUSUBI_GUI)..."
-    ensure_sage_from_bundle_or_build "MUSUBI_GUI"
+  if [ "${ENABLE_SAGE:-false}" = "true" ]; then
+    if declare -f ensure_sage_from_bundle_or_build >/dev/null 2>&1; then
+      tlog "Ensuring SageAttention..."
+      ensure_sage_from_bundle_or_build
+    fi
   fi
 
   cd /opt/musubi-tuner_Wan2.2_GUI

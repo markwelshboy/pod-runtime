@@ -1,0 +1,53 @@
+
+
+
+Please register for RunPod at: https://get.runpod.io/955rkuppqv4h
+
+Example tutorial for learn how to install and use RunPod is below
+
+(starts at 22:03) : https://youtu.be/KW-MHmoNcqo?si=QN8X8Sjn13ZYu-EU&t=1323
+
+RunPod permanent network storage tutorial : https://youtu.be/8Qf4x3-DFf4
+
+
+I recommend to install ComfyUI backend manually and give its path : https://www.patreon.com/posts/105023709
+
+Copy all below commands at once and run on a new terminal to install SwarmUI and start on CloudFlared
+
+Recommended template below
+
+RunPod Pytorch 2.2.0
+runpod/pytorch:2.2.0-py3.10-cuda12.1.1-devel-ubuntu22.04
+
+Upload everything into workspace folder
+
+Copy below command entirely and execute on a new terminal
+
+cd /workspace
+rm -r ffmpeg-N-118385-g0225fe857d-linux64-gpl.tar.xz
+wget https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-01-31-12-58/ffmpeg-N-118385-g0225fe857d-linux64-gpl.tar.xz
+tar xvf ffmpeg-N-118385-g0225fe857d-linux64-gpl.tar.xz --no-same-owner
+mv ffmpeg-N-118385-g0225fe857d-linux64-gpl/bin/ffmpeg /usr/local/bin/
+mv ffmpeg-N-118385-g0225fe857d-linux64-gpl/bin/ffprobe /usr/local/bin/
+chmod +x /usr/local/bin/ffmpeg
+chmod +x /usr/local/bin/ffprobe
+rm -r cloudflared-linux-amd64.deb
+wget https://github.com/cloudflare/cloudflared/releases/download/2025.7.0/cloudflared-linux-amd64.deb
+dpkg -i cloudflared-linux-amd64.deb
+git clone --depth 1 https://github.com/mcmonkeyprojects/SwarmUI
+git clone --depth 1 https://github.com/Fannovel16/ComfyUI-Frame-Interpolation SwarmUI/src/BuiltinExtensions/ComfyUIBackend/DLNodes/ComfyUI-Frame-Interpolation
+git clone --depth 1 https://github.com/welltop-cn/ComfyUI-TeaCache SwarmUI/src/BuiltinExtensions/ComfyUIBackend/DLNodes/ComfyUI-TeaCache
+git clone --depth 1 https://github.com/Fannovel16/comfyui_controlnet_aux SwarmUI/src/BuiltinExtensions/ComfyUIBackend/DLNodes/comfyui_controlnet_aux
+cd SwarmUI
+git reset --hard
+git stash
+git pull
+cd launchtools
+wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+chmod +x dotnet-install.sh
+./dotnet-install.sh --channel 8.0 --runtime aspnetcore
+./dotnet-install.sh --channel 8.0
+cd ..
+./launch-linux.sh --launch_mode none --cloudflared-path cloudflared --port 7861
+
+

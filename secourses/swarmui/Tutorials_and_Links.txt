@@ -1,0 +1,111 @@
+
+================================
+================================
+MAIN TUTORIALS
+================================
+================================
+
+15 October 2025 : https://youtu.be/c3gEoAyL2IE
+Forget ComfyUI's Complexity: This Tool Changes Everything - SwarmUI + ComfyUI for Windows
+
+================================
+
+18 Octobet 2025 : https://youtu.be/bBxgtVD3ek4
+Generate AI Art 10x Faster! The Ultimate SwarmUI + ComfyUI Cloud GPU Setup
+
+================================
+
+2 November 2025 : https://youtu.be/DPX3eBTuO_Y
+Qwen Image Models Training - 0 to Hero Level Tutorial - LoRA & Fine Tuning - Base & Edit Model
+
+================================
+================================
+OTHER TUTORIALS
+================================
+================================
+
+4 December 2025 : https://youtu.be/ezD6QO14kRc
+Z-Image Turbo LoRA training with AI Toolkit and Z-Image ControlNet Full Tutorial for Highest Quality
+
+================================
+
+26 November 2025 : https://youtu.be/RQHmyJVOHXo
+FLUX 2 vs FLUX SRPO, New FLUX Training Kohya SS GUI Premium App With Presets & Features
+
+================================
+
+24 November 2025 : https://youtu.be/MLNQkwW_Q8M
+New Qwen Image Edit Fusion, Re-Light and ReAngle / Multiple Angles LoRAs Tutorial - Easy and Fast
+
+================================
+
+13 November 2025 : https://youtu.be/XWzZ2wnzNuQ
+Qwen Image Models Realism is Now Next Level & Tutorial for Object Removal, Inpainting & Outpainting
+
+================================
+
+23 August 2025 : https://youtu.be/gLCMhbsICEQ
+Qwen Image Edit Full Tutorial: 26 Different Demo Cases, Prompts & Images, Pwns FLUX Kontext Dev
+
+================================
+
+19 August 2025 : https://youtu.be/3BFDcO2Ysu4
+Wan 2.2, FLUX & Qwen Image Upgraded: Ultimate Tutorial for Open Source SOTA Image & Video Gen Models
+
+================================
+
+
+
+
+
+10 July 2025 : MultiTalk Full Tutorial With 1-Click Installer (shows Windows, RunPod and Massed Compute) : https://www.youtube.com/watch?v=8cMIwS9qo4M
+
+5 May 2025 Main Install Tutorial : https://youtu.be/fTzlQ0tjxj0
+
+19 May 2025 Wan 2.1 Image-to-Video and Text-to-Video Tutorial : https://www.youtube.com/watch?v=XNcn845UXdw
+
+
+
+SwarmUI main post and instructions and links : https://www.patreon.com/posts/106135985
+
+Stable Diffusion 3.5 Large How To Use Tutorial With Best Configuration and Comparison With FLUX DEV
+
+https://youtu.be/-zOKhoO9a5s
+
+FLUX Full Fine-Tuning / DreamBooth Tutorial That Shows A Lot Info Regarding SwarmUI Latest
+
+https://youtu.be/FvpWy1x5etM
+
+Full FLUX Tutorial - FLUX Beats Midjourney for Real
+
+https://youtu.be/bupRePUOA18
+
+CausVid LoRA V2 of Wan 2.1 Brings Massive Quality Improvements, Better Colors and Saturation
+
+https://youtu.be/1rAwZv0hEcU
+
+Main Windows SwarmUI Tutorial (Watch To Learn How to Use)
+
+How to install and use. You have to watch this to learn how to use SwarmUI
+
+Has 70 chapters and manually fixed captions
+
+https://youtu.be/HKX8_F1Er_w
+
+Cloud Tutorial (Massed Compute - RunPod - Kaggle)
+
+If you don't have a powerful GPU or you want to use powerful GPU this is the tutorial you need
+
+48 GB A6000 GPU is only 31 cents per hour on Massed Compute with our special coupon
+
+https://youtu.be/XFUZof6Skkw
+
+Free Kaggle Account Notebook for GPU-Poor
+
+Installs latest version of SwarmUI on a free Kaggle account
+
+Works with Dual T4 GPU at the same time
+
+Supports SD 1.5, SDXL, SD3, FLUX and Stable Cascade and more
+
+Download from here : https://www.patreon.com/posts/106650931
