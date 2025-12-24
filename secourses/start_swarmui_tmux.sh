@@ -6,7 +6,6 @@ set -euo pipefail
 # ----------------------------
 : "${SWARMUI_HOME:=/workspace/SwarmUI}"
 : "${SWARMUI_PORT:=7861}"
-: "${SWARMUI_LISTEN:=0.0.0.0}"
 
 # If SwarmUI uses cloudflared in your SECourses flow, keep this on.
 : "${SWARMUI_ENABLE_CLOUDFLARED:=true}"
@@ -28,12 +27,9 @@ POD_RUNTIME_DIR="${POD_RUNTIME_DIR:-/workspace/pod-runtime}"
 [[ -f "${POD_RUNTIME_DIR}/helpers.sh" ]] && source "${POD_RUNTIME_DIR}/helpers.sh" || true
 
 # Fallbacks if helpers aren't loaded
-section() { printf "\n================================================================================\n=== %s\n================================================================================\n" "${1:-}"; }
-print_info() { printf "INFO: %s\n" "$*"; }
-print_warn() { printf "WARN: %s\n" "$*"; }
-print_err()  { printf "ERR : %s\n" "$*"; }
-
-section "SwarmUI tmux launcher"
+print_info() { printf "[swarmui-gui] INFO: %s\n" "$*"; }
+print_warn() { printf "[swarmui-gui] WARN: %s\n" "$*"; }
+print_err()  { printf "[swarmui-gui] ERR : %s\n" "$*"; }
 
 if ! command -v tmux >/dev/null 2>&1; then
   print_err "tmux not found. Install tmux in the image."
@@ -60,7 +56,7 @@ fi
 
 cmd="cd '${SWARMUI_HOME}' && \
   mkdir -p '${LOG_DIR}' && \
-  echo \"[swarmui] starting at \$(date -Is)\" >> '${SWARMUI_LOG}' && \
+  echo \"[swarmui-gui] starting at \$(date -Is)\" >> '${SWARMUI_LOG}' && \
   ./launch-linux.sh --launch_mode none ${cloudflared_args[*]} --port '${SWARMUI_PORT}' \
     2>&1 | tee -a '${SWARMUI_LOG}'"
 
