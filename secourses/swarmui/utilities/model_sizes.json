@@ -250,6 +250,26 @@
       "category": "Image Generation Models",
       "sub_category": "Qwen Image Models"
     },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_2511_BF16": {
+      "name": "Qwen_Image_Edit_2511_BF16",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_Edit_2511_BF16.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 40861031560,
+      "size_gb": 38.05,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
+    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_2511_Quant_Scaled_FP8": {
+      "name": "Qwen_Image_Edit_2511_Quant_Scaled_FP8",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Qwen_Image_Edit_2511_Quant_Scaled_FP8.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 20436364250,
+      "size_gb": 19.03,
+      "category": "Image Generation Models",
+      "sub_category": "Qwen Image Editing Models"
+    },
     "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_Plus_2509_BF16": {
       "name": "Qwen_Image_Edit_Plus_2509_BF16",
       "repo_id": "MonsterMMORPG/Wan_GGUF",
@@ -257,16 +277,6 @@
       "is_snapshot": false,
       "size_bytes": 40861081399,
       "size_gb": 38.05,
-      "category": "Image Generation Models",
-      "sub_category": "Qwen Image Editing Models"
-    },
-    "Image Generation Models::Qwen Image Editing Models::Qwen_Image_Edit_Plus_2509_FP8_Scaled": {
-      "name": "Qwen_Image_Edit_Plus_2509_FP8_Scaled",
-      "repo_id": "MonsterMMORPG/Wan_GGUF",
-      "filename": "Qwen_Image_Edit_Plus_2509_FP8_Scaled.safetensors",
-      "is_snapshot": false,
-      "size_bytes": 20436356154,
-      "size_gb": 19.03,
       "category": "Image Generation Models",
       "sub_category": "Qwen Image Editing Models"
     },
@@ -2875,7 +2885,7 @@
     "SwarmUI Bundles::bundle_0": {
       "name": "Complete Image Generation and Editing Bundle",
       "category": "SwarmUI Bundles",
-      "total_size_bytes": 226137401621,
+      "total_size_bytes": 226137409717,
       "total_size_gb": 210.61,
       "models": [
         {
@@ -2894,8 +2904,8 @@
           "size_gb": 2.89
         },
         {
-          "name": "Qwen_Image_Edit_Plus_2509_FP8_Scaled",
-          "size_bytes": 20436356154,
+          "name": "Qwen_Image_Edit_2511_Quant_Scaled_FP8",
+          "size_bytes": 20436364250,
           "size_gb": 19.03
         },
         {
@@ -3112,7 +3122,7 @@
     "SwarmUI Bundles::bundle_3": {
       "name": "Qwen Image Core Bundle",
       "category": "SwarmUI Bundles",
-      "total_size_bytes": 60862028341,
+      "total_size_bytes": 60862036437,
       "total_size_gb": 56.68,
       "models": [
         {
@@ -3121,8 +3131,8 @@
           "size_gb": 19.03
         },
         {
-          "name": "Qwen_Image_Edit_Plus_2509_FP8_Scaled",
-          "size_bytes": 20436356154,
+          "name": "Qwen_Image_Edit_2511_Quant_Scaled_FP8",
+          "size_bytes": 20436364250,
           "size_gb": 19.03
         },
         {
@@ -3737,6 +3747,6 @@
       "model_count": 9
     }
   },
-  "fetch_timestamp": 1766087414.2596235,
-  "fetch_date": "2025-12-18 22:50:14"
+  "fetch_timestamp": 1766572088.003034,
+  "fetch_date": "2025-12-24 13:28:08"
 }

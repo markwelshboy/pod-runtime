@@ -252,7 +252,7 @@ models_structure = {
                     "- Z Image Turbo BF16 (Fast image generation)\n"
                     "- Qwen 3 4B Text Encoder (For Z Image Turbo)\n"
                     "- Z-Image-Turbo-Fun-Controlnet-Union (ControlNet for Z Image Turbo)\n"
-                    "- Qwen_Image_Edit_Plus_2509_FP8_Scaled\n"
+                    "- Qwen_Image_Edit_2511_Quant_Scaled_FP8\n"
                     "- Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors\n"
                     "- Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors\n"
                     "- Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors\n"
@@ -286,7 +286,7 @@ models_structure = {
                     ("Image Generation Models", "Z Image Turbo Models", "Z Image Turbo BF16"),
                     ("Text Encoder Models", "Clip Models", "Qwen 3 4B Text Encoder (For Z Image Turbo)"),
                     ("Image Generation Models", "Z Image Turbo Models", "Z-Image-Turbo-Fun-Controlnet-Union"),
-                    ("Image Generation Models", "Qwen Image Editing Models", "Qwen_Image_Edit_Plus_2509_FP8_Scaled"),
+                    ("Image Generation Models", "Qwen Image Editing Models", "Qwen_Image_Edit_2511_Quant_Scaled_FP8"),
                     ("Image Generation Models", "Qwen Image Editing Models", "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors"),
                     ("Image Generation Models", "Qwen Image Editing Models", "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors"),
                     ("Image Generation Models", "Qwen Image Editing Models", "Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors"),
@@ -361,7 +361,7 @@ models_structure = {
                     "Downloads the core Qwen Image models for image generation with necessary components and face segmentation models.\n\n"
                     "**Includes:**\n"
                     "- Qwen_Image_FP8_Scaled\n"
-                    "- Qwen_Image_Edit_Plus_2509_FP8_Scaled\n"
+                    "- Qwen_Image_Edit_2511_Quant_Scaled_FP8\n"
                     "- Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors\n"
                     "- Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors\n"
                     "- Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors\n"
@@ -378,7 +378,7 @@ models_structure = {
                 ),
                 "models_to_download": [
                     ("Image Generation Models", "Qwen Image Models", "Qwen_Image_FP8_Scaled"),
-                    ("Image Generation Models", "Qwen Image Editing Models", "Qwen_Image_Edit_Plus_2509_FP8_Scaled"),
+                    ("Image Generation Models", "Qwen Image Editing Models", "Qwen_Image_Edit_2511_Quant_Scaled_FP8"),
                     ("Image Generation Models", "Qwen Image Editing Models", "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors"),
                     ("Image Generation Models", "Qwen Image Editing Models", "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors"),
                     ("Image Generation Models", "Qwen Image Editing Models", "Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors"),
@@ -762,9 +762,11 @@ models_structure = {
                 "info": "Qwen Image editing models in various quantization formats (GGUF and safetensors) for image editing tasks.",
                 "target_dir_key": "diffusion_models",
                 "models": [
-                    # New Qwen Image Edit Plus 2509 models (ordered as requested)
+                    # New Qwen Image Edit 2511 models (latest - December 2024)
+                    {"name": "Qwen_Image_Edit_2511_BF16", "repo_id": "MonsterMMORPG/Wan_GGUF", "filename_in_repo": "Qwen_Image_Edit_2511_BF16.safetensors", "save_filename": "Qwen_Image_Edit_2511_BF16.safetensors"},
+                    {"name": "Qwen_Image_Edit_2511_Quant_Scaled_FP8", "repo_id": "MonsterMMORPG/Wan_GGUF", "filename_in_repo": "Qwen_Image_Edit_2511_Quant_Scaled_FP8.safetensors", "save_filename": "Qwen_Image_Edit_2511_Quant_Scaled_FP8.safetensors"},
+                    # Qwen Image Edit Plus 2509 models
                     {"name": "Qwen_Image_Edit_Plus_2509_BF16", "repo_id": "MonsterMMORPG/Wan_GGUF", "filename_in_repo": "Qwen_Image_Edit_Plus_2509_bf16.safetensors", "save_filename": "Qwen_Image_Edit_Plus_2509_bf16.safetensors"},
-                    {"name": "Qwen_Image_Edit_Plus_2509_FP8_Scaled", "repo_id": "MonsterMMORPG/Wan_GGUF", "filename_in_repo": "Qwen_Image_Edit_Plus_2509_FP8_Scaled.safetensors", "save_filename": "Qwen_Image_Edit_Plus_2509_FP8_Scaled.safetensors"},
                     {"name": "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors", "repo_id": "MonsterMMORPG/Wan_GGUF", "filename_in_repo": "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors", "save_filename": "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors", "target_dir_key": "Lora", "info": "Qwen Image Edit Lightning LoRA for fast 8-step image editing. Saves to Lora folder. Use with Qwen Image models for optimized inference."},
                     qwen_image_edit_2509_lightning_4steps_entry,
                     {"name": "Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors", "repo_id": "MonsterMMORPG/Wan_GGUF", "filename_in_repo": "Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors", "save_filename": "Qwen-Image-Edit-2509-Multiple-Angles-LoRA.safetensors", "target_dir_key": "Lora", "info": "Multi-angle Qwen Image Edit LoRA for improving consistency across diverse camera angles. Saves to Lora folder."},
