@@ -3,7 +3,6 @@ set -euo pipefail
 
 : "${COMFY_PORT:=3000}"
 : "${SWARMUI_PORT:=7861}"
-: "${DL_PORT:=7862}"
 
 echo ""
 echo "=============================="
@@ -21,7 +20,6 @@ echo "  Ports (expected)"
 echo "=============================="
 echo "ComfyUI   : ${COMFY_PORT}    (http://localhost:${COMFY_PORT})"
 echo "SwarmUI   : ${SWARMUI_PORT}  (http://localhost:${SWARMUI_PORT})"
-echo "Downloader: ${DL_PORT}       (http://localhost:${DL_PORT})"
 
 echo ""
 echo "=============================="

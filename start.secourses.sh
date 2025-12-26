@@ -130,10 +130,9 @@ ensure_swarmui_workspace_links() {
 : "${ENABLE_SAGE:=true}"
 : "${RUNTIME_ENSURE_INSTALL:=false}"
 
-: "${SWARMUI_ENABLE:=false}"
+: "${SWARMUI_ENABLE:=true}"
 : "${SWARMUI_PORT:=7861}"
 : "${SWARMUI_DOWNLOADER_ENABLE:=false}"
-: "${SWARMUI_DOWNLOADER_PORT:=7862}"
 : "${SWARMUI_LAUNCHER:=${POD_RUNTIME_DIR}/secourses/swarmui/start_swarmui_tmux.sh}"
 : "${SWARMUI_DOWNLOADER_LAUNCHER:=${POD_RUNTIME_DIR}/secourses/swarmui/start_downloader_tmux.sh}"
 
@@ -153,6 +152,11 @@ if [[ -f "${POD_RUNTIME_HELPERS}" ]]; then
 else
   print_warn "helpers.sh not found at ${POD_RUNTIME_HELPERS} (continuing)"
 fi
+
+# Override defaults with SECourses environment specifics
+
+PY=${COMFY_VENV}/bin/python
+PIP=${COMFY_VENV}/bin/pip
 
 # -----------------------------------------------------------------------------
 # Startup logging
