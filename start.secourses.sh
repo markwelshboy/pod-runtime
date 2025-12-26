@@ -98,17 +98,35 @@ ensure_swarmui_workspace_links() {
     print_warn "No utilities dir found at: ${src_dir}/utilities"
   fi
 
-  if [[ -f "${src_dir}/Amazing_SwarmUI_Presets_v39.json" ]]; then
-    local target="${ws}/Amazing_SwarmUI_Presets_v39.json"
+  #-- JSON Presets for SwarmUI
+
+  if [[ -f "${src_dir}/Amazing_SwarmUI_Presets_${JSON_PRESET_VERSION}.json" ]]; then
+    local target="${ws}/Amazing_SwarmUI_Presets_${JSON_PRESET_VERSION}.json"
     if [[ -e "${target}" && ! -L "${target}" ]]; then
       print_warn "${target} exists and is not a symlink; leaving it alone."
     else
-      ln -sfn "${src_dir}/Amazing_SwarmUI_Presets_v39.json" "${target}"
-      print_info "Linked: ${target} -> ${src_dir}/Amazing_SwarmUI_Presets_v39.json"
+      ln -sfn "${src_dir}/Amazing_SwarmUI_Presets_${JSON_PRESET_VERSION}.json" "${target}"
+      print_info "Linked: ${target} -> ${src_dir}/Amazing_SwarmUI_Presets_${JSON_PRESET_VERSION}.json"
     fi
   else
-    print_warn "No presets file found at: ${src_dir}/Amazing_SwarmUI_Presets_v39.json"
+    print_warn "No presets file found at: ${src_dir}/Amazing_SwarmUI_Presets_${JSON_PRESET_VERSION}.json"
   fi
+
+  #-- Downloader
+
+  if [[ -f "${src_dir}/Downloader_Gradio_App.py" ]]; then
+    local target="${ws}/Downloader_Gradio_App.py"
+    if [[ -e "${target}" && ! -L "${target}" ]]; then
+      print_warn "${target} exists and is not a symlink; leaving it alone."
+    else
+      ln -sfn "${src_dir}/Downloader_Gradio_App.py" "${target}"
+      print_info "Linked: ${target} -> ${src_dir}/Downloader_Gradio_App.py"
+    fi
+  else
+    print_warn "No downloader file found at: ${src_dir}/Downloader_Gradio_App.py"
+  fi
+
+  
 }
 
 # -----------------------------------------------------------------------------
@@ -135,6 +153,8 @@ ensure_swarmui_workspace_links() {
 : "${SWARMUI_DOWNLOADER_ENABLE:=false}"
 : "${SWARMUI_LAUNCHER:=${POD_RUNTIME_DIR}/secourses/swarmui/start_swarmui_tmux.sh}"
 : "${SWARMUI_DOWNLOADER_LAUNCHER:=${POD_RUNTIME_DIR}/secourses/swarmui/start_downloader_tmux.sh}"
+
+: "${JSON_PRESET_VERSION:=v40}"
 
 mkdir -p "${WORKSPACE}" "${COMFY_LOGS}" "${COMFY_DOWNLOADS}"
 
