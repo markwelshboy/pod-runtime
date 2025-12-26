@@ -158,6 +158,8 @@ ensure_swarmui_workspace_links() {
 
 mkdir -p "${WORKSPACE}" "${COMFY_LOGS}" "${COMFY_DOWNLOADS}"
 
+cd ${WORKSPACE}
+
 # Source env + helpers if present (non-fatal if missing)
 if [[ -f "${POD_RUNTIME_ENV}" ]]; then
   # shellcheck disable=SC1090
