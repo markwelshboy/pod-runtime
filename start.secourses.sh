@@ -150,11 +150,14 @@ ensure_swarmui_workspace_links() {
 
 : "${SWARMUI_ENABLE:=true}"
 : "${SWARMUI_PORT:=7861}"
-: "${SWARMUI_DOWNLOADER_ENABLE:=false}"
+: "${SWARMUI_DOWNLOADER_ENABLE:=true}"
 : "${SWARMUI_LAUNCHER:=${POD_RUNTIME_DIR}/secourses/swarmui/start_swarmui_tmux.sh}"
 : "${SWARMUI_DOWNLOADER_LAUNCHER:=${POD_RUNTIME_DIR}/secourses/swarmui/start_downloader_tmux.sh}"
 
 : "${JSON_PRESET_VERSION:=v40}"
+
+: "${MUSUBI_ENABLE:=false}"
+: "${MUSUBI_DOWNLOADER_ENABLE:=false}"
 
 mkdir -p "${WORKSPACE}" "${COMFY_LOGS}" "${COMFY_DOWNLOADS}"
 
@@ -225,28 +228,10 @@ section 3 "SwarmUI workspace link setup"
 ensure_swarmui_workspace_links || true
 
 # -----------------------------------------------------------------------------
-# Enable Optional SwarmUI launchers
-# -----------------------------------------------------------------------------
-
-section 4 "(Optional) Auto-launch SwarmUI tmux"
-if [[ "${SWARMUI_ENABLE,,}" == "true" ]]; then
-  [[ -x "${SWARMUI_LAUNCHER}" ]] && "${SWARMUI_LAUNCHER}" || print_warn "SwarmUI launcher not runnable: ${SWARMUI_LAUNCHER}"
-else
-  print_info "SWARMUI_ENABLE is not true; skipping SwarmUI launch."
-fi
-
-section 5 "(Optional) Auto-launch Downloader tmux"
-if [[ "${SWARMUI_DOWNLOADER_ENABLE,,}" == "true" ]]; then
-  [[ -x "${SWARMUI_DOWNLOADER_LAUNCHER}" ]] && "${SWARMUI_DOWNLOADER_LAUNCHER}" || print_warn "Downloader launcher not runnable: ${SWARMUI_DOWNLOADER_LAUNCHER}"
-else
-  print_info "SWARMUI_DOWNLOADER_ENABLE is not true; skipping SwarmUI downloader launch."
-fi
-
-# -----------------------------------------------------------------------------
 # Launch ComfyUI.....
 # -----------------------------------------------------------------------------
 
-section 6 "Run ComfyUI"
+section 4 "Run ComfyUI"
 [[ -d "${COMFY_VENV}" ]] || { print_err "Comfy venv not found at ${COMFY_VENV}"; exit 1; }
 # shellcheck disable=SC1090
 source "${COMFY_VENV}/bin/activate"
@@ -258,6 +243,47 @@ cd "${COMFY_HOME}"
 
 mkdir -p "output" "cache"
 start_one "comfy-${COMFY_PORT}" "${COMFY_PORT}" "0" "output" "cache"
+
+# -----------------------------------------------------------------------------
+# Enable Optional SwarmUI launchers
+# -----------------------------------------------------------------------------
+
+section 5 "(Optional) Auto-launch SwarmUI tmux"
+if [[ "${SWARMUI_ENABLE,,}" == "true" ]]; then
+  [[ -x "${SWARMUI_LAUNCHER}" ]] && "${SWARMUI_LAUNCHER}" || print_warn "SwarmUI launcher not runnable: ${SWARMUI_LAUNCHER}"
+else
+  print_info "SWARMUI_ENABLE is not true; skipping SwarmUI launch."
+fi
+
+section 6 "(Optional) Auto-launch Downloader tmux"
+if [[ "${SWARMUI_DOWNLOADER_ENABLE,,}" == "true" ]]; then
+  [[ -x "${SWARMUI_DOWNLOADER_LAUNCHER}" ]] && "${SWARMUI_DOWNLOADER_LAUNCHER}" || print_warn "Downloader launcher not runnable: ${SWARMUI_DOWNLOADER_LAUNCHER}"
+else
+  print_info "SWARMUI_DOWNLOADER_ENABLE is not true; skipping SwarmUI downloader launch."
+fi
+
+# -----------------------------------------------------------------------------
+# Musubi Trainer/Tuner
+# -----------------------------------------------------------------------------
+
+# Ensure trainer/tuner workspace links
+${POD_RUNTIME_DIR}/secourses/musubi_tuner/ensure_musubi_workspace_links.sh || true
+
+section 7 "(Optional) Auto-launch Musubi Trainer/Tuner tmux"
+
+if [[ "${MUSUBI_ENABLE,,}" == "true" ]]; then
+  ${POD_RUNTIME_DIR}/secourses/musubi_tuner/start_musubi_tmux.sh || true
+else
+  print_info "MUSUBI_ENABLE is not true; skipping Musubi Trainer/Tuner launch."
+fi
+
+section 8 "(Optional) Auto-launch Musubi Downloader tmux"
+
+if [[ "${MUSUBI_DOWNLOADER_ENABLE,,}" == "true" ]]; then
+  ${POD_RUNTIME_DIR}/secourses/musubi_tuner/start_musubi_downloader_tmux.sh || true
+else
+  print_info "MUSUBI_DOWNLOADER_ENABLE is not true; skipping Musubi Downloader launch."
+fi
 
 # -----------------------------------------------------------------------------
 # Bootstrap complete....
