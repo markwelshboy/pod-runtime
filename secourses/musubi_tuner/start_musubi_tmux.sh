@@ -6,7 +6,7 @@ print_warn() { printf "[musubi-trainer] WARN: %s\n" "$*"; }
 print_err()  { printf "[musubi-trainer] ERR : %s\n" "$*"; }
 
 : "${WORKSPACE:=/workspace}"
-: "${POD_RUNTIME_DIR:=/workspace/pod-runtime}"
+: "${POD_RUNTIME_DIR:=${WORKSPACE}/pod-runtime}"
 
 : "${MUSUBI_TRAINER_DIR:=${WORKSPACE}/SECourses_Musubi_Trainer}"
 : "${MUSUBI_VENV:=${MUSUBI_TRAINER_DIR}/venv}"
@@ -15,9 +15,10 @@ print_err()  { printf "[musubi-trainer] ERR : %s\n" "$*"; }
 : "${MUSUBI_HOST:=0.0.0.0}"
 : "${MUSUBI_PORT:=7863}"
 : "${MUSUBI_SHARE:=false}"
+: "${MUSUBI_HEADLESS:=true}"   # optional; app supports it
 
 : "${MUSUBI_SESSION:=musubi-${MUSUBI_PORT}}"
-: "${MUSUBI_LOGS_DIR:=/workspace/logs}"
+: "${MUSUBI_LOGS_DIR:=${WORKSPACE}/logs}"
 : "${MUSUBI_RESTART_DELAY:=1}"
 
 mkdir -p "${MUSUBI_LOGS_DIR}"
@@ -37,6 +38,11 @@ if [[ "${MUSUBI_SHARE,,}" == "true" ]]; then
   share_flag="--share"
 fi
 
+headless_flag=""
+if [[ "${MUSUBI_HEADLESS,,}" == "true" ]]; then
+  headless_flag="--headless"
+fi
+
 log="${MUSUBI_LOGS_DIR}/musubi-${MUSUBI_PORT}.log"
 
 cmd=$(
@@ -46,10 +52,12 @@ cd ${MUSUBI_TRAINER_DIR@Q}
 source ${MUSUBI_VENV@Q}/bin/activate
 unset LD_LIBRARY_PATH
 
-export GRADIO_SERVER_NAME=${MUSUBI_HOST@Q}
-export GRADIO_SERVER_PORT=${MUSUBI_PORT@Q}
-
-python ${MUSUBI_GUI@Q} ${share_flag} >> ${log@Q} 2>&1
+python ${MUSUBI_GUI@Q} \
+  --listen ${MUSUBI_HOST@Q} \
+  --server_port ${MUSUBI_PORT@Q} \
+  ${share_flag} \
+  ${headless_flag} \
+  >> ${log@Q} 2>&1
 EOF
 )
 
@@ -63,10 +71,7 @@ else
   tmux new-session -d -s "${MUSUBI_SESSION}" "bash -lc ${cmd@Q}"
 fi
 
-print_info "Started/updated tmux session: ${MUSUBI_SESSION}"
-print_info "Log   : ${log}"
-print_info "Attach: tmux attach -t ${MUSUBI_SESSION}"
-print_info "URL   : http://localhost:${MUSUBI_PORT} (via SSH -L ${MUSUBI_PORT}:localhost:${MUSUBI_PORT})"
-
-( sleep 2; curl -fsS "http://127.0.0.1:${MUSUBI_PORT}" >/dev/null && print_info "Musubi appears up on :${MUSUBI_PORT}" ) || true
-
+print_info "Session: ${MUSUBI_SESSION}"
+print_info "Log    : ${log}"
+print_info "Attach : tmux attach -t ${MUSUBI_SESSION}"
+print_info "URL    : http://localhost:${MUSUBI_PORT} (via SSH -L ${MUSUBI_PORT}:localhost:${MUSUBI_PORT})"
