@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-print_info() { printf "[musubi-dl] INFO: %s\n" "$*"; }
-print_warn() { printf "[musubi-dl] WARN: %s\n" "$*"; }
-print_err()  { printf "[musubi-dl] ERR : %s\n" "$*"; }
+print_info() { printf "[musubi-downloader] INFO: %s\n" "$*"; }
+print_warn() { printf "[musubi-downloader] WARN: %s\n" "$*"; }
+print_err()  { printf "[musubi-downloader] ERR : %s\n" "$*"; }
 
 : "${WORKSPACE:=/workspace}"
-: "${POD_RUNTIME_DIR:=/workspace/pod-runtime}"
+: "${POD_RUNTIME_DIR:=${WORKSPACE}/pod-runtime}"
 
 : "${MUSUBI_TRAINER_DIR:=${WORKSPACE}/SECourses_Musubi_Trainer}"
 : "${MUSUBI_VENV:=${MUSUBI_TRAINER_DIR}/venv}"
 
 : "${MUSUBI_ASSETS_DIR:=${POD_RUNTIME_DIR}/secourses/musubi_tuner}"
-: "${MUSUBI_DOWNLOADER:=${MUSUBI_ASSETS_DIR}/Download_Train_Models.py}"
 
-: "${MUSUBI_DOWNLOADER_SESSION:=musubi-dl}"
-: "${COMFY_LOGS:=/workspace/logs}"
+: "${MUSUBI_DL_LOGS_DIR:=${WORKSPACE}/logs}"
+: "${MUSUBI_DL_APP:=${MUSUBI_ASSETS_DIR}/Download_Train_Models.py}"
+: "${MUSUBI_DL_SESSION:=musubi_downloader-interactive}"
 
-mkdir -p "${COMFY_LOGS}"
+: "${MUSUBI_DL_LOG:=${MUSUBI_DL_LOGS_DIR}/musubi_downloader-interactive.log}"
+: "${MUSUBI_DL_ENABLE_LOG:=true}"     # true -> tee to log, false -> no log redirection
+: "${MUSUBI_DL_RESTART_DELAY:=1}"     # seconds to wait after Ctrl+C
+
+mkdir -p "${MUSUBI_DL_LOGS_DIR}"
 
 # Ensure links (non-fatal)
 if [[ -x "${POD_RUNTIME_DIR}/secourses/musubi_tuner/ensure_musubi_workspace_links.sh" ]]; then
@@ -26,29 +30,41 @@ fi
 
 [[ -d "${MUSUBI_TRAINER_DIR}" ]] || { print_err "Trainer dir not found: ${MUSUBI_TRAINER_DIR}"; exit 1; }
 [[ -d "${MUSUBI_VENV}" ]] || { print_err "Trainer venv not found: ${MUSUBI_VENV}"; exit 1; }
-[[ -f "${MUSUBI_DOWNLOADER}" ]] || { print_err "Downloader not found: ${MUSUBI_DOWNLOADER}"; exit 1; }
+[[ -f "${MUSUBI_DL_APP}" ]] || { print_err "Downloader not found: ${MUSUBI_DL_APP}"; exit 1; }
 command -v tmux >/dev/null 2>&1 || { print_err "tmux not found"; exit 1; }
 
-log="${COMFY_LOGS}/musubi-downloader.log"
+# Interactive run line:
+# - tee keeps prompts visible in tmux while logging
+# - If you ever see double-output, set MUSUBI_DL_ENABLE_LOG=false
+if [[ "${MUSUBI_DL_ENABLE_LOG,,}" == "true" ]]; then
+  run_line="python ${MUSUBI_DL_APP@Q} 2>&1 | tee -a ${MUSUBI_DL_LOG@Q}"
+else
+  run_line="python ${MUSUBI_DL_APP@Q}"
+fi
 
 cmd=$(
   cat <<EOF
 set -euo pipefail
-cd "${WORKSPACE}"
-source "${MUSUBI_VENV}/bin/activate"
+cd ${WORKSPACE@Q}
+source ${MUSUBI_VENV@Q}/bin/activate
 unset LD_LIBRARY_PATH
-
-python "${MUSUBI_DOWNLOADER}" >> "${log}" 2>&1
+${run_line}
 EOF
 )
 
-if tmux has-session -t "${MUSUBI_DOWNLOADER_SESSION}" >/dev/null 2>&1; then
-  print_warn "tmux session ${MUSUBI_DOWNLOADER_SESSION} already exists; leaving it running."
-  print_info "Log: ${log}"
-  exit 0
+if tmux has-session -t "${MUSUBI_DL_SESSION}" >/dev/null 2>&1; then
+  print_info "Musubi downloader launching in existing tmux session: ${MUSUBI_DL_SESSION}"
+  # Stop whatever is running in that pane (best effort)
+  tmux send-keys -t "${MUSUBI_DL_SESSION}" C-c || true
+  sleep "${MUSUBI_DL_RESTART_DELAY}"
+  # Re-run
+  tmux send-keys -t "${MUSUBI_DL_SESSION}" "bash -lc ${cmd@Q}" C-m
+else
+  print_info "Musubi downloader launching in new tmux session: ${MUSUBI_DL_SESSION}"
+  tmux new-session -d -s "${MUSUBI_DL_SESSION}" "bash -lc ${cmd@Q}"
 fi
 
-tmux new-session -d -s "${MUSUBI_DOWNLOADER_SESSION}" "${cmd}"
-print_info "Started tmux session: ${MUSUBI_DOWNLOADER_SESSION}"
-print_info "Downloader log: ${log}"
-print_info "Note: if the downloader is interactive, attach with: tmux a -t ${MUSUBI_DOWNLOADER_SESSION}"
+print_info "Attach: tmux attach -t ${MUSUBI_DL_SESSION}"
+if [[ "${MUSUBI_DL_ENABLE_LOG,,}" == "true" ]]; then
+  print_info "Log   : ${MUSUBI_DL_LOG}"
+fi

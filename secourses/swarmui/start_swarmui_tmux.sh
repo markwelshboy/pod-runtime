@@ -15,6 +15,7 @@ set -euo pipefail
 
 # tmux + logging
 : "${SWARMUI_PORT:=7861}"
+: "${SWARMUI_HOST:=0.0.0.0}"
 : "${SWARMUI_LOG_DIR:=/workspace/logs}"
 : "${SWARMUI_TMUX_SESSION:=swarmui-${SWARMUI_PORT}}"
 : "${SWARMUI_LOG:=${SWARMUI_LOG_DIR}/swarmui-${SWARMUI_PORT}.log}"
