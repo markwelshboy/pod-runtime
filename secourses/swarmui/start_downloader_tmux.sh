@@ -34,7 +34,7 @@ if ! command -v tmux >/dev/null 2>&1; then
 fi
 
 # Generate /workspace/Downloader_Gradio_App.patched.py
-"${POD_RUNTIME_DIR}/secourses/swarmui/ensure_downloader_patched.sh" || true
+"${POD_RUNTIME_DIR}/secourses/swarmui/ensure_downloader_patched.sh"
 
 DOWNLOADER_APP="${WORKSPACE}/Downloader_Gradio_App.patched.py"
 if [[ ! -f "${DOWNLOADER_APP}" ]]; then
