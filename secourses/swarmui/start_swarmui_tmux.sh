@@ -5,7 +5,6 @@ set -euo pipefail
 # Defaults (override via Vast env vars)
 # ----------------------------
 : "${SWARMUI_HOME:=/workspace/SwarmUI}"
-: "${SWARMUI_PORT:=7861}"
 
 # If SwarmUI uses cloudflared in your SECourses flow, keep this on.
 : "${SWARMUI_ENABLE_CLOUDFLARED:=true}"
@@ -15,11 +14,12 @@ set -euo pipefail
 : "${SWARMUI_COMFYUI_PATH:=/workspace/ComfyUI}"
 
 # tmux + logging
-: "${SWARMUI_TMUX_SESSION:=swarmui}"
-: "${LOG_DIR:=/workspace/logs}"
-: "${SWARMUI_LOG:=${LOG_DIR}/swarmui.log}"
+: "${SWARMUI_PORT:=7861}"
+: "${SWARMUI_LOG_DIR:=/workspace/logs}"
+: "${SWARMUI_TMUX_SESSION:=swarmui-${SWARMUI_PORT}}"
+: "${SWARMUI_LOG:=${SWARMUI_LOG_DIR}/swarmui-${SWARMUI_PORT}.log}"
 
-mkdir -p "${LOG_DIR}"
+mkdir -p "${SWARMUI_LOG_DIR}"
 
 # Source pod-runtime env/helpers (your layout)
 POD_RUNTIME_DIR="${POD_RUNTIME_DIR:-/workspace/pod-runtime}"
@@ -55,7 +55,7 @@ if [[ "${SWARMUI_ENABLE_CLOUDFLARED,,}" == "true" ]]; then
 fi
 
 cmd="cd '${SWARMUI_HOME}' && \
-  mkdir -p '${LOG_DIR}' && \
+  mkdir -p '${SWARMUI_LOG_DIR}' && \
   echo \"[swarmui-gui] starting at \$(date -Is)\" >> '${SWARMUI_LOG}' && \
   ./launch-linux.sh --launch_mode none ${cloudflared_args[*]} --port '${SWARMUI_PORT}' \
     2>&1 | tee -a '${SWARMUI_LOG}'"

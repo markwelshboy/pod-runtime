@@ -126,7 +126,6 @@ ensure_swarmui_workspace_links() {
     print_warn "No downloader file found at: ${src_dir}/Downloader_Gradio_App.py"
   fi
 
-  
 }
 
 # -----------------------------------------------------------------------------
@@ -149,9 +148,9 @@ ensure_swarmui_workspace_links() {
 : "${RUNTIME_ENSURE_INSTALL:=false}"
 
 : "${SWARMUI_ENABLE:=true}"
-: "${SWARMUI_PORT:=7861}"
-: "${SWARMUI_DOWNLOADER_ENABLE:=true}"
 : "${SWARMUI_LAUNCHER:=${POD_RUNTIME_DIR}/secourses/swarmui/start_swarmui_tmux.sh}"
+
+: "${SWARMUI_DOWNLOADER_ENABLE:=true}"
 : "${SWARMUI_DOWNLOADER_LAUNCHER:=${POD_RUNTIME_DIR}/secourses/swarmui/start_downloader_tmux.sh}"
 
 : "${JSON_PRESET_VERSION:=v40}"
