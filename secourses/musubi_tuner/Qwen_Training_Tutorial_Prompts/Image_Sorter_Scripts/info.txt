@@ -1,0 +1,7 @@
+put batch generated images into local folder and run sort_images.py with 
+
+open cmd
+
+type python sort_images.py
+
+it will sort them based on their prompts so easier to pick best ones

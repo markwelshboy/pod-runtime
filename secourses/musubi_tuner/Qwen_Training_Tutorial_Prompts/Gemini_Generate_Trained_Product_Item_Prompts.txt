@@ -1,0 +1,6 @@
+write me 20 prompts for regenerating this perfume in special ways that would be used in advertisement
+make 10 of them as heroric male characters holding it and make 10 of them special cases like on a luxury table or something be imaginative
+describe perfume in full details but not mention its brand. still fully write the text on it properly in prompt the label so ai can accurately generate label
+make every prompt single line and make every one of them at least 200 words
+dont use words like rendered realistic etc that would make it like render. use words that would make it photograph
+the perfume token is ohwx so use ohwx as reference to perfume name

@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qwen Image Training - The Complete Detailed Guide</title>
+    
+    <!-- External CDN CSS -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <style>
+        /* --- Modern CSS for the Tutorial Guide --- */
+        :root {
+            --bg-color: #1a1b26;
+            --card-color: #24283b;
+            --text-color: #c0caf5;
+            --header-color: #ffffff;
+            --accent-color: #7aa2f7;
+            --accent-glow: #bb9af7;
+            --warning-color: #f7768e;
+            --tip-color: #9ece6a;
+            --code-bg: #16161e;
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-color); }
+        ::-webkit-scrollbar-thumb { background: #414868; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent-color); }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.7;
+            margin: 0;
+            padding: 2rem 1rem;
+        }
+
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { color: var(--header-color); font-size: 2.8rem; text-align: center; margin-bottom: 1rem; font-weight: 700; }
+        .subtitle { text-align: center; font-size: 1.1rem; color: var(--accent-glow); margin-bottom: 3rem; }
+
+        .part {
+            background-color: var(--card-color);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid #414868;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .part h2 {
+            color: var(--accent-color);
+            font-size: 1.8rem;
+            margin-top: 0;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid #414868;
+            padding-bottom: 0.75rem;
+            font-weight: 600;
+        }
+        
+        .part h2 .fa-solid { margin-right: 1rem; opacity: 0.8; }
+
+        .main-list > li {
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--header-color);
+        }
+
+        ul { list-style-type: none; padding-left: 20px; margin-top: 0.5rem; }
+        ul li { position: relative; padding-left: 25px; margin-bottom: 0.5rem; font-weight: 400; color: var(--text-color);}
+        ul li::before {
+            content: '\f105'; /* Font Awesome angle-right */
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            position: absolute;
+            left: 0;
+            top: 2px;
+            color: var(--accent-glow);
+        }
+        
+        strong, b { color: var(--header-color); font-weight: 600; }
+        .warning { color: var(--warning-color); font-weight: 600; }
+        .tip { color: var(--tip-color); font-weight: 600; }
+        .code { background-color: var(--code-bg); color: var(--text-color); padding: 0.2em 0.4em; margin: 0; font-size: 90%; border-radius: 4px; font-family: 'Courier New', Courier, monospace; }
+        .fa-exclamation-triangle, .fa-lightbulb { margin-right: 0.5em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Qwen Image Training</h1>
+        <p class="subtitle">The Complete Detailed Tutorial Guide</p>
+
+        <!-- Part 1: Initial Setup & Installation -->
+        <div class="part">
+            <h2><i class="fa-solid fa-download"></i>Part 1: Initial Setup & Installation</h2>
+            <ul class="main-list">
+                <li>Introduction & Finding Resources
+                    <ul>
+                        <li>Locating the main post with all necessary information.</li>
+                        <li>Finding the specific resources: the zip file, instructions, and the attachments section.</li>
+                        <li><b>Speaker's Note:</b> A direct instruction to not start installation immediately and to read the entire post first.</li>
+                    </ul>
+                </li>
+                <li>Mandatory Prerequisites: The Requirements Tutorial
+                    <ul>
+                        <li>The critical first step: Following the separate "requirements tutorial" linked in the main post.</li>
+                        <li>This sub-tutorial is presented as a separate video.</li>
+                        <li>Contents of the requirements tutorial: Installing <b>Python, CUDA, FFmpeg,</b> and other essential software.</li>
+                        <li>Confirmation that all links in the requirements tutorial are fully updated (example date given: 3 September 2025).</li>
+                        <li>The explicit instruction to <b>return to the main post</b> after completing the requirements tutorial.</li>
+                    </ul>
+                </li>
+                <li>Core Application Installation
+                    <ul>
+                        <li>Moving the downloaded <code class="code">.zip</code> file to the desired installation drive (e.g., Q drive).</li>
+                        <li>Extracting the zip file (using the standard Windows extractor is fine).</li>
+                        <li><b>Critical Step:</b> Entering the newly extracted folder before running anything.</li>
+                        <li>Running the installer by double-clicking <code class="code">Windows install and update.bat</code> (or selecting and hitting Enter).</li>
+                        <li><span class="warning"><i class="fa-solid fa-exclamation-triangle"></i>Crucial Warning:</span> Do NOT run anything as an administrator, as it will break the installation.</li>
+                        <li>Explanation of the isolated virtual environment and how it protects your system.</li>
+                        <li>How to handle installation errors: Select all text in the CMD window (Ctrl+A, Ctrl+C), save to a text file, and send it for support via email, Patreon, or Discord.</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Part 2: Acquiring the AI Models -->
+        <div class="part">
+            <h2><i class="fa-solid fa-robot"></i>Part 2: Acquiring the AI Models</h2>
+            <ul class="main-list">
+                <li>Downloading Training Models
+                    <ul>
+                        <li>Running the downloader script: <code class="code">Windows download training models.bat</code>.</li>
+                        <li>Choosing which base model to download:
+                            <ul>
+                                <li>Option 1: Qwen base model.</li>
+                                <li>Option 2: Qwen image edit plus model.</li>
+                            </ul>
+                        </li>
+                        <li>Features of the custom downloader: High speed (16 simultaneous connections), fully resumable, automatic file merging, and hash verification to prevent corruption.</li>
+                        <li>Location of downloaded models: <code class="code">training/models/Qwen/</code> folder.</li>
+                        <li><span class="warning"><i class="fa-solid fa-exclamation-triangle"></i>Important Model Requirement:</span> <b>BF16</b> version models are mandatory for training. <b>FP8</b> or <b>GGUF</b> versions are explicitly stated to <b>not work</b>.</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+        
+        <!-- Part 3: The Training Interface & Configuration -->
+        <div class="part">
+            <h2><i class="fa-solid fa-sliders"></i>Part 3: The Training Interface & Configuration</h2>
+            <ul class="main-list">
+                <li>Starting and Navigating the UI
+                    <ul>
+                        <li>How to update the application: Rerun <code class="code">Windows install and update.bat</code>.</li>
+                        <li>How to start the application: Run <code class="code">Windows start up.bat</code>.</li>
+                        <li>The importance of monitoring the CMD window for status and errors.</li>
+                        <li>Ensuring you are in the "Qwen image training" tab.</li>
+                        <li><span class="tip"><i class="fa-solid fa-lightbulb"></i>User Interface Tip:</span> Refresh the page before loading a new config to avoid issues.</li>
+                    </ul>
+                </li>
+                <li>Loading a Training Configuration (Preset)
+                    <ul>
+                        <li>First step in the UI: Loading a configuration file (<code class="code">.toml</code>).</li>
+                        <li>Navigating to the <code class="code">Qwen training configs</code> folder.</li>
+                        <li>Choosing a training type: LoRA vs. Fine-tuning (Dreambooth).</li>
+                        <li>Choosing training duration/quality: 200 epochs (best quality, lower learning rate), 100 epochs, 50 epochs.</li>
+                        <li>Understanding tiered configs (Tier 1, 2, 3...) based on VRAM requirements.</li>
+                        <li>How to understand tier differences: Opening the <code class="code">Lora configs explanation.gpx</code> file located inside the configs folder.</li>
+                    </ul>
+                </li>
+                <li>System & VRAM Preparation
+                    <ul>
+                        <li>How to check total GPU VRAM: <code class="code">nvidia-smi</code> command.</li>
+                        <li>How to check <b>free VRAM</b>: <code class="code">pip install nvitop</code> and then running <code class="code">nvitop</code>.</li>
+                        <li>The necessity of minimizing background VRAM usage (e.g., getting it under 2GB) by restarting the PC and disabling unnecessary startup apps in Task Manager.</li>
+                    </ul>
+                </li>
+                <li>Detailed Training Parameter Setup
+                    <ul>
+                        <li><b>Accelerate Launch Settings:</b> For multi-GPU training.</li>
+                        <li><b>Important Caveat:</b> It's noted that multi-GPU on Windows is not working very well.</li>
+                        <li><b>Checkpoints & Output Settings:</b>
+                            <ul>
+                                <li>Setting the <b>Output folder</b> for saved models.</li>
+                                <li>Setting the <b>Save every N epochs</b> frequency.</li>
+                            </ul>
+                        </li>
+                        <li><b>Definition of Epoch:</b> One epoch is defined as the point where all training images have been trained one time.</li>
+                        <li><b>Saving Your Custom Configuration:</b> How to save your modified settings into a new <code class="code">.toml</code> file to use later, and the importance of saving to a new folder to avoid overwriting base configs.</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Part 4: Dataset Preparation -->
+        <div class="part">
+            <h2><i class="fa-solid fa-images"></i>Part 4: Dataset Preparation (The Most Critical Section)</h2>
+            <ul class="main-list">
+                <li>Using the Ultimate Batch Image Processing Tool
+                    <ul>
+                        <li>Downloading, installing, and running the separate image processing application.</li>
+                        <li><b>Stage 1: Smart Cropping:</b> Using the tool to automatically zoom in on the subject (e.g., "person") via class selection (YOLO) or prompt (SAM 2) without cropping important parts.</li>
+                        <li><b>Stage 2: Exact Resizing:</b> Taking the output from Stage 1 and resizing/cropping to the exact target resolution (e.g., <code class="code">1328x1328</code>).</li>
+                    </ul>
+                </li>
+                <li>Dataset Quality Guidelines (For Characters)
+                    <ul>
+                        <li><b>Variety is Key:</b> Include a mix of full body, half body, close-ups, clothing, backgrounds, emotions, poses, and angles.</li>
+                        <li><b>Quality is Paramount:</b> Use images with good lighting and sharp focus. Avoid blurry or fuzzy backgrounds.</li>
+                        <li><b>Core Principle:</b> The model will learn and repeat whatever is consistently present in the dataset. Only the subject should be consistent.</li>
+                    </ul>
+                </li>
+                <li>NEW - Using the Internal Image Pre-processing Tool
+                    <ul>
+                        <li>A tab within the main trainer UI named "Image Preprocessing."</li>
+                        <li><b>Purpose:</b> To visualize the <b>exact</b> final version of your images as the trainer will see them, especially useful for bucketing (multi-aspect ratio training).</li>
+                        <li><b>How to Use:</b> Provide an input folder, enable bucketing, select the architecture (Qwen Image), and process.</li>
+                        <li><b>What it reveals:</b> Inaccurate image orientation, padding added by bucketing, and the final resolution distribution.</li>
+                        <li><b>Debug Mode:</b> A feature to have images pop up one-by-one during training to see exactly how they are being processed.</li>
+                    </ul>
+                </li>
+                <li>Dataset Structuring for the Trainer
+                    <ul>
+                        <li>Creating a subfolder in your dataset directory named in the format: <code class="code">[repeats]_[triggerword]</code> (e.g., <code class="code">1_OHWX</code>).</li>
+                        <li><b>Explanation of Repeats:</b> Used to balance datasets with different numbers of images per concept. For a single subject, <b>1</b> is sufficient.</li>
+                    </ul>
+                </li>
+                <li>Captioning Your Dataset
+                    <ul>
+                        <li><b>Recommended Method:</b> Using only a single trigger word (e.g., <code class="code">OHWX</code>) as the caption. The tutorial states this works best.</li>
+                        <li><b>Alternative (Detailed Captions):</b> Using the "Image Captioning" tab (powered by Qwen VL) or the external Joy Caption tool.</li>
+                        <li>Generating the <code class="code">dataset_config.toml</code> file within the UI is the final step of dataset setup.</li>
+                    </ul>
+                </li>
+                <li>Finalizing Model Paths and Settings
+                    <ul>
+                        <li><b>Qwen Image Model Settings:</b> Selecting the <b>Base model, VAE,</b> and <b>Text encoder</b> files.</li>
+                        <li><b>Block Swap:</b> Adjusting this value if you get out-of-VRAM errors or slow speeds, as it controls swapping memory with system RAM.</li>
+                        <li><b>Training Settings:</b> Setting the <b>Maximum number of epochs</b> (e.g., 200 is good for <50 images).</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+        
+        <!-- Part 5, 6, 7, 8 -->
+        <div class="part">
+            <h2><i class="fa-solid fa-cogs"></i>Part 5: The Training Process & Post-Training Workflow</h2>
+            <ul class="main-list">
+                <li>Monitoring Training & Performance Optimization
+                    <ul>
+                        <li><b>Advanced Speed Improvement Tricks:</b>
+                            <ul>
+                                <li>Connect monitors to a secondary, weaker GPU to free up the primary GPU's idle VRAM.</li>
+                                <li>Enable "Use pinned memory for block swapping" in the UI.</li>
+                                <li>Disable "Hardware-accelerated GPU scheduling" in Windows Graphics Settings.</li>
+                                <li>Overclocking the GPU with MSI Afterburner.</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </li>
+                <li>Testing and Finding the Best Checkpoint
+                    <ul>
+                        <li><b>Prerequisite:</b> Setting up Swarm UI with a Comfy UI backend via the linked tutorial.</li>
+                        <li>Using the <b>Grid Generator</b> tool in Swarm UI to compare multiple checkpoints against a set of test prompts.</li>
+                        <li><b>For LoRA:</b> Vary the <b>Lora</b> parameter.</li>
+                        <li><b>For Fine-tune:</b> Vary the <b>Model</b> parameter.</li>
+                        <li>Analyzing the generated grid to visually determine the best-performing checkpoint.</li>
+                    </ul>
+                </li>
+                <li>Resuming an Incomplete Training
+                    <ul>
+                        <li><b>For LoRA:</b> Set <code class="code">network_weights</code> to the path of your last checkpoint. Adjust <code class="code">max_train_epochs</code> to the <b>additional</b> number of epochs needed.</li>
+                        <li><b>For Fine-tuning:</b> Set the <code class="code">base_model_path</code> to your last fine-tune checkpoint. Adjust <code class="code">max_train_epochs</code> similarly.</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <div class="part">
+            <h2><i class="fa-solid fa-palette"></i>Part 6: Generating High-Quality Images</h2>
+            <ul class="main-list">
+                <li>Image Generation Workflow in Swarm UI
+                    <ul>
+                        <li>Using presets (e.g., <code class="code">Qwen image realism tier 2</code>).</li>
+                        <li><span class="warning"><i class="fa-solid fa-exclamation-triangle"></i>Crucial Note for Fine-Tuned Models:</span> After applying a preset, you might need to manually re-select your fine-tuned model, as the preset can override it.</li>
+                        <li><span class="tip"><i class="fa-solid fa-lightbulb"></i>Pro-Tip:</span> Generate smaller images first without upscaling to quickly find a good seed, then enable upscaling for the one you like.</li>
+                    </ul>
+                </li>
+                <li>Fixing Imperfections: Inpainting
+                    <ul>
+                        <li><b>Automatic Face Fixing:</b> Adding <code class="code">segment face</code> to the prompt.</li>
+                        <li><b>Manual Inpainting:</b> Using the "Edit Image" feature to manually mask and regenerate a specific area.</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <div class="part">
+            <h2><i class="fa-solid fa-wand-magic-sparkles"></i>Part 7: Specialized Training Scenarios</h2>
+            <ul class="main-list">
+                <li>Fine-Tuning (Dreambooth) Specifics
+                    <ul>
+                        <li>Process is nearly identical to LoRA but uses <b>fine tuning configs</b>.</li>
+                        <li><b>Key Difference:</b> Checkpoints are massive (~40 GB).</li>
+                        <li><span class="warning"><i class="fa-solid fa-exclamation-triangle"></i>Post-Training Step:</span> Converting the BF16 models to <b>FP8 scaled (tensor_wise)</b>, reducing size by 50%.</li>
+                    </ul>
+                </li>
+                <li>Training on the Qwen Image Edit Model
+                    <ul>
+                        <li><b>Without Control Images:</b> A simple process allowing your subject to work with command-based prompts (e.g., "replace his face with OHWX man").</li>
+                        <li><b>With Control Images (Teaching New Commands):</b> A complex setup requiring a final image, a caption with the command, and one or more input images. This method uses significantly more VRAM and is much slower.</li>
+                    </ul>
+                </li>
+                <li>Style Training
+                    <ul>
+                        <li>The key is the <b>dataset</b>: extremely consistent style with high variety in subjects (nothing should repeat except the style).</li>
+                        <li>Using presets like <code class="code">Qwen images stylized UHD tier 1</code> (better quality, more steps) or <code class="code">tier 2</code> (faster) for generation.</li>
+                    </ul>
+                </li>
+                <li>Product Training
+                    <ul>
+                        <li>The key is the <b>dataset</b>: a mix of close-up shots (for details like text) and wider shots (for scale).</li>
+                        <li>Use detailed prompts during inference that describe logos and text on the product for higher accuracy.</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <div class="part">
+            <h2><i class="fa-solid fa-users"></i>Part 8: Conclusion & Community</h2>
+            <ul class="main-list">
+                <li>Final Housekeeping & Recap
+                    <ul>
+                        <li>LoRAs go in the <code class="code">SwarmUI/models/lora</code> folder.</li>
+                        <li>Fine-tuned models go in the <code class="code">SwarmUI/models/diffusion</code> folder after FP8 conversion.</li>
+                    </ul>
+                </li>
+                <li>Community and Support Channels
+                    <ul>
+                        <li>Joining the Discord server.</li>
+                        <li>Following on GitHub (fork, star, watch, sponsor).</li>
+                        <li>Joining the Reddit community.</li>
+                        <li>Following on LinkedIn and subscribing on YouTube (and enabling notifications).</li>
+                        <li>Information about professional services: private lectures and company consultations.</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+    </div>
+</body>
+</html>

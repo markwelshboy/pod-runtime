@@ -1,0 +1,47 @@
+i need you to write me 100 different unique prompts
+
+here the requirements
+
+these prompts will be used to generate images
+
+each prompt has to be single line
+
+do not give me output as titled or sectioned or grouped etc just raw prompt
+
+now each prompt must be at least 225 words
+
+make them extremely detailed
+
+the prompts has to be constructed for real photography
+
+so do not have any any words that would be used to describe artwork, digital drawing, painting, rendering, etc like rendered, hyperrealistic etc
+
+use words that would be used in real professional photography
+
+make different times like middle age, different clothings etc in prompts i want to be very imaginative 
+
+like an armored warrior, or suit wearing person, or studio headshot photo or a blacksmith in middle age or a warrior battling against a dragon etc 
+
+the name of the man in every prompt is ohwx so make prompts as ohwx man always
+
+when constructing prompts do not write as ohwx man as a warrior make it as warrior ohwx man 
+
+so construct sentences with image generation models understanding way basically how you would describe an image 
+
+construct prompts in a way that background wont be blurry or fuzzy 
+
+also make the person wearing eyeglasses because he wears always
+
+also when constructing the prompt avoid description that would describe his facial features or age or racial characteristics
+
+because all such things makes generated image not loyal to the person
+
+so define the prompts in details without such description that would change the facial racial skin and such features and attributes of the person
+
+important in the images the man should look at the camera so construct the prompt in a way that the ohwx man looks at the camera face front
+
+this is important the ohwx man is always looking at the camera as a pose in images 
+
+make some of the prompts in a way that they will be generated like taken with a selfie camera or phone of the person itself
+
+using camera and phone words usually bringing phone and camera into image so try to describe such images without using camera or phone words 
