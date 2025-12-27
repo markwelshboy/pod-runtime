@@ -42,4 +42,30 @@ if [[ ! -f "${DOWNLOADER_APP}" ]]; then
   exit 1
 fi
 
+# 2) One-line command for tmux (reliable send-keys)
+cmd=$(
+  cat <<EOF
+export WORKSPACE=${WORKSPACE@Q};
+export SWARMUI_DL_PORT=${SWARMUI_DL_PORT@Q};
+export SWARMUI_DL_HOST=${SWARMUI_DL_HOST@Q};
+export SWARMUI_DL_SHARE=${SWARMUI_DL_SHARE@Q};
+cd ${WORKSPACE@Q};
+set HUGGING_FACE_HUB_TOKEN=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;
+python ${DOWNLOADER_APP@Q} >> ${SWARMUI_DL_LOG@Q} 2>&1
+EOF
+)
 
+if tmux has-session -t "${SWARMUI_DL_TMUX_SESSION}" 2>/dev/null; then
+  print_info "Gradio Downloader launching in existing tmux session: ${SWARMUI_DL_TMUX_SESSION}"
+  tmux send-keys -t "${SWARMUI_DL_TMUX_SESSION}" C-c || true
+  sleep 1
+  # run via bash -lc with proper quoting
+  tmux send-keys -t "${SWARMUI_DL_TMUX_SESSION}" "bash -lc ${cmd@Q}" C-m
+else
+  print_info "Gradio Downloader launching in new tmux session: ${SWARMUI_DL_TMUX_SESSION}"
+  tmux new-session -d -s "${SWARMUI_DL_TMUX_SESSION}" "bash -lc ${cmd@Q}"
+fi
+
+print_info "Logs  : ${SWARMUI_DL_LOG}"
+print_info "Attach: tmux attach -t ${SWARMUI_DL_TMUX_SESSION}"
+print_info "URL   : http://localhost:${SWARMUI_DL_PORT} (via SSH -L ${SWARMUI_DL_PORT}:localhost:${SWARMUI_DL_PORT})"
