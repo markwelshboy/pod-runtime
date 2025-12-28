@@ -112,20 +112,6 @@ ensure_swarmui_workspace_links() {
     print_warn "No presets file found at: ${src_dir}/Amazing_SwarmUI_Presets_${JSON_PRESET_VERSION}.json"
   fi
 
-  #-- Downloader
-
-  if [[ -f "${src_dir}/Downloader_Gradio_App.py" ]]; then
-    local target="${ws}/Downloader_Gradio_App.py"
-    if [[ -e "${target}" && ! -L "${target}" ]]; then
-      print_warn "${target} exists and is not a symlink; leaving it alone."
-    else
-      ln -sfn "${src_dir}/Downloader_Gradio_App.py" "${target}"
-      print_info "Linked: ${target} -> ${src_dir}/Downloader_Gradio_App.py"
-    fi
-  else
-    print_warn "No downloader file found at: ${src_dir}/Downloader_Gradio_App.py"
-  fi
-
 }
 
 # -----------------------------------------------------------------------------
@@ -206,6 +192,9 @@ if [[ ! -d "${COMFY_HOME}" ]]; then
     print_err "Image was expected to be build-baked. Exiting."
     exit 1
   fi
+else
+  print_info "ComfyUI found at ${COMFY_HOME}."
+  [[ -d "${COMFY_VENV}" ]] || { print_err "Comfy venv not found at ${COMFY_VENV}"; exit 1; }
 fi
 
 # Helpers from pod-runtime (optional)
@@ -231,7 +220,6 @@ ensure_swarmui_workspace_links || true
 # -----------------------------------------------------------------------------
 
 section 4 "Run ComfyUI"
-[[ -d "${COMFY_VENV}" ]] || { print_err "Comfy venv not found at ${COMFY_VENV}"; exit 1; }
 # shellcheck disable=SC1090
 source "${COMFY_VENV}/bin/activate"
 
@@ -266,12 +254,12 @@ fi
 # -----------------------------------------------------------------------------
 
 # Ensure trainer/tuner workspace links
-${POD_RUNTIME_DIR}/secourses/musubi_tuner/ensure_musubi_workspace_links.sh || true
+${POD_RUNTIME_DIR}/secourses/musubi_trainer/ensure_musubi_workspace_links.sh || true
 
 section 7 "(Optional) Auto-launch Musubi Trainer/Tuner tmux"
 
 if [[ "${MUSUBI_ENABLE,,}" == "true" ]]; then
-  ${POD_RUNTIME_DIR}/secourses/musubi_tuner/start_musubi_tmux.sh || true
+  ${POD_RUNTIME_DIR}/secourses/musubi_trainer/start_musubi_tmux.sh || true
 else
   print_info "MUSUBI_ENABLE is not true; skipping Musubi Trainer/Tuner launch."
 fi
@@ -279,7 +267,7 @@ fi
 section 8 "(Optional) Auto-launch Musubi Downloader tmux"
 
 if [[ "${MUSUBI_DOWNLOADER_ENABLE,,}" == "true" ]]; then
-  ${POD_RUNTIME_DIR}/secourses/musubi_tuner/start_musubi_downloader_tmux.sh || true
+  ${POD_RUNTIME_DIR}/secourses/musubi_trainer/start_musubi_downloader_tmux.sh || true
 else
   print_info "MUSUBI_DOWNLOADER_ENABLE is not true; skipping Musubi Downloader launch."
 fi
