@@ -55,11 +55,27 @@ if [[ "${SWARMUI_ENABLE_CLOUDFLARED,,}" == "true" ]]; then
   cloudflared_args=(--cloudflared-path "${SWARMUI_CLOUDFLARED_PATH}")
 fi
 
-cmd="cd '${SWARMUI_HOME}' && \
-  mkdir -p '${SWARMUI_LOG_DIR}' && \
-  echo \"[swarmui-gui] starting at \$(date -Is)\" >> '${SWARMUI_LOG}' && \
-  ./launch-linux.sh --launch_mode none ${cloudflared_args[*]} --port '${SWARMUI_PORT}' \
-    2>&1 | tee -a '${SWARMUI_LOG}'"
+cmd=$(
+  cat <<'EOF'
+set -euo pipefail
+cd "${SWARMUI_HOME}"
+mkdir -p "${SWARMUI_LOG_DIR}"
+
+export DOTNET_ROOT="${DOTNET_ROOT:-/opt/dotnet}"
+export PATH="${DOTNET_ROOT}:${DOTNET_ROOT}/tools:${PATH}"
+
+{
+  echo "[swarmui-gui] starting at $(date -Is)"
+  echo "[swarmui-gui] DOTNET_ROOT=${DOTNET_ROOT}"
+  echo "[swarmui-gui] PATH=${PATH}"
+  echo "[swarmui-gui] dotnet=$(command -v dotnet || echo MISSING)"
+  dotnet --info >/dev/null 2>&1 || echo "[swarmui-gui] WARN: dotnet not working"
+  [[ -x ./launch-linux.sh ]] || { echo "[swarmui-gui] ERR: ./launch-linux.sh missing or not executable"; exit 1; }
+} >> "${SWARMUI_LOG}" 2>&1
+
+./launch-linux.sh --launch_mode none '"${cloudflared_args[*]}"' --port "${SWARMUI_PORT}" 2>&1 | tee -a "${SWARMUI_LOG}"
+EOF
+)
 
 # Start or restart session
 if tmux has-session -t "${SWARMUI_TMUX_SESSION}" 2>/dev/null; then
