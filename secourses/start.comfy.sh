@@ -141,7 +141,7 @@ section 3 "SSH (optional)"
 if command -v setup_ssh >/dev/null 2>&1; then setup_ssh; else print_warn "setup_ssh missing"; fi
 
 section 4 "Run ComfyUI"
-start_one "comfy-${COMFY_PORT}" "${COMFY_PORT}" "0" "${COMFY_HOME}/output" "${COMFY_HOME}/cache"
+start_one "comfyui-${COMFY_PORT}" "${COMFY_PORT}" "0" "${COMFY_HOME}/output" "${COMFY_HOME}/cache"
 
 section 5 "(Optional) SwarmUI"
 if [[ "${SWARMUI_ENABLE,,}" == "true" ]]; then
