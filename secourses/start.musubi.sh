@@ -20,42 +20,7 @@ set -euo pipefail
 
 : "${MUSUBI_DOWNLOADER_ENABLE:=false}"
 : "${MUSUBI_DL_APP:=${POD_RUNTIME_DIR}/secourses/musubi_tuner/Download_Train_Models.py}" # interactive script path if you want
-: "${MUSUBI_DL_PORT:=7864}"
 : "${MUSUBI_DL_SESSION:=musubi_downloader-${MUSUBI_DL_PORT}}"
-
-# shellcheck source=/dev/null
-source "${POD_RUNTIME_ENV}"
-# shellcheck source=/dev/null
-source "${POD_RUNTIME_DIR}/secourses/lib/runtime_common.sh"
-# shellcheck source=/dev/null
-source "${POD_RUNTIME_HELPERS}"
-
-section 0 "Prepare logging"
-start_logging
-
-section 1 "Musubi role startup"
-mkdir -p "${WORKSPACE}" "${MUSUBI_LOGS_DIR}"
-require_cmd tmux
-
-require_dir "${MUSUBI_TRAINER_DIR}"
-require_file "${MUSUBI_GUI}"
-require_file "${MUSUBI_VENV}/bin/activate"
-require_file "${MUSUBI_VENV}/bin/python"
-
-print_info "MUSUBI_TRAINER_DIR: ${MUSUBI_TRAINER_DIR}"
-print_info "MUSUBI_VENV       : ${MUSUBI_VENV}"
-print_info "MUSUBI_PORT       : ${MUSUBI_PORT}"
-print_info "MUSUBI_LOGS_DIR   : ${MUSUBI_LOGS_DIR}"
-
-section 2 "SSH (optional)"
-if command -v setup_ssh >/dev/null 2>&1; then setup_ssh; else print_warn "setup_ssh missing"; fi
-
-section 3 "Workspace links (optional)"
-if [[ -x "${POD_RUNTIME_DIR}/secourses/musubi_tuner/ensure_musubi_workspace_links.sh" ]]; then
-  "${POD_RUNTIME_DIR}/secourses/musubi_tuner/ensure_musubi_workspace_links.sh" || true
-else
-  print_warn "No ensure_musubi_workspace_links.sh found; skipping"
-fi
 
 start_musubi_gui() {
   local sess="${MUSUBI_SESSION}"
@@ -97,20 +62,44 @@ EOF
   print_local_urls "Musubi GUI (forward this port locally)" "${MUSUBI_PORT}" "/"
 }
 
-# Ensure trainer/tuner workspace links
-${POD_RUNTIME_DIR}/secourses/musubi_trainer/ensure_musubi_workspace_links.sh || true
+# shellcheck source=/dev/null
+source "${POD_RUNTIME_ENV}"
+# shellcheck source=/dev/null
+source "${POD_RUNTIME_DIR}/secourses/lib/runtime_common.sh"
+# shellcheck source=/dev/null
+source "${POD_RUNTIME_HELPERS}"
 
-section 4 "Run Musubi GUI"
+section 0 "Prepare logging"
+start_logging
+
+section 1 "Musubi role startup"
+mkdir -p "${WORKSPACE}" "${MUSUBI_LOGS_DIR}"
+require_cmd tmux
+
+require_dir "${MUSUBI_TRAINER_DIR}"
+require_file "${MUSUBI_GUI}"
+require_file "${MUSUBI_VENV}/bin/activate"
+require_file "${MUSUBI_VENV}/bin/python"
+
+print_info "MUSUBI_TRAINER_DIR: ${MUSUBI_TRAINER_DIR}"
+print_info "MUSUBI_VENV       : ${MUSUBI_VENV}"
+print_info "MUSUBI_PORT       : ${MUSUBI_PORT}"
+print_info "MUSUBI_LOGS_DIR   : ${MUSUBI_LOGS_DIR}"
+
+section 2 "SSH (optional)"
+if command -v setup_ssh >/dev/null 2>&1; then setup_ssh; else print_warn "setup_ssh missing"; fi
+
+section 3 "Create workspace links (optional)"
+if [[ -x "${POD_RUNTIME_DIR}/secourses/musubi_trainer/ensure_musubi_workspace_links.sh" ]]; then
+  "${POD_RUNTIME_DIR}/secourses/musubi_trainer/ensure_musubi_workspace_links.sh" || true
+else
+  print_warn "No ensure_musubi_workspace_links.sh found; skipping"
+fi
+
+section 4 "Run Musubi GUI..."
 start_musubi_gui
 
-#if [[ "${MUSUBI_ENABLE,,}" == "true" ]]; then
-#  ${POD_RUNTIME_DIR}/secourses/musubi_trainer/start_musubi_tmux.sh || true
-#else
-#  print_info "MUSUBI_ENABLE is not true; skipping Musubi Trainer/Tuner launch."
-#fi
-
 section 5 "(Optional) Auto-launch Musubi Downloader tmux"
-
 if [[ "${MUSUBI_DOWNLOADER_ENABLE,,}" == "true" ]]; then
   ${POD_RUNTIME_DIR}/secourses/musubi_trainer/start_musubi_downloader_tmux.sh || true
 else
