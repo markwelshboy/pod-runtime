@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'rc=$?; echo "[FATAL] start.comfy.sh exiting rc=$rc at $(date -Is)" | tee -a "${STARTUP_LOG:-/workspace/startup.log}"' EXIT
 
 : "${WORKSPACE:=/workspace}"
 
@@ -49,6 +50,12 @@ require_file "${COMFY_HOME}/main.py"
 require_file "${COMFY_VENV}/bin/activate"
 require_file "${COMFY_VENV}/bin/python"
 
+# Force venv for *all* subsequent helper calls (banner, ensure dirs, etc.)
+export VIRTUAL_ENV="${COMFY_VENV}"
+export PATH="${COMFY_VENV}/bin:${PATH}"
+export PY="${COMFY_VENV}/bin/python"
+export PIP="${COMFY_VENV}/bin/pip"
+
 print_info "COMFY_HOME : ${COMFY_HOME}"
 print_info "COMFY_VENV : ${COMFY_VENV}"
 print_info "COMFY_PORT : ${COMFY_PORT}"
@@ -56,8 +63,10 @@ print_info "COMFY_LOGS : ${COMFY_LOGS}"
 
 # Optional: do your normal comfy prep from helpers.sh (if present)
 section 2 "Ensure comfy dirs / banner"
+set +e
 if command -v ensure_comfy_dirs >/dev/null 2>&1; then ensure_comfy_dirs; else print_warn "ensure_comfy_dirs missing"; fi
 if command -v on_start_comfy_banner >/dev/null 2>&1; then on_start_comfy_banner; else print_warn "on_start_comfy_banner missing"; fi
+set -e
 
 section 3 "SSH (optional)"
 if command -v setup_ssh >/dev/null 2>&1; then setup_ssh; else print_warn "setup_ssh missing"; fi
