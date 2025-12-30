@@ -2,23 +2,24 @@
 set -euo pipefail
 
 # ----------------------------
-# Defaults (override via Vast env vars)
+# Defaults (override via env vars)
 # ----------------------------
 : "${SWARMUI_HOME:=/workspace/SwarmUI}"
 
-# If SwarmUI uses cloudflared in your SECourses flow, keep this on.
 : "${SWARMUI_ENABLE_CLOUDFLARED:=true}"
 : "${SWARMUI_CLOUDFLARED_PATH:=/usr/local/bin/cloudflared}"
 
-# Helps SwarmUI find/point at your backend install
 : "${SWARMUI_COMFYUI_PATH:=/workspace/ComfyUI}"
 
-# tmux + logging
 : "${SWARMUI_PORT:=7861}"
 : "${SWARMUI_HOST:=0.0.0.0}"
+
 : "${SWARMUI_LOG_DIR:=/workspace/logs}"
 : "${SWARMUI_TMUX_SESSION:=swarmui-${SWARMUI_PORT}}"
 : "${SWARMUI_LOG:=${SWARMUI_LOG_DIR}/swarmui-${SWARMUI_PORT}.log}"
+: "${SWARMUI_TMUX_ERR:=${SWARMUI_LOG_DIR}/swarmui-${SWARMUI_PORT}.tmux.err}"
+
+: "${DOTNET_ROOT:=/opt/dotnet}"
 
 mkdir -p "${SWARMUI_LOG_DIR}"
 
@@ -32,62 +33,81 @@ print_info() { printf "[swarmui-gui] INFO: %s\n" "$*"; }
 print_warn() { printf "[swarmui-gui] WARN: %s\n" "$*"; }
 print_err()  { printf "[swarmui-gui] ERR : %s\n" "$*"; }
 
-if ! command -v tmux >/dev/null 2>&1; then
-  print_err "tmux not found. Install tmux in the image."
-  exit 1
-fi
+require_cmd() { command -v "$1" >/dev/null 2>&1 || { print_err "Missing command: $1"; exit 1; }; }
+
+require_cmd tmux
+require_cmd bash
 
 if [[ ! -d "${SWARMUI_HOME}" ]]; then
   print_err "SWARMUI_HOME does not exist: ${SWARMUI_HOME}"
   exit 1
 fi
 
-# Optional: attempt to teach SwarmUI where ComfyUI lives (best-effort, non-fatal).
-# SwarmUI config formats vary by version; we avoid brittle assumptions.
 if [[ -d "${SWARMUI_COMFYUI_PATH}" ]]; then
   print_info "ComfyUI path exists: ${SWARMUI_COMFYUI_PATH}"
 else
   print_warn "ComfyUI path not found: ${SWARMUI_COMFYUI_PATH} (SwarmUI may still run, but backend link may fail)"
 fi
 
-cloudflared_args=()
+# Build cloudflared args as a *string* (safe to embed)
+cloudflared_arg_str=""
 if [[ "${SWARMUI_ENABLE_CLOUDFLARED,,}" == "true" ]]; then
-  cloudflared_args=(--cloudflared-path "${SWARMUI_CLOUDFLARED_PATH}")
+  cloudflared_arg_str="--cloudflared-path ${SWARMUI_CLOUDFLARED_PATH@Q}"
 fi
 
-cmd=$(
-  cat <<'EOF'
+# Write a small runner script that tmux executes.
+RUNNER="/tmp/run_swarmui_${SWARMUI_PORT}.sh"
+cat > "${RUNNER}" <<EOF
+#!/usr/bin/env bash
 set -euo pipefail
-cd "${SWARMUI_HOME}"
-mkdir -p "${SWARMUI_LOG_DIR}"
 
-export DOTNET_ROOT="${DOTNET_ROOT:-/opt/dotnet}"
-export PATH="${DOTNET_ROOT}:${DOTNET_ROOT}/tools:${PATH}"
+mkdir -p ${SWARMUI_LOG_DIR@Q}
+
+# Breadcrumb first: ensures log exists if we got this far
+echo "[swarmui-gui] starting at \$(date -Is)" >> ${SWARMUI_LOG@Q}
+
+cd ${SWARMUI_HOME@Q}
+
+export DOTNET_ROOT=${DOTNET_ROOT@Q}
+export PATH="\${DOTNET_ROOT}:\${DOTNET_ROOT}/tools:\${PATH}"
 
 {
-  echo "[swarmui-gui] starting at $(date -Is)"
-  echo "[swarmui-gui] DOTNET_ROOT=${DOTNET_ROOT}"
-  echo "[swarmui-gui] PATH=${PATH}"
-  echo "[swarmui-gui] dotnet=$(command -v dotnet || echo MISSING)"
+  echo "[swarmui-gui] whoami=\$(whoami)"
+  echo "[swarmui-gui] pwd=\$(pwd)"
+  echo "[swarmui-gui] DOTNET_ROOT=\${DOTNET_ROOT}"
+  echo "[swarmui-gui] PATH=\${PATH}"
+  echo "[swarmui-gui] dotnet=\$(command -v dotnet || echo MISSING)"
+  /bin/ls -la "\${DOTNET_ROOT}/dotnet" 2>/dev/null || true
   dotnet --info >/dev/null 2>&1 || echo "[swarmui-gui] WARN: dotnet not working"
   [[ -x ./launch-linux.sh ]] || { echo "[swarmui-gui] ERR: ./launch-linux.sh missing or not executable"; exit 1; }
-} >> "${SWARMUI_LOG}" 2>&1
+  [[ -d .git ]] || echo "[swarmui-gui] WARN: .git missing (may affect SwarmUI launch/build logic)"
+} >> ${SWARMUI_LOG@Q} 2>&1
 
-./launch-linux.sh --launch_mode none '"${cloudflared_args[*]}"' --port "${SWARMUI_PORT}" 2>&1 | tee -a "${SWARMUI_LOG}"
+# Launch
+./launch-linux.sh --launch_mode none ${cloudflared_arg_str} --port ${SWARMUI_PORT@Q} 2>&1 | tee -a ${SWARMUI_LOG@Q}
 EOF
-)
+chmod +x "${RUNNER}"
 
-# Start or restart session
+# Start or restart tmux session
 if tmux has-session -t "${SWARMUI_TMUX_SESSION}" 2>/dev/null; then
   print_warn "tmux session '${SWARMUI_TMUX_SESSION}' already exists. Restarting it."
   tmux send-keys -t "${SWARMUI_TMUX_SESSION}" C-c || true
   sleep 1
-  tmux send-keys -t "${SWARMUI_TMUX_SESSION}" "${cmd}" C-m
+  tmux send-keys -t "${SWARMUI_TMUX_SESSION}" "bash -lc ${RUNNER@Q}" C-m
 else
   print_info "Creating tmux session '${SWARMUI_TMUX_SESSION}'"
-  tmux new-session -d -s "${SWARMUI_TMUX_SESSION}" "bash -lc ${cmd@Q}"
+  tmux new-session -d -s "${SWARMUI_TMUX_SESSION}" "bash -lc ${RUNNER@Q}" 2>>"${SWARMUI_TMUX_ERR}"
+fi
+
+# Verify tmux session exists
+if ! tmux has-session -t "${SWARMUI_TMUX_SESSION}" 2>/dev/null; then
+  print_err "tmux session was not created: ${SWARMUI_TMUX_SESSION}"
+  print_err "See: ${SWARMUI_TMUX_ERR}"
+  tmux ls || true
+  exit 1
 fi
 
 print_info "SwarmUI is launching in tmux session: ${SWARMUI_TMUX_SESSION}"
 print_info "Logs: ${SWARMUI_LOG}"
+print_info "tmux stderr: ${SWARMUI_TMUX_ERR}"
 print_info "Attach: tmux attach -t ${SWARMUI_TMUX_SESSION}"

@@ -81,9 +81,9 @@ if not m:
 inject = (
     ".launch(\n"
     "            server_name=os.environ.get(\"SWARMUI_DL_HOST\", \"0.0.0.0\"),\n"
-    "            server_port=int(os.environ.get(\"SWARMUI_DL_PORT\", \"7163\")),\n"
-    "            share=(os.environ.get(\"SWARMUI_DL_SHARE\", \"false\").lower() in (\"1\",\"true\",\"yes\",\"y\",\"on\")),\n"
+    "            server_port=int(os.environ.get(\"SWARMUI_DL_PORT\", \"7862\")),\n"
 )
+
 
 # Replace only the first occurrence
 text2 = text[:m.start()] + inject + text[m.end():]
