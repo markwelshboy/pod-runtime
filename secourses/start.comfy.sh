@@ -20,7 +20,7 @@ set -euo pipefail
 : "${SWARMUI_ENABLE:=false}"
 : "${SWARMUI_DOWNLOADER_ENABLE:=false}"
 : "${SWARMUI_PORT:=7861}"
-: "${SWARMUI_DL_PORT:=7163}"
+: "${SWARMUI_DL_PORT:=7162}"
 
 # Launchers (from pod-runtime secourses)
 : "${SWARMUI_LAUNCHER:=${POD_RUNTIME_DIR}/secourses/swarmui/start_swarmui_tmux.sh}"
@@ -141,8 +141,8 @@ if command -v on_start_comfy_banner >/dev/null 2>&1; then on_start_comfy_banner;
 section 3 "SSH (optional)"
 if command -v setup_ssh >/dev/null 2>&1; then setup_ssh; else print_warn "setup_ssh missing"; fi
 
-section 4 "Run ComfyUI"
-start_one "comfyui-${COMFY_PORT}" "${COMFY_PORT}" "0" "${COMFY_HOME}/output" "${COMFY_HOME}/cache"
+section 4 "Run ComfyUI (or handoff to SwarmUI)"
+"${POD_RUNTIME_DIR}/secourses/run.comfy.sh" || print_warn "run.comfy.sh failed"
 
 section 5 "(Optional) SwarmUI"
 if [[ "${SWARMUI_ENABLE,,}" == "true" ]]; then
