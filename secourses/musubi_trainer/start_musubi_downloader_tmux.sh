@@ -24,8 +24,8 @@ print_err()  { printf "[musubi-downloader] ERR : %s\n" "$*"; }
 mkdir -p "${MUSUBI_DL_LOGS_DIR}"
 
 # Ensure links (non-fatal)
-if [[ -x "${POD_RUNTIME_DIR}/secourses/musubi_tuner/ensure_musubi_workspace_links.sh" ]]; then
-  "${POD_RUNTIME_DIR}/secourses/musubi_tuner/ensure_musubi_workspace_links.sh" || true
+if [[ -x "${POD_RUNTIME_DIR}/secourses/musubi_trainer/ensure_musubi_workspace_links.sh" ]]; then
+  "${POD_RUNTIME_DIR}/secourses/musubi_trainer/ensure_musubi_workspace_links.sh" || true
 fi
 
 [[ -d "${MUSUBI_TRAINER_DIR}" ]] || { print_err "Trainer dir not found: ${MUSUBI_TRAINER_DIR}"; exit 1; }
