@@ -22,6 +22,51 @@ set -euo pipefail
 : "${MUSUBI_DL_APP:=${POD_RUNTIME_DIR}/secourses/musubi_trainer/Download_Train_Models.py}" # interactive script path if you want
 : "${MUSUBI_DL_SESSION:=musubi_downloader-${MUSUBI_DL_PORT}}"
 
+install_root_shell_dotfiles() {
+  local repo_root="${1:-/workspace/pod-runtime}"   # pass POD_RUNTIME_DIR if you like
+  local target_home="/root"
+  local ts; ts="$(date +%Y%m%d_%H%M%S)"
+
+  mkdir -p "$target_home"
+
+  # Backups (if files already exist)
+  for f in .bashrc .bash_aliases .bash_functions; do
+    if [[ -f "${target_home}/${f}" ]]; then
+      cp -a "${target_home}/${f}" "${target_home}/${f}.bak.${ts}"
+    fi
+  done
+
+  # Render .bashrc with precise placeholder substitution (atomic)
+  local src_bashrc="${repo_root}/.bashrc"
+  local tmp; tmp="$(mktemp "${target_home}/.bashrc.tmp.XXXXXX")"
+
+  awk -v rr="$repo_root" '
+    BEGIN {done=0}
+    /^[[:space:]]*REPO_ROOT=<CHANGEME>[[:space:]]*$/ {
+      print "REPO_ROOT=" rr
+      done=1
+      next
+    }
+    {print}
+    END {
+      if (!done) {
+        # If you want strict mode, uncomment:
+        print "ERROR: REPO_ROOT=<CHANGEME> placeholder not found" > "/dev/stderr"
+        exit 2
+      }
+    }
+  ' "$src_bashrc" > "$tmp"
+
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "${target_home}/.bashrc"
+
+  # Copy the others
+  install -m 0644 "${repo_root}/.bash_aliases"   "${target_home}/.bash_aliases"
+  install -m 0644 "${repo_root}/.bash_functions" "${target_home}/.bash_functions"
+
+  echo "[dotfiles] Installed bash dotfiles into ${target_home} (repo_root=${repo_root})"
+}
+
 start_musubi_gui() {
   local sess="${MUSUBI_SESSION}"
   local log="${MUSUBI_LOGS_DIR}/musubi-${MUSUBI_PORT}.log"
@@ -71,6 +116,8 @@ source "${POD_RUNTIME_HELPERS}"
 
 section 0 "Prepare logging"
 start_logging
+
+install_root_shell_dotfiles "${POD_RUNTIME_DIR}"
 
 section 1 "Musubi role startup"
 mkdir -p "${WORKSPACE}" "${MUSUBI_LOGS_DIR}"
