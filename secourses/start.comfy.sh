@@ -66,6 +66,15 @@ unset PYTHONPATH PYTHONHOME || true
 unset LD_LIBRARY_PATH || true
 export PYTHONNOUSERSITE=1
 
+# Force venv usage (ComfyUI-Manager installs, custom_nodes, etc.)
+export VIRTUAL_ENV=${COMFY_VENV@Q}
+export PATH=${COMFY_VENV@Q}/bin:"\$PATH"
+
+# Refuse global pip installs (prevents /usr/local/dist-packages growth)
+export PIP_REQUIRE_VIRTUALENV=1
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+export PIP_NO_CACHE_DIR=1
+
 # If user already set CUDA_VISIBLE_DEVICES, do NOT override it.
 if [[ -z "\${CUDA_VISIBLE_DEVICES:-}" ]]; then
   export CUDA_VISIBLE_DEVICES=${gvar@Q}
@@ -79,7 +88,7 @@ exec ${py@Q} ${COMFY_HOME@Q}/main.py --listen ${COMFY_LISTEN@Q} --port ${port@Q}
   >> ${logfile@Q} 2>&1
 EOF
   )
-
+  
   if tmux has-session -t "${sess}" >/dev/null 2>&1; then
     print_info "ComfyUI restarting in existing tmux session: ${sess}"
     tmux send-keys -t "${sess}" C-c || true
