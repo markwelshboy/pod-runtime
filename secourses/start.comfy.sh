@@ -13,6 +13,7 @@ set -euo pipefail
 : "${COMFY_LOGS:=/workspace/logs}"
 : "${COMFY_LISTEN:=0.0.0.0}"
 : "${COMFY_PORT:=3000}"
+
 : "${ENABLE_SAGE:=false}"
 
 # Optional Swarm bits (comfy image can enable these)
