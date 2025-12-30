@@ -45,35 +45,57 @@ health() {
 }
 
 # -----------------------------------------------------------------------------
-# Start one Comfy session in tmux
+# Start (or restart) one Comfy session in tmux
 # -----------------------------------------------------------------------------
 start_one() {
   local sess="$1" port="$2" gvar="$3" out="$4" cache="$5"
 
+  : "${COMFY_RESTART_DELAY:=1}"   # seconds; override if needed
+
   mkdir -p "${out}" "${cache}" "${COMFY_LOGS}"
+
+  local py="${COMFY_VENV}/bin/python"
+  if [[ ! -x "${py}" ]]; then
+    print_err "Missing Comfy venv python: ${py}"
+    return 1
+  fi
+
+  local logfile="${COMFY_LOGS}/comfyui-${port}.log"
 
   local cmd
   cmd=$(
     cat <<EOF
 set -euo pipefail
-cd "${COMFY_HOME}"
+cd ${COMFY_HOME@Q}
+
+# If user already set CUDA_VISIBLE_DEVICES, do NOT override it.
 if [[ -z "\${CUDA_VISIBLE_DEVICES:-}" ]]; then
-  export CUDA_VISIBLE_DEVICES="${gvar}"
+  export CUDA_VISIBLE_DEVICES=${gvar@Q}
 fi
+
 export PYTHONUNBUFFERED=1
-python "${COMFY_HOME}/main.py" --listen "${COMFY_LISTEN}" --port "${port}" \
+
+exec ${py@Q} ${COMFY_HOME@Q}/main.py --listen ${COMFY_LISTEN@Q} --port ${port@Q} \
   ${SAGE_ATTENTION:-} \
-  --output-directory "${out}" --temp-directory "${cache}" \
-  >> "${COMFY_LOGS}/comfyui-${port}.log" 2>&1
+  --output-directory ${out@Q} --temp-directory ${cache@Q} \
+  >> ${logfile@Q} 2>&1
 EOF
   )
 
   if tmux has-session -t "${sess}" >/dev/null 2>&1; then
-    print_warn "tmux session ${sess} already exists; leaving it running."
+    print_info "ComfyUI launching in existing tmux session: ${sess}"
+    # Best-effort stop whatever is running in that pane
+    tmux send-keys -t "${sess}" C-c || true
+    sleep "${COMFY_RESTART_DELAY}"
+    # Relaunch
+    tmux send-keys -t "${sess}" "bash -lc ${cmd@Q}" C-m
   else
-    tmux new-session -d -s "${sess}" "${cmd}"
-    print_info "Started tmux session: ${sess} (port ${port})"
+    print_info "ComfyUI launching in new tmux session: ${sess}"
+    tmux new-session -d -s "${sess}" "bash -lc ${cmd@Q}"
   fi
+
+  print_info "Logs  : ${logfile}"
+  print_info "Attach: tmux attach -t ${sess}"
 
   ( health "${sess}" "${port}" "${gvar}" "${out}" "${cache}" ) || true
 }
@@ -220,22 +242,21 @@ ensure_swarmui_workspace_links || true
 # -----------------------------------------------------------------------------
 
 section 4 "Run ComfyUI"
-# shellcheck disable=SC1090
-source "${COMFY_VENV}/bin/activate"
 
 SAGE_ATTENTION="$({ [[ "${ENABLE_SAGE,,}" == "true" ]] && printf '%s' --use-sage-attention; } || true)"
 
-print_info "Launching ComfyUI (tmux session: comfy-${COMFY_PORT})"
+print_info "Launching ComfyUI (tmux session: comfyui-${COMFY_PORT})"
 cd "${COMFY_HOME}"
 
 mkdir -p "output" "cache"
-start_one "comfy-${COMFY_PORT}" "${COMFY_PORT}" "0" "output" "cache"
+start_one "comfyui-${COMFY_PORT}" "${COMFY_PORT}" "0" "output" "cache"
 
 # -----------------------------------------------------------------------------
 # Enable Optional SwarmUI launchers
 # -----------------------------------------------------------------------------
 
 section 5 "(Optional) Auto-launch SwarmUI tmux"
+
 if [[ "${SWARMUI_ENABLE,,}" == "true" ]]; then
   [[ -x "${SWARMUI_LAUNCHER}" ]] && "${SWARMUI_LAUNCHER}" || print_warn "SwarmUI launcher not runnable: ${SWARMUI_LAUNCHER}"
 else
@@ -243,6 +264,7 @@ else
 fi
 
 section 6 "(Optional) Auto-launch Downloader tmux"
+
 if [[ "${SWARMUI_DOWNLOADER_ENABLE,,}" == "true" ]]; then
   [[ -x "${SWARMUI_DOWNLOADER_LAUNCHER}" ]] && "${SWARMUI_DOWNLOADER_LAUNCHER}" || print_warn "Downloader launcher not runnable: ${SWARMUI_DOWNLOADER_LAUNCHER}"
 else
