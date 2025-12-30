@@ -1,0 +1,28 @@
+
+Example tutorial for learn how to install and use Massed Compute
+(Starts at 12:58) : https://youtu.be/KW-MHmoNcqo?si=G1WbG-Qw4ujWvOtG&t=778
+
+Register for Massed Compute using the following link I appreicate that a lot:
+https://vm.massedcompute.com/signup?linkId=lp_034338&sourceId=secourses&tenantId=massed-compute
+
+We have a special coupon for all GPUs : SECourses
+
+If you want to learn more about GPUs and prices read this link : https://www.patreon.com/posts/126671823
+
+Select RTX A6000 or Better GPU - like L40S or RTX A6000 ADA or A100 or H100
+
+RTX A6000 ADA is really performant and cheap GPU
+
+Use thinclient or login patreon on Massed Compute to download files on to your Massed Compute
+
+Put everything into like downloads folder like folder name as SwarmUI_Model_Downloader_v25
+
+Open a terminal in the folder where you did put the files
+
+To install and run use below command
+
+Then in SwarmUI interface, select the downloaded models as in this video : https://youtu.be/FvpWy1x5etM
+
+pip install gradio==6.2.0 huggingface_hub hf_transfer hf_xet requests
+export HUGGING_FACE_HUB_TOKEN=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
+python3 -W ignore Downloader_Gradio_App.py --share

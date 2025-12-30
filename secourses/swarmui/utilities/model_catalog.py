@@ -28,6 +28,7 @@ from .model_catalog_data import (
     z_image_turbo_fp8_scaled_entry,
     qwen_3_4b_text_encoder_entry,
     z_image_turbo_controlnet_union_entry,
+    z_image_turbo_controlnet_union_2_1_8steps_entry,
 )
 
 # Use the models_structure from model_catalog_data
@@ -63,4 +64,5 @@ __all__ = [
     "z_image_turbo_fp8_scaled_entry",
     "qwen_3_4b_text_encoder_entry",
     "z_image_turbo_controlnet_union_entry",
+    "z_image_turbo_controlnet_union_2_1_8steps_entry",
 ] 

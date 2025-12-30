@@ -40,6 +40,16 @@
       "category": "Image Generation Models",
       "sub_category": "Z Image Turbo Models"
     },
+    "Image Generation Models::Z Image Turbo Models::Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps": {
+      "name": "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 6712551472,
+      "size_gb": 6.25,
+      "category": "Image Generation Models",
+      "sub_category": "Z Image Turbo Models"
+    },
     "Image Generation Models::Z Image Turbo Models::FLUX VAE ae.safetensors (For Z Image Turbo)": {
       "name": "FLUX VAE ae.safetensors (For Z Image Turbo)",
       "repo_id": "MonsterMMORPG/Kohya_Train",
@@ -2885,8 +2895,8 @@
     "SwarmUI Bundles::bundle_0": {
       "name": "Complete Image Generation and Editing Bundle",
       "category": "SwarmUI Bundles",
-      "total_size_bytes": 226137409717,
-      "total_size_gb": 210.61,
+      "total_size_bytes": 232849961189,
+      "total_size_gb": 216.86,
       "models": [
         {
           "name": "Z Image Turbo BF16",
@@ -2902,6 +2912,11 @@
           "name": "Z-Image-Turbo-Fun-Controlnet-Union",
           "size_bytes": 3101638265,
           "size_gb": 2.89
+        },
+        {
+          "name": "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps",
+          "size_bytes": 6712551472,
+          "size_gb": 6.25
         },
         {
           "name": "Qwen_Image_Edit_2511_Quant_Scaled_FP8",
@@ -3064,13 +3079,13 @@
           "size_gb": 16.8
         }
       ],
-      "model_count": 35
+      "model_count": 36
     },
     "SwarmUI Bundles::bundle_1": {
       "name": "Z Image Turbo Core Bundle",
       "category": "SwarmUI Bundles",
-      "total_size_bytes": 23791857030,
-      "total_size_gb": 22.16,
+      "total_size_bytes": 30504408502,
+      "total_size_gb": 28.41,
       "models": [
         {
           "name": "Z Image Turbo BF16",
@@ -3088,12 +3103,17 @@
           "size_gb": 2.89
         },
         {
+          "name": "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps",
+          "size_bytes": 6712551472,
+          "size_gb": 6.25
+        },
+        {
           "name": "Flux AE (Saved as Flux/ae.safetensors - SwarmUI default)",
           "size_bytes": 335304388,
           "size_gb": 0.31
         }
       ],
-      "model_count": 4
+      "model_count": 5
     },
     "SwarmUI Bundles::bundle_2": {
       "name": "FLUX 2 Core Bundle",
@@ -3747,6 +3767,6 @@
       "model_count": 9
     }
   },
-  "fetch_timestamp": 1766572088.003034,
-  "fetch_date": "2025-12-24 13:28:08"
+  "fetch_timestamp": 1766954019.7615573,
+  "fetch_date": "2025-12-28 23:33:39"
 }

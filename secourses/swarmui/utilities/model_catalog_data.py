@@ -192,6 +192,15 @@ z_image_turbo_controlnet_union_entry = {
     "info": "ControlNet Union model for Z Image Turbo. Saves to model_patches folder (ComfyUI) or controlnet folder (SwarmUI/Forge/others).",
 }
 
+z_image_turbo_controlnet_union_2_1_8steps_entry = {
+    "name": "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps",
+    "repo_id": "MonsterMMORPG/Wan_GGUF",
+    "filename_in_repo": "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors",
+    "save_filename": "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors",
+    "target_dir_key": "model_patches",
+    "info": "ControlNet Union model v2.1 for Z Image Turbo with 8-step optimization. Saves to model_patches folder (ComfyUI) or controlnet folder (SwarmUI/Forge/others).",
+}
+
 # New Qwen Image FP8 model entry
 qwen_image_fp8_scaled_entry = {
     "name": "Qwen_Image_FP8_Scaled",
@@ -252,6 +261,7 @@ models_structure = {
                     "- Z Image Turbo BF16 (Fast image generation)\n"
                     "- Qwen 3 4B Text Encoder (For Z Image Turbo)\n"
                     "- Z-Image-Turbo-Fun-Controlnet-Union (ControlNet for Z Image Turbo)\n"
+                    "- Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps (ControlNet v2.1 for Z Image Turbo)\n"
                     "- Qwen_Image_Edit_2511_Quant_Scaled_FP8\n"
                     "- Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors\n"
                     "- Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors\n"
@@ -286,6 +296,7 @@ models_structure = {
                     ("Image Generation Models", "Z Image Turbo Models", "Z Image Turbo BF16"),
                     ("Text Encoder Models", "Clip Models", "Qwen 3 4B Text Encoder (For Z Image Turbo)"),
                     ("Image Generation Models", "Z Image Turbo Models", "Z-Image-Turbo-Fun-Controlnet-Union"),
+                    ("Image Generation Models", "Z Image Turbo Models", "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps"),
                     ("Image Generation Models", "Qwen Image Editing Models", "Qwen_Image_Edit_2511_Quant_Scaled_FP8"),
                     ("Image Generation Models", "Qwen Image Editing Models", "Qwen-Image-Edit-2509-Lightning-8steps-V1.0-fp32.safetensors"),
                     ("Image Generation Models", "Qwen Image Editing Models", "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-fp32.safetensors"),
@@ -328,6 +339,7 @@ models_structure = {
                     "- Z Image Turbo BF16 (Diffusion Model)\n"
                     "- Qwen 3 4B Text Encoder (Required for Z Image Turbo)\n"
                     "- Z-Image-Turbo-Fun-Controlnet-Union (ControlNet)\n"
+                    "- Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps (ControlNet v2.1)\n"
                     f"- {FLUX_AE_DEFAULT_NAME} (VAE - saved to VAE/Flux/ folder)\n"
                     "\n"
                     "**Note:** FP8 Scaled version is also available and offers better quality than GGUF models.\n"
@@ -337,6 +349,7 @@ models_structure = {
                     ("Image Generation Models", "Z Image Turbo Models", "Z Image Turbo BF16"),
                     ("Text Encoder Models", "Clip Models", "Qwen 3 4B Text Encoder (For Z Image Turbo)"),
                     ("Image Generation Models", "Z Image Turbo Models", "Z-Image-Turbo-Fun-Controlnet-Union"),
+                    ("Image Generation Models", "Z Image Turbo Models", "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps"),
                     ("VAE Models", "Most Common VAEs (e.g. FLUX and HiDream-I1)", FLUX_AE_DEFAULT_NAME),
                 ]
             },
@@ -670,6 +683,7 @@ models_structure = {
                     z_image_turbo_fp8_scaled_entry,
                     qwen_3_4b_text_encoder_entry,
                     z_image_turbo_controlnet_union_entry,
+                    z_image_turbo_controlnet_union_2_1_8steps_entry,
                     {"name": "FLUX VAE ae.safetensors (For Z Image Turbo)", "repo_id": "MonsterMMORPG/Kohya_Train", "filename_in_repo": "ae.safetensors", "save_filename": "Flux/ae.safetensors", "target_dir_key": "vae", "info": "FLUX VAE required for Z Image Turbo models. Same as standard FLUX ae.safetensors."},
                 ]
             },

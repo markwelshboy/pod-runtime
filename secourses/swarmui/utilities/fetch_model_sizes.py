@@ -27,7 +27,7 @@ except ImportError:
     sys.exit(1)
 
 # Set Hugging Face token for authentication
-HF_TOKEN = "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"
+HF_TOKEN = "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"
 os.environ["HUGGING_FACE_HUB_TOKEN"] = HF_TOKEN
 
 DATA_FILE = SCRIPT_DIR / "model_sizes.json"

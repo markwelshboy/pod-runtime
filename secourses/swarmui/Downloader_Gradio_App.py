@@ -1438,7 +1438,7 @@ def create_ui(default_base_path):
     # Create the Blocks app (Gradio 6.0: theme/css moved to launch())
     # Using analytics_enabled=False and show_progress='hidden' to speed up initial load
     with gr.Blocks(title=APP_TITLE, analytics_enabled=False) as app:
-        gr.Markdown(f"## {APP_TITLE} V114 > Source : https://www.patreon.com/posts/114517862")
+        gr.Markdown(f"## {APP_TITLE} V115 > Source : https://www.patreon.com/posts/114517862")
         gr.Markdown(f"### ComfyUI Installer for SwarmUI's Back-End > https://www.patreon.com/posts/105023709")
         
         with gr.Tabs():

@@ -6,6 +6,7 @@ import threading
 import time
 import sys
 import hashlib
+import urllib.parse
 from pathlib import Path
 import concurrent.futures
 from typing import List, Dict, Optional, Tuple
@@ -32,9 +33,17 @@ DEFAULT_DOWNLOAD_CONFIG = {
 }
 
 class RobustDownloader:
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict, hf_token: str | bool | None = None):
         self.config = config
         self.cancel_event = None  # Will be set if cancellation is supported
+        # HuggingFace auth handling:
+        # - str => use this token for HF requests and HF metadata calls
+        # - False => force no-token (do NOT use any cached/stored token)
+        # - None => keep legacy behavior (let libs decide)
+        if isinstance(hf_token, str):
+            hf_token = hf_token.strip() or None
+        self.hf_hub_token = hf_token
+        self._hf_token_rejected = False
         # Create session with connection pooling
         self.session = requests.Session()
         adapter = requests.adapters.HTTPAdapter(
@@ -193,9 +202,14 @@ class RobustDownloader:
         try:
             # Method 1: Try to get from file metadata
             url = hf_hub_url(repo_id, filename)
-            metadata = get_hf_file_metadata(url)
+            try:
+                metadata = get_hf_file_metadata(url, token=self.hf_hub_token)
+            except TypeError:
+                # Older huggingface_hub: no token kwarg.
+                # If token usage is explicitly disabled, avoid implicit auth.
+                metadata = None if self.hf_hub_token is False else get_hf_file_metadata(url)
 
-            if hasattr(metadata, 'etag'):
+            if metadata and hasattr(metadata, 'etag'):
                 sha256 = metadata.etag.replace('"', '').replace('W/', '')
                 if len(sha256) == 64:  # Valid SHA256 length
                     self.sha_cache[cache_key] = sha256
@@ -204,7 +218,10 @@ class RobustDownloader:
                     return sha256
 
             # Method 2: Try API approach
-            api = HfApi()
+            try:
+                api = HfApi(token=self.hf_hub_token)
+            except TypeError:
+                api = HfApi()
             model_info = api.model_info(repo_id, files_metadata=True)
 
             for file_info in model_info.siblings:
@@ -300,10 +317,13 @@ class RobustDownloader:
         try:
             # Method 1: Try to get from file metadata
             url = hf_hub_url(repo_id, filename)
-            metadata = get_hf_file_metadata(url)
+            try:
+                metadata = get_hf_file_metadata(url, token=self.hf_hub_token)
+            except TypeError:
+                metadata = None if self.hf_hub_token is False else get_hf_file_metadata(url)
 
             # The etag contains the SHA256 hash
-            if hasattr(metadata, 'etag'):
+            if metadata and hasattr(metadata, 'etag'):
                 # Remove quotes and 'W/' prefix if present
                 sha256 = metadata.etag.replace('"', '').replace('W/', '')
                 if len(sha256) == 64:  # Valid SHA256 length
@@ -312,7 +332,10 @@ class RobustDownloader:
                     return sha256
 
             # Method 2: Try API approach
-            api = HfApi()
+            try:
+                api = HfApi(token=self.hf_hub_token)
+            except TypeError:
+                api = HfApi()
             model_info = api.model_info(repo_id, files_metadata=True)
 
             for file_info in model_info.siblings:
@@ -334,7 +357,10 @@ class RobustDownloader:
         """List all files in a HuggingFace repository"""
         try:
             from huggingface_hub import list_repo_files
-            files = list_repo_files(repo_id)
+            try:
+                files = list_repo_files(repo_id, token=self.hf_hub_token)
+            except TypeError:
+                files = list_repo_files(repo_id)
             return [f for f in files if not f.startswith('.')]  # Skip hidden files
         except Exception as e:
             self.log(f"Warning: Could not list files for {repo_id}: {e}")
@@ -420,10 +446,65 @@ class RobustDownloader:
         """Get direct download URL for HuggingFace file"""
         return f"https://huggingface.co/{repo_id}/resolve/main/{filename}"
 
+    def _is_huggingface_host(self, host: str | None) -> bool:
+        if not host:
+            return False
+        host = host.lower()
+        return (
+            host == "huggingface.co"
+            or host.endswith(".huggingface.co")
+            or host == "hf.co"
+            or host.endswith(".hf.co")
+        )
+
+    def _headers_with_optional_hf_auth(self, url: str, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        merged: Dict[str, str] = dict(headers) if headers else {}
+        token = self.hf_hub_token
+        if isinstance(token, str):
+            try:
+                host = urllib.parse.urlparse(url).hostname
+            except Exception:
+                host = None
+            if self._is_huggingface_host(host):
+                # Don't overwrite if caller explicitly provided an Authorization header
+                merged.setdefault("Authorization", f"Bearer {token}")
+        return merged
+
+    def _request(self, method: str, url: str, *, headers: Optional[Dict[str, str]] = None, **kwargs):
+        """
+        Make an HTTP request and (only for HuggingFace hosts) optionally attach auth.
+        If HuggingFace returns 401/403, retry once without auth and disable the token for
+        the rest of this downloader instance to avoid repeated failures.
+        """
+        merged_headers = self._headers_with_optional_hf_auth(url, headers)
+        response = self.session.request(method, url, headers=merged_headers, **kwargs)
+
+        # If HF rejects the token, retry without it and stop using it for subsequent requests.
+        try:
+            host = urllib.parse.urlparse(url).hostname
+        except Exception:
+            host = None
+        if (
+            response.status_code in (401, 403)
+            and isinstance(self.hf_hub_token, str)
+            and self._is_huggingface_host(host)
+        ):
+            response.close()
+            if not self._hf_token_rejected:
+                self.log("[WARNING] HuggingFace token rejected (401/403). Disabling token and retrying without it.")
+            self._hf_token_rejected = True
+            self.hf_hub_token = False  # force no-token for future HF requests/metadata
+
+            retry_headers = dict(headers) if headers else {}
+            retry_headers.pop("Authorization", None)
+            return self.session.request(method, url, headers=retry_headers, **kwargs)
+
+        return response
+
     def get_file_size(self, url: str) -> Optional[int]:
         """Get file size from remote server"""
         try:
-            response = self.session.head(url, timeout=30, allow_redirects=True)
+            response = self._request("HEAD", url, timeout=30, allow_redirects=True)
             if response.status_code == 200:
                 content_length = response.headers.get('content-length')
                 if content_length:
@@ -431,7 +512,7 @@ class RobustDownloader:
 
             # Fallback to range request
             headers = {'Range': 'bytes=0-0'}
-            response = self.session.get(url, headers=headers, timeout=30, stream=True)
+            response = self._request("GET", url, headers=headers, timeout=30, stream=True)
             if response.status_code == 206:
                 content_range = response.headers.get('content-range')
                 if content_range and '/' in content_range:
@@ -583,9 +664,13 @@ class RobustDownloader:
                 actual_start = start + resume_pos
                 headers = {'Range': f'bytes={actual_start}-{end}'}
 
-                response = self.session.get(url, headers=headers,
-                                          timeout=self.config["timeout"],
-                                          stream=True)
+                response = self._request(
+                    "GET",
+                    url,
+                    headers=headers,
+                    timeout=self.config["timeout"],
+                    stream=True,
+                )
 
                 if response.status_code not in [200, 206]:
                     raise Exception(f"Bad status code: {response.status_code}")
@@ -887,7 +972,7 @@ class RobustDownloader:
             try:
                 self.log(f"[DOWNLOADING] {filename} (unknown size)")
                 
-                response = self.session.get(url, timeout=self.config["timeout"], stream=True)
+                response = self._request("GET", url, timeout=self.config["timeout"], stream=True)
                 response.raise_for_status()
 
                 # Download the file
@@ -1197,15 +1282,23 @@ class RobustDownloader:
 
                 # Download
                 headers = {'Range': f'bytes={resume_pos}-'} if resume_pos > 0 else {}
-                response = self.session.get(url, headers=headers,
-                                          timeout=self.config["timeout"],
-                                          stream=True)
+                response = self._request(
+                    "GET",
+                    url,
+                    headers=headers,
+                    timeout=self.config["timeout"],
+                    stream=True,
+                )
 
                 if resume_pos > 0 and response.status_code != 206:
                     self.log(f"[WARNING] Resume not supported, restarting")
                     resume_pos = 0
-                    response = self.session.get(url, timeout=self.config["timeout"],
-                                              stream=True)
+                    response = self._request(
+                        "GET",
+                        url,
+                        timeout=self.config["timeout"],
+                        stream=True,
+                    )
 
                 response.raise_for_status()
 
@@ -1277,15 +1370,17 @@ class RobustDownloader:
 
 # ------------------------------- Repo scanning -------------------------------
 
-def scan_repo_files(repo_id: str, specific_files: List[str] = None) -> List[str]:
+def scan_repo_files(repo_id: str, specific_files: List[str] = None, hf_token: str | bool | None = None) -> List[str]:
     """Get list of files to download"""
     try:
         if specific_files:
             print(f"Using predefined file list")
             return specific_files
 
-        api = HfApi()
-        all_files = list_repo_files(repo_id=repo_id, repo_type="model")
+        try:
+            all_files = list_repo_files(repo_id=repo_id, repo_type="model", token=hf_token)
+        except TypeError:
+            all_files = list_repo_files(repo_id=repo_id, repo_type="model")
         return all_files
 
     except Exception as e:
@@ -1525,7 +1620,8 @@ def download_models(
 def download_hf_file(repo_id: str, filename: str, target_dir: str, 
                      save_filename: Optional[str] = None,
                      config: Optional[Dict] = None,
-                     cancel_event=None) -> bool:
+                     cancel_event=None,
+                     hf_token: str | bool | None = None) -> bool:
     """
     Clean API for downloading a single file from HuggingFace Hub.
     
@@ -1543,7 +1639,7 @@ def download_hf_file(repo_id: str, filename: str, target_dir: str,
     if config is None:
         config = DEFAULT_DOWNLOAD_CONFIG
     
-    downloader = RobustDownloader(config)
+    downloader = RobustDownloader(config, hf_token=hf_token)
     
     # Pass cancel event to downloader
     if cancel_event:
@@ -1574,7 +1670,8 @@ def download_hf_file(repo_id: str, filename: str, target_dir: str,
 def download_hf_snapshot(repo_id: str, target_dir: str, 
                         allow_patterns: Optional[List[str]] = None,
                         config: Optional[Dict] = None,
-                        cancel_event=None) -> bool:
+                        cancel_event=None,
+                        hf_token: str | bool | None = None) -> bool:
     """
     Clean API for downloading a complete repository snapshot from HuggingFace Hub.
     
@@ -1583,7 +1680,7 @@ def download_hf_snapshot(repo_id: str, target_dir: str,
         target_dir: Local directory to save the repository
         allow_patterns: Optional list of patterns to filter files
         config: Optional download configuration (uses defaults if None)
-o        cancel_event: Optional threading.Event to signal cancellation
+        cancel_event: Optional threading.Event to signal cancellation
     
     Returns:
         bool: True if successful, False if failed
@@ -1591,7 +1688,7 @@ o        cancel_event: Optional threading.Event to signal cancellation
     if config is None:
         config = DEFAULT_DOWNLOAD_CONFIG
     
-    downloader = RobustDownloader(config)
+    downloader = RobustDownloader(config, hf_token=hf_token)
     
     # Pass cancel event to downloader
     if cancel_event:
