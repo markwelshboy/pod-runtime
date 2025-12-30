@@ -4,16 +4,20 @@ set -euo pipefail
 : "${WORKSPACE:=/workspace}"
 : "${POD_RUNTIME_DIR:=/workspace/pod-runtime}"
 
-: "${SWARMUI_DL_PORT:=7163}"
+: "${SWARMUI_DL_PORT:=7862}"
 : "${SWARMUI_DL_HOST:=0.0.0.0}"
 : "${SWARMUI_DL_SHARE:=false}"
 
 SRC="${POD_RUNTIME_DIR}/secourses/swarmui/Downloader_Gradio_App.py"
 DST="${WORKSPACE}/Downloader_Gradio_App.patched.py"
 
+# Export BEFORE any subprocess that reads env (python below)
+export SWARMUI_DL_PORT SWARMUI_DL_HOST SWARMUI_DL_SHARE
+export SRC DST
+
 if [[ ! -f "${SRC}" ]]; then
   echo "[ensure_downloader_patched] ERR: Missing source: ${SRC}" >&2
-  return 1
+  exit 1
 fi
 
 mkdir -p "${WORKSPACE}"
@@ -21,7 +25,7 @@ mkdir -p "${WORKSPACE}"
 # If destination exists and is newer than source, keep it (fast boots).
 if [[ -f "${DST}" && "${DST}" -nt "${SRC}" ]]; then
   echo "[ensure_downloader_patched] Using existing patched file: ${DST}"
-  return 0
+  exit 0
 fi
 
 echo "[ensure_downloader_patched] Creating patched copy:"
@@ -33,12 +37,11 @@ cp -f "${SRC}" "${DST}"
 # If upstream already sets server_port in launch(), don't patch.
 if grep -qE 'launch\([^)]*server_port\s*=' "${DST}"; then
   echo "[ensure_downloader_patched] Upstream already sets server_port in launch(); leaving unmodified."
-  return 0
+  exit 0
 fi
 
 # Ensure os imported (best-effort)
 if ! grep -qE '^\s*import\s+os\b' "${DST}"; then
-  # Insert after first import/from line; if none, prepend at top.
   awk '
     BEGIN{added=0}
     {
@@ -50,16 +53,11 @@ if ! grep -qE '^\s*import\s+os\b' "${DST}"; then
       }
       print $0
     }
-    END{
-      if (!added) {
-        # no imports found; handled below by re-prepending
-      }
-    }
   ' "${DST}" > "${DST}.tmp" && mv "${DST}.tmp" "${DST}"
 
   if ! grep -qE '^\s*import\s+os\b' "${DST}"; then
     # Prepend as last resort
-    printf "import os\n%s" "$(cat "${DST}")" > "${DST}.tmp" && mv "${DST}.tmp" "${DST}"
+    { echo "import os"; cat "${DST}"; } > "${DST}.tmp" && mv "${DST}.tmp" "${DST}"
   fi
 fi
 
@@ -94,5 +92,4 @@ dst.write_text(text2, encoding="utf-8")
 print("[ensure_downloader_patched] Injected server_name/server_port/share into .launch()")
 PY
 
-export DST
 echo "[ensure_downloader_patched] Patched ok: ${DST}"
