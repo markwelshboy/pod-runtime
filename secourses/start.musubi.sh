@@ -19,7 +19,7 @@ set -euo pipefail
 : "${MUSUBI_LOGS_DIR:=/workspace/logs}"
 
 : "${MUSUBI_DOWNLOADER_ENABLE:=false}"
-: "${MUSUBI_DL_APP:=${POD_RUNTIME_DIR}/secourses/musubi_tuner/Download_Train_Models.py}" # interactive script path if you want
+: "${MUSUBI_DL_APP:=${POD_RUNTIME_DIR}/secourses/musubi_trainer/Download_Train_Models.py}" # interactive script path if you want
 : "${MUSUBI_DL_SESSION:=musubi_downloader-${MUSUBI_DL_PORT}}"
 
 start_musubi_gui() {

@@ -9,7 +9,7 @@ print_warn() { printf "[musubi-links] WARN: %s\n" "$*"; }
 : "${POD_RUNTIME_DIR:=/workspace/pod-runtime}"
 
 : "${MUSUBI_ASSETS_SRC:=${POD_RUNTIME_DIR}/secourses/musubi_trainer}"
-: "${MUSUBI_ASSETS_LINK:=${WORKSPACE}/musubi_trainer}"
+: "${MUSUBI_ASSETS_LINK:=${WORKSPACE}/musubi_trainer_zip_assets}"
 
 : "${MUSUBI_TRAINER_DIR:=${WORKSPACE}/SECourses_Musubi_Trainer}"
 : "${MUSUBI_TRAINER_DIR_ASSETS_LINK:=${MUSUBI_TRAINER_DIR}/musubi_trainer_assets}"
