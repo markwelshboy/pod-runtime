@@ -11,25 +11,13 @@ set -euo pipefail
 BASE="${POD_RUNTIME_DIR}/secourses/swarmui"
 
 SRC_APP="${BASE}/Downloader_Gradio_App.py"
-SRC_UTIL="${BASE}/utilities"
 
 DST_APP="${WORKSPACE}/Downloader_Gradio_App.patched.py"
-DST_UTIL="${WORKSPACE}/utilities"
 
 echo "[ensure_downloader_patched] Staging downloader into ${WORKSPACE}"
 mkdir -p "${WORKSPACE}"
 
 [[ -f "${SRC_APP}" ]] || { echo "[ensure_downloader_patched] ERR: Missing ${SRC_APP}" >&2; exit 1; }
-[[ -d "${SRC_UTIL}" ]] || { echo "[ensure_downloader_patched] ERR: Missing ${SRC_UTIL}" >&2; exit 1; }
-
-# Sync utilities so "import utilities.*" works from /workspace
-# rsync if available, else fallback to cp -a
-if command -v rsync >/dev/null 2>&1; then
-  rsync -a --delete "${SRC_UTIL}/" "${DST_UTIL}/"
-else
-  rm -rf "${DST_UTIL}"
-  cp -a "${SRC_UTIL}" "${DST_UTIL}"
-fi
 
 # Fast path: keep existing patched file if newer than source app
 if [[ -f "${DST_APP}" && "${DST_APP}" -nt "${SRC_APP}" ]]; then
@@ -96,4 +84,3 @@ PY
 
 echo "[ensure_downloader_patched] Patched ok:"
 echo "  APP : ${DST_APP}"
-echo "  UTIL: ${DST_UTIL}"

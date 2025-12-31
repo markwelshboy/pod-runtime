@@ -15,6 +15,10 @@ set -euo pipefail
 
 : "${COMFY_VENV:=/workspace/ComfyUI/venv}"
 
+BASE="${POD_RUNTIME_DIR}/secourses/swarmui"
+SRC_UTIL="${BASE}/utilities"
+DST_UTIL="${WORKSPACE}/utilities"
+
 mkdir -p "${SWARMUI_DL_LOG_DIR}"
 
 [[ -f "${POD_RUNTIME_DIR}/.env" ]] && source "${POD_RUNTIME_DIR}/.env" || true
@@ -47,6 +51,18 @@ if [[ -x "${PATCHER}" ]]; then
   "${PATCHER}"
 else
   bash "${PATCHER}"
+fi
+
+#-- Ensure that utilities are available
+[[ -d "${SRC_UTIL}" ]] || { print_info "ERR: Missing ${SRC_UTIL}" >&2; exit 1; }
+
+# Sync utilities so "import utilities.*" works from /workspace
+# rsync if available, else fallback to cp -a
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delete "${SRC_UTIL}/" "${DST_UTIL}/"
+else
+  rm -rf "${DST_UTIL}"
+  cp -a "${SRC_UTIL}" "${DST_UTIL}"
 fi
 
 DOWNLOADER_APP="${WORKSPACE}/Downloader_Gradio_App.patched.py"

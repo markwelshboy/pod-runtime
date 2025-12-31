@@ -59,11 +59,10 @@ fi
 # -----------------------------------------------------------------------------
 # Stage / link presets into /workspace (zip-style layout expected by tutorials)
 # -----------------------------------------------------------------------------
-PRESETS_VERSION="v40"
+PRESETS_VERSION="v41"
 PRESETS_SRC="${POD_RUNTIME_DIR}/secourses/swarmui/Amazing_SwarmUI_Presets_${PRESETS_VERSION}.json"
 PRESETS_DST="${WORKSPACE}/Amazing_SwarmUI_Presets_${PRESETS_VERSION}.json"
 
-# If your actual file is "..._v40.json" (with the v), this matches.
 # If you ever switch versions, just change PRESETS_VERSION.
 if [[ -f "${PRESETS_SRC}" ]]; then
   ln -sf "${PRESETS_SRC}" "${PRESETS_DST}"
