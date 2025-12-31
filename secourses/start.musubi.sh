@@ -16,14 +16,14 @@ set -euo pipefail
 : "${MUSUBI_PORT:=7863}"
 : "${MUSUBI_SHARE:=false}"
 : "${MUSUBI_SESSION:=musubi-${MUSUBI_PORT}}"
-: "${MUSUBI_LOGS_DIR:=/workspace/logs}"
+: "${MUSUBI_LOGS_DIR:=${WORKSPACE}/logs}"
 
 : "${MUSUBI_DOWNLOADER_ENABLE:=false}"
-: "${MUSUBI_DL_APP:=${POD_RUNTIME_DIR}/secourses/musubi_trainer/Download_Train_Models.py}" # interactive script path if you want
-: "${MUSUBI_DL_SESSION:=musubi_downloader-${MUSUBI_DL_PORT}}"
+: "${MUSUBI_DL_APP:=${POD_RUNTIME_DIR}/secourses/musubi_trainer/Download_Train_Models.py}" # interactive script path (FYI)
+: "${MUSUBI_DL_SESSION:=musubi_downloader-interactive}"
 
 install_root_shell_dotfiles() {
-  local repo_root="${1:-/workspace/pod-runtime}"   # pass POD_RUNTIME_DIR if you like
+  local repo_root="${1:-/workspace/pod-runtime}"
   local target_home="/root"
   local ts; ts="$(date +%Y%m%d_%H%M%S)"
 
@@ -36,33 +36,36 @@ install_root_shell_dotfiles() {
     fi
   done
 
-  # Render .bashrc with precise placeholder substitution (atomic)
+  # Render .bashrc with placeholder substitution (atomic)
   local src_bashrc="${repo_root}/.bashrc"
-  local tmp; tmp="$(mktemp "${target_home}/.bashrc.tmp.XXXXXX")"
+  if [[ -f "${src_bashrc}" ]]; then
+    local tmp; tmp="$(mktemp "${target_home}/.bashrc.tmp.XXXXXX")"
 
-  awk -v rr="$repo_root" '
-    BEGIN {done=0}
-    /^[[:space:]]*REPO_ROOT=<CHANGEME>[[:space:]]*$/ {
-      print "REPO_ROOT=" rr
-      done=1
-      next
-    }
-    {print}
-    END {
-      if (!done) {
-        # If you want strict mode, uncomment:
-        print "ERROR: REPO_ROOT=<CHANGEME> placeholder not found" > "/dev/stderr"
-        exit 2
+    awk -v rr="$repo_root" '
+      BEGIN {done=0}
+      /^[[:space:]]*REPO_ROOT=<CHANGEME>[[:space:]]*$/ {
+        print "REPO_ROOT=" rr
+        done=1
+        next
       }
-    }
-  ' "$src_bashrc" > "$tmp"
+      {print}
+      END {
+        if (!done) {
+          print "ERROR: REPO_ROOT=<CHANGEME> placeholder not found" > "/dev/stderr"
+          exit 2
+        }
+      }
+    ' "$src_bashrc" > "$tmp"
 
-  chmod 0644 "$tmp"
-  mv -f "$tmp" "${target_home}/.bashrc"
+    chmod 0644 "$tmp"
+    mv -f "$tmp" "${target_home}/.bashrc"
+  else
+    echo "[dotfiles] WARN: missing ${src_bashrc}; skipping .bashrc install" >&2
+  fi
 
-  # Copy the others
-  install -m 0644 "${repo_root}/.bash_aliases"   "${target_home}/.bash_aliases"
-  install -m 0644 "${repo_root}/.bash_functions" "${target_home}/.bash_functions"
+  # Copy the others (best-effort)
+  [[ -f "${repo_root}/.bash_aliases" ]]   && install -m 0644 "${repo_root}/.bash_aliases"   "${target_home}/.bash_aliases"   || true
+  [[ -f "${repo_root}/.bash_functions" ]] && install -m 0644 "${repo_root}/.bash_functions" "${target_home}/.bash_functions" || true
 
   echo "[dotfiles] Installed bash dotfiles into ${target_home} (repo_root=${repo_root})"
 }
@@ -71,6 +74,9 @@ start_musubi_gui() {
   local sess="${MUSUBI_SESSION}"
   local log="${MUSUBI_LOGS_DIR}/musubi-${MUSUBI_PORT}.log"
   local py="${MUSUBI_VENV}/bin/python"
+
+  [[ -x "${py}" ]] || { print_err "Missing python: ${py}"; return 1; }
+
   local share_flag=""
   if [[ "${MUSUBI_SHARE,,}" == "true" ]]; then share_flag="--share"; fi
 
@@ -107,6 +113,23 @@ EOF
   print_local_urls "Musubi GUI (forward this port locally)" "${MUSUBI_PORT}" "/"
 }
 
+start_musubi_downloader() {
+  local launcher="${POD_RUNTIME_DIR}/secourses/musubi_trainer/start_musubi_downloader_tmux.sh"
+  if [[ -x "${launcher}" ]]; then
+    "${launcher}" || print_warn "Musubi downloader launcher failed (non-fatal)"
+  else
+    # exec bit sometimes gets lost in clones/zips
+    if [[ -f "${launcher}" ]]; then
+      bash "${launcher}" || print_warn "Musubi downloader launcher failed (non-fatal)"
+    else
+      print_warn "Downloader launcher not found: ${launcher}"
+    fi
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# Load pod-runtime env + helpers
+# -----------------------------------------------------------------------------
 # shellcheck source=/dev/null
 source "${POD_RUNTIME_ENV}"
 # shellcheck source=/dev/null
@@ -137,18 +160,19 @@ section 2 "SSH (optional)"
 if command -v setup_ssh >/dev/null 2>&1; then setup_ssh; else print_warn "setup_ssh missing"; fi
 
 section 3 "Create workspace links (optional)"
-if [[ -x "${POD_RUNTIME_DIR}/secourses/musubi_trainer/ensure_musubi_workspace_links.sh" ]]; then
-  "${POD_RUNTIME_DIR}/secourses/musubi_trainer/ensure_musubi_workspace_links.sh" || true
+LINKER="${POD_RUNTIME_DIR}/secourses/musubi_trainer/ensure_musubi_workspace_links.sh"
+if [[ -f "${LINKER}" ]]; then
+  bash "${LINKER}" || true
 else
   print_warn "No ensure_musubi_workspace_links.sh found; skipping"
 fi
 
-section 4 "Run Musubi GUI..."
+section 4 "Run Musubi GUI"
 start_musubi_gui
 
 section 5 "(Optional) Auto-launch Musubi Downloader tmux"
 if [[ "${MUSUBI_DOWNLOADER_ENABLE,,}" == "true" ]]; then
-  ${POD_RUNTIME_DIR}/secourses/musubi_trainer/start_musubi_downloader_tmux.sh || true
+  start_musubi_downloader
 else
   print_info "MUSUBI_DOWNLOADER_ENABLE is not true; skipping Musubi Downloader launch."
 fi
