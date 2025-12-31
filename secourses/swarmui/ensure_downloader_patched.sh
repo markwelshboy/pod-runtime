@@ -8,40 +8,48 @@ set -euo pipefail
 : "${SWARMUI_DL_HOST:=0.0.0.0}"
 : "${SWARMUI_DL_SHARE:=false}"
 
-SRC="${POD_RUNTIME_DIR}/secourses/swarmui/Downloader_Gradio_App.py"
-DST="${WORKSPACE}/Downloader_Gradio_App.patched.py"
+BASE="${POD_RUNTIME_DIR}/secourses/swarmui"
 
-# Export BEFORE any subprocess that reads env (python below)
-export SWARMUI_DL_PORT SWARMUI_DL_HOST SWARMUI_DL_SHARE
-export SRC DST
+SRC_APP="${BASE}/Downloader_Gradio_App.py"
+SRC_UTIL="${BASE}/utilities"
 
-if [[ ! -f "${SRC}" ]]; then
-  echo "[ensure_downloader_patched] ERR: Missing source: ${SRC}" >&2
-  exit 1
-fi
+DST_APP="${WORKSPACE}/Downloader_Gradio_App.patched.py"
+DST_UTIL="${WORKSPACE}/utilities"
 
+echo "[ensure_downloader_patched] Staging downloader into ${WORKSPACE}"
 mkdir -p "${WORKSPACE}"
 
-# If destination exists and is newer than source, keep it (fast boots).
-if [[ -f "${DST}" && "${DST}" -nt "${SRC}" ]]; then
-  echo "[ensure_downloader_patched] Using existing patched file: ${DST}"
+[[ -f "${SRC_APP}" ]] || { echo "[ensure_downloader_patched] ERR: Missing ${SRC_APP}" >&2; exit 1; }
+[[ -d "${SRC_UTIL}" ]] || { echo "[ensure_downloader_patched] ERR: Missing ${SRC_UTIL}" >&2; exit 1; }
+
+# Sync utilities so "import utilities.*" works from /workspace
+# rsync if available, else fallback to cp -a
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delete "${SRC_UTIL}/" "${DST_UTIL}/"
+else
+  rm -rf "${DST_UTIL}"
+  cp -a "${SRC_UTIL}" "${DST_UTIL}"
+fi
+
+# Fast path: keep existing patched file if newer than source app
+if [[ -f "${DST_APP}" && "${DST_APP}" -nt "${SRC_APP}" ]]; then
+  echo "[ensure_downloader_patched] Using existing patched file: ${DST_APP}"
   exit 0
 fi
 
 echo "[ensure_downloader_patched] Creating patched copy:"
-echo "  SRC: ${SRC}"
-echo "  DST: ${DST}"
-
-cp -f "${SRC}" "${DST}"
+echo "  SRC: ${SRC_APP}"
+echo "  DST: ${DST_APP}"
+cp -f "${SRC_APP}" "${DST_APP}"
 
 # If upstream already sets server_port in launch(), don't patch.
-if grep -qE 'launch\([^)]*server_port\s*=' "${DST}"; then
+if grep -qE 'launch\([^)]*server_port\s*=' "${DST_APP}"; then
   echo "[ensure_downloader_patched] Upstream already sets server_port in launch(); leaving unmodified."
   exit 0
 fi
 
 # Ensure os imported (best-effort)
-if ! grep -qE '^\s*import\s+os\b' "${DST}"; then
+if ! grep -qE '^\s*import\s+os\b' "${DST_APP}"; then
   awk '
     BEGIN{added=0}
     {
@@ -53,23 +61,20 @@ if ! grep -qE '^\s*import\s+os\b' "${DST}"; then
       }
       print $0
     }
-  ' "${DST}" > "${DST}.tmp" && mv "${DST}.tmp" "${DST}"
-
-  if ! grep -qE '^\s*import\s+os\b' "${DST}"; then
-    # Prepend as last resort
-    { echo "import os"; cat "${DST}"; } > "${DST}.tmp" && mv "${DST}.tmp" "${DST}"
-  fi
+  ' "${DST_APP}" > "${DST_APP}.tmp" && mv "${DST_APP}.tmp" "${DST_APP}"
 fi
 
-# Patch the FIRST ".launch(" occurrence by injecting stable server_name/server_port/share.
+# Patch the FIRST ".launch(" occurrence by injecting stable server_name/server_port.
+# NOTE: do NOT inject share= here (you previously hit "keyword repeated: share").
+export DST_APP
 python - <<'PY'
 import os, re, pathlib, sys
 
-dst = pathlib.Path(os.environ["DST"])
+dst = pathlib.Path(os.environ["DST_APP"])
 text = dst.read_text(encoding="utf-8", errors="ignore")
 
-# Idempotency: if already injected, skip
-if "SWARMUI_DL_PORT" in text and "SWARMUI_DL_HOST" in text and "SWARMUI_DL_SHARE" in text:
+# Idempotency
+if "SWARMUI_DL_PORT" in text and "SWARMUI_DL_HOST" in text:
     print("[ensure_downloader_patched] Patch already present; skipping.")
     sys.exit(0)
 
@@ -84,12 +89,11 @@ inject = (
     "            server_port=int(os.environ.get(\"SWARMUI_DL_PORT\", \"7862\")),\n"
 )
 
-
-# Replace only the first occurrence
 text2 = text[:m.start()] + inject + text[m.end():]
 dst.write_text(text2, encoding="utf-8")
-
-print("[ensure_downloader_patched] Injected server_name/server_port/share into .launch()")
+print("[ensure_downloader_patched] Injected server_name/server_port into .launch()")
 PY
 
-echo "[ensure_downloader_patched] Patched ok: ${DST}"
+echo "[ensure_downloader_patched] Patched ok:"
+echo "  APP : ${DST_APP}"
+echo "  UTIL: ${DST_UTIL}"
