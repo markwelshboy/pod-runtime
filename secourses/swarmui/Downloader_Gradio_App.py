@@ -12,6 +12,55 @@ import copy
 import json
 from pathlib import Path
 
+# Prevent UnicodeEncodeError on some Windows consoles (cp1252/cp437) when printing emojis/symbols.
+# Gradio labels + our logs use unicode heavily; this keeps the app from crashing on print().
+if os.name == "nt":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+# Gradio 6.2.0 workaround:
+# In some cases Gradio can enqueue an event with missing input values (e.g. `[]`), which triggers
+# `Blocks.validate_inputs()` to raise and spam the console while downloads continue normally.
+# We pad missing inputs with `None` to avoid the exception and keep the server stable.
+#
+# Reference (Gradio source): `gradio/blocks.py` -> `validate_inputs()`
+def _patch_gradio_validate_inputs_missing_args():
+    try:
+        import gradio.blocks as _gr_blocks
+
+        if getattr(_gr_blocks.Blocks, "_swarmui_validate_inputs_patched", False):
+            return
+
+        _orig_validate_inputs = _gr_blocks.Blocks.validate_inputs
+
+        def _validate_inputs_patched(self, block_fn, inputs):  # type: ignore[no-untyped-def]
+            try:
+                dep_inputs = getattr(block_fn, "inputs", None) or []
+                if isinstance(inputs, list) and len(inputs) < len(dep_inputs):
+                    missing = len(dep_inputs) - len(inputs)
+                    inputs.extend([None] * missing)
+                    if not getattr(self, "_swarmui_warned_missing_inputs", False):
+                        print(
+                            "WARNING: Gradio sent too few inputs for an event; padding with None "
+                            "to prevent a crash (Gradio 6.2.0 workaround)."
+                        )
+                        setattr(self, "_swarmui_warned_missing_inputs", True)
+                return _orig_validate_inputs(self, block_fn, inputs)
+            except Exception:
+                # Fall back to original behavior if anything unexpected happens
+                return _orig_validate_inputs(self, block_fn, inputs)
+
+        _gr_blocks.Blocks.validate_inputs = _validate_inputs_patched  # type: ignore[assignment]
+        _gr_blocks.Blocks._swarmui_validate_inputs_patched = True  # type: ignore[attr-defined]
+    except Exception as _e:
+        print(f"WARNING: Could not apply Gradio validate_inputs workaround: {_e}")
+
+
+_patch_gradio_validate_inputs_missing_args()
+
 from utilities.model_catalog import (
     models_structure as MODEL_CATALOG,
     HIDREAM_INFO_LINK,
@@ -21,6 +70,7 @@ from utilities.HF_model_downloader import (
     download_hf_file,
     download_hf_snapshot,
 )
+from utilities.hf_token_manager import resolve_hf_token, check_hf_token
 from utilities.url_downloader import create_url_downloader
 from utilities.folder_manager import create_folder_manager
 try:
@@ -70,6 +120,22 @@ def install_package(package_name, version_spec=""):
     return False
 
 print("huggingface_hub found (or installed).")
+
+# Resolve HuggingFace token once at startup:
+# - Prefer HUGGING_FACE_HUB_TOKEN (env)
+# - Fallback to user/system HF token (huggingface-cli login / HF_TOKEN / HUGGINGFACE_HUB_TOKEN)
+# - If both invalid: proceed without any token (and force no-token for hub calls)
+try:
+    _resolved_hf = resolve_hf_token()
+    # For huggingface_hub APIs (HfApi / list_repo_files / metadata helpers): pass str or False to force no-token
+    HF_HUB_TOKEN_FOR_DOWNLOADS = _resolved_hf.hub_token
+    # For URL Downloader (requests header): only pass a real token string or None
+    HF_TOKEN_FOR_URL_DOWNLOADS = _resolved_hf.token
+    print(_resolved_hf.summary())
+except Exception as _e:
+    print(f"WARNING: Failed to resolve/validate HuggingFace token(s). Proceeding without token. ({type(_e).__name__}: {_e})")
+    HF_HUB_TOKEN_FOR_DOWNLOADS = False
+    HF_TOKEN_FOR_URL_DOWNLOADS = None
 
 try:
     import hf_transfer
@@ -832,6 +898,7 @@ def _download_model_internal(model_info, sub_category_info, base_path, use_hf_tr
                 target_dir=target_dir,
                 allow_patterns=allow_patterns,
                 cancel_event=cancel_current_download,
+                hf_token=HF_HUB_TOKEN_FOR_DOWNLOADS,
             )
             if success:
                 add_log(f" -> Snapshot download complete for {repo_id} into {target_dir}.")
@@ -859,6 +926,7 @@ def _download_model_internal(model_info, sub_category_info, base_path, use_hf_tr
                 target_dir=target_dir,
                 save_filename=save_filename,
                 cancel_event=cancel_current_download,
+                hf_token=HF_HUB_TOKEN_FOR_DOWNLOADS,
             )
             
             if success:
@@ -923,6 +991,11 @@ def _download_model_internal(model_info, sub_category_info, base_path, use_hf_tr
 
         # Check for companion JSON file download
         companion_json = model_info.get('companion_json')
+        companion_repo_id = (
+            model_info.get("companion_repo_id")
+            or model_info.get("companion_json_repo_id")
+            or repo_id
+        )
         if companion_json and not is_snapshot:
             add_log(f" -> Checking for companion JSON file: {companion_json}")
             try:
@@ -931,11 +1004,12 @@ def _download_model_internal(model_info, sub_category_info, base_path, use_hf_tr
                     add_log(f"Companion JSON download cancelled: {companion_json}")
                 else:
                     json_success = download_hf_file(
-                        repo_id=repo_id,
+                        repo_id=companion_repo_id,
                         filename=companion_json,
                         target_dir=target_dir,
                         save_filename=companion_json,
                         cancel_event=cancel_current_download,
+                        hf_token=HF_HUB_TOKEN_FOR_DOWNLOADS,
                     )
                     
                     if json_success:
@@ -1438,7 +1512,7 @@ def create_ui(default_base_path):
     # Create the Blocks app (Gradio 6.0: theme/css moved to launch())
     # Using analytics_enabled=False and show_progress='hidden' to speed up initial load
     with gr.Blocks(title=APP_TITLE, analytics_enabled=False) as app:
-        gr.Markdown(f"## {APP_TITLE} V115 > Source : https://www.patreon.com/posts/114517862")
+        gr.Markdown(f"## {APP_TITLE} V116 > Source : https://www.patreon.com/posts/114517862")
         gr.Markdown(f"### ComfyUI Installer for SwarmUI's Back-End > https://www.patreon.com/posts/105023709")
         
         with gr.Tabs():
@@ -1803,10 +1877,19 @@ def create_ui(default_base_path):
                                         elif "Min" in bundle_display_name or "Requirements" in bundle_display_name:
                                             bundle_icon = "📋"
                                         
+                                        # Avoid double icons when bundle names already start with the chosen icon
+                                        bundle_label_name = bundle_display_name
+                                        try:
+                                            stripped_name = bundle_label_name.strip()
+                                            if stripped_name.startswith(bundle_icon):
+                                                bundle_label_name = stripped_name[len(bundle_icon):].lstrip()
+                                        except Exception:
+                                            bundle_label_name = bundle_display_name
+
                                         with gr.Column(scale=1):
                                             # Each bundle gets its own accordion that opens to show full details
                                             with gr.Accordion(
-                                                f"{bundle_icon} {bundle_display_name}{bundle_size_display}", 
+                                                f"{bundle_icon} {bundle_label_name}{bundle_size_display}", 
                                                 open=False, 
                                                 visible=True,
                                                 elem_classes="bundle-accordion"
@@ -2666,7 +2749,11 @@ def create_ui(default_base_path):
                     try:
                         # Use custom API keys if provided, otherwise use defaults
                         civitai_key = civitai_api.strip() if civitai_api and civitai_api.strip() else "5577db242d28f46030f55164cdd2da5d"
-                        hf_key = hf_api.strip() if hf_api and hf_api.strip() else None
+                        user_hf_key = hf_api.strip() if hf_api and hf_api.strip() else None
+                        if user_hf_key and check_hf_token(user_hf_key) == "invalid":
+                            add_log("WARNING: Provided HuggingFace token appears invalid. Proceeding without it.")
+                            user_hf_key = None
+                        hf_key = user_hf_key or HF_TOKEN_FOR_URL_DOWNLOADS
                         
                         # Create URL downloader with API keys
                         url_downloader = create_url_downloader(civitai_api_key=civitai_key, huggingface_api_key=hf_key)
@@ -2705,7 +2792,11 @@ def create_ui(default_base_path):
                     try:
                         # Use custom API keys if provided, otherwise use defaults
                         civitai_key = civitai_api.strip() if civitai_api and civitai_api.strip() else "5577db242d28f46030f55164cdd2da5d"
-                        hf_key = hf_api.strip() if hf_api and hf_api.strip() else None
+                        user_hf_key = hf_api.strip() if hf_api and hf_api.strip() else None
+                        if user_hf_key and check_hf_token(user_hf_key) == "invalid":
+                            add_log("WARNING: Provided HuggingFace token appears invalid. Proceeding without it.")
+                            user_hf_key = None
+                        hf_key = user_hf_key or HF_TOKEN_FOR_URL_DOWNLOADS
                         
                         # Create URL downloader with API keys
                         url_downloader = create_url_downloader(civitai_api_key=civitai_key, huggingface_api_key=hf_key)
@@ -2742,7 +2833,11 @@ def create_ui(default_base_path):
                     try:
                         # Use custom API keys if provided, otherwise use defaults
                         civitai_key = civitai_api.strip() if civitai_api and civitai_api.strip() else "5577db242d28f46030f55164cdd2da5d"
-                        hf_key = hf_api.strip() if hf_api and hf_api.strip() else None
+                        user_hf_key = hf_api.strip() if hf_api and hf_api.strip() else None
+                        if user_hf_key and check_hf_token(user_hf_key) == "invalid":
+                            add_log("WARNING: Provided HuggingFace token appears invalid. Proceeding without it.")
+                            user_hf_key = None
+                        hf_key = user_hf_key or HF_TOKEN_FOR_URL_DOWNLOADS
                         
                         # Create managers with API keys
                         url_downloader = create_url_downloader(civitai_api_key=civitai_key, huggingface_api_key=hf_key)

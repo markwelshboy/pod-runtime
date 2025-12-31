@@ -26,9 +26,11 @@ except ImportError:
     print("huggingface_hub not found. Please install it: pip install huggingface_hub")
     sys.exit(1)
 
-# Set Hugging Face token for authentication
-HF_TOKEN = "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"
-os.environ["HUGGING_FACE_HUB_TOKEN"] = HF_TOKEN
+# Resolve HuggingFace token (env -> system -> none). If invalid, it will be omitted.
+from utilities.hf_token_manager import resolve_hf_token
+
+_resolved_hf = resolve_hf_token()
+HF_TOKEN = _resolved_hf.token  # HfFileSystem expects a string token or None
 
 DATA_FILE = SCRIPT_DIR / "model_sizes.json"
 
@@ -50,7 +52,7 @@ def get_file_size_from_hf(repo_id: str, filename: str = None) -> Optional[int]:
         Size in bytes or None if error
     """
     try:
-        # Initialize with token for authentication
+        # Initialize with token for authentication (optional)
         fs = HfFileSystem(token=HF_TOKEN)
         
         if filename:
@@ -281,7 +283,7 @@ def main():
     """Main function to fetch and save model sizes."""
     print("SwarmUI Model Size Fetcher")
     print("=" * 50)
-    print(f"Using Hugging Face token: {HF_TOKEN[:10]}...{HF_TOKEN[-4:]}")
+    print(_resolved_hf.summary())
     print("=" * 50)
 
     # Check if size data already exists

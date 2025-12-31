@@ -290,7 +290,8 @@ models_structure = {
                     "- CLIP-SAE-ViT-L-14 (Saved as clip_l.safetensors - SwarmUI Default) (9.12 GB)\n"
                     "- FLUX 2 Dev FP8 Mixed Scaled High Quality (35.5 GB)\n"
                     "- FLUX 2 VAE (0.31 GB)\n"
-                    "- Mistral 3 Small FLUX 2 Text Encoder FP8 (16.80 GB)\n"
+                    "- Mistral 3 Small FLUX 2 Text Encoder FP8 Scaled (16.80 GB)\n"
+                    "- Flux_2_Turbo_LoRA_Fixed.safetensors (FLUX 2 Turbo LoRA)\n"
                 ),
                 "models_to_download": [
                     ("Image Generation Models", "Z Image Turbo Models", "Z Image Turbo BF16"),
@@ -328,7 +329,8 @@ models_structure = {
                     ("Text Encoder Models", "Clip Models", "CLIP-SAE-ViT-L-14 (Save As clip_l.safetensors - SwarmUI default name)"),
                     ("Image Generation Models", "FLUX 2 Models", "FLUX 2 Dev FP8 Mixed Scaled High Quality"),
                     ("Image Generation Models", "FLUX 2 Models", "FLUX 2 VAE"),
-                    ("Image Generation Models", "FLUX 2 Models", "Mistral 3 Small FLUX 2 Text Encoder FP8"),
+                    ("Image Generation Models", "FLUX 2 Models", "Mistral 3 Small FLUX 2 Text Encoder FP8 Scaled"),
+                    ("Image Generation Models", "FLUX 2 Models", "Flux_2_Turbo_LoRA_Fixed.safetensors"),
                 ]
             },
             {
@@ -360,12 +362,31 @@ models_structure = {
                     "**Includes:**\n"
                     "- FLUX 2 Dev FP8 Mixed Scaled High Quality (35.5 GB)\n"
                     "- FLUX 2 VAE (0.31 GB)\n"
-                    "- Mistral 3 Small FLUX 2 Text Encoder FP8 (16.80 GB)\n"
+                    "- Mistral 3 Small FLUX 2 Text Encoder FP8 Scaled (Saved as mistral_3_small_flux2_fp8.safetensors)\n"
+                    "- Flux_2_Turbo_LoRA_Fixed.safetensors (FLUX 2 Turbo LoRA)\n"
                 ),
                 "models_to_download": [
                     ("Image Generation Models", "FLUX 2 Models", "FLUX 2 Dev FP8 Mixed Scaled High Quality"),
                     ("Image Generation Models", "FLUX 2 Models", "FLUX 2 VAE"),
-                    ("Image Generation Models", "FLUX 2 Models", "Mistral 3 Small FLUX 2 Text Encoder FP8"),
+                    ("Image Generation Models", "FLUX 2 Models", "Mistral 3 Small FLUX 2 Text Encoder FP8 Scaled"),
+                    ("Image Generation Models", "FLUX 2 Models", "Flux_2_Turbo_LoRA_Fixed.safetensors"),
+                ]
+            },
+            {
+                "name": "⚡ FLUX 2 Low RAM Bundle",
+                "info": (
+                    "Downloads a low-RAM FLUX 2 setup using GGUF quantized models.\n\n"
+                    "**Includes:**\n"
+                    "- FLUX 2 VAE (Saved as Flux/flux2-vae.safetensors)\n"
+                    "- FLUX 2 Dev GGUF Q4_K_M (Saved as FLUX_2_Dev_Q4_K_M.gguf)\n"
+                    "- Mistral 3 Small FLUX 2 Text Encoder GGUF Q4_K_M (Saved as mistral_3_small_flux2_Q4_K_M.gguf)\n"
+                    "- Flux_2_Turbo_LoRA_Fixed.safetensors (FLUX 2 Turbo LoRA)\n"
+                ),
+                "models_to_download": [
+                    ("Image Generation Models", "FLUX 2 Models", "FLUX 2 VAE"),
+                    ("Image Generation Models", "FLUX 2 Models", "FLUX 2 Dev GGUF Q4_K_M"),
+                    ("Image Generation Models", "FLUX 2 Models", "Mistral 3 Small FLUX 2 Text Encoder GGUF Q4_K_M"),
+                    ("Image Generation Models", "FLUX 2 Models", "Flux_2_Turbo_LoRA_Fixed.safetensors"),
                 ]
             },
             {
@@ -724,12 +745,37 @@ models_structure = {
                         "info": "Mistral 3 Small text encoder for FLUX 2 in BF16 format (35.6 GB). Higher quality but uses more VRAM."
                     },
                     {
-                        "name": "Mistral 3 Small FLUX 2 Text Encoder FP8",
-                        "repo_id": "MonsterMMORPG/Wan_GGUF",
-                        "filename_in_repo": "FLUX_2_Models/mistral_3_small_flux2_fp8.safetensors",
+                        "name": "Mistral 3 Small FLUX 2 Text Encoder FP8 Scaled",
+                        "repo_id": "silveroxides/FLUX.2-dev-fp8_scaled",
+                        "filename_in_repo": "mistral_3_small_flux2_fp8mixed.safetensors",
                         "save_filename": "mistral_3_small_flux2_fp8.safetensors",
                         "target_dir_key": "text_encoders",
-                        "info": "Mistral 3 Small text encoder for FLUX 2 in FP8 format (18 GB). Lower VRAM usage with minimal quality loss."
+                        "info": "Mistral 3 Small text encoder for FLUX 2 in FP8 mixed scaled format. Downloaded from silveroxides and saved as mistral_3_small_flux2_fp8.safetensors."
+                    },
+                    {
+                        "name": "Flux_2_Turbo_LoRA_Fixed.safetensors",
+                        "repo_id": "MonsterMMORPG/Wan_GGUF",
+                        "filename_in_repo": "Flux_2_Turbo_LoRA_Fixed.safetensors",
+                        "save_filename": "Flux_2_Turbo_LoRA_Fixed.safetensors",
+                        "target_dir_key": "Lora",
+                        "info": "FLUX 2 Turbo LoRA (fixed). Saved to the LoRA folder."
+                    },
+                    {
+                        "name": "Mistral 3 Small FLUX 2 Text Encoder GGUF Q4_K_M",
+                        "repo_id": "mcmonkey/Flux2MistralGGUF",
+                        "filename_in_repo": "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M-flux2fixed.gguf",
+                        "save_filename": "mistral_3_small_flux2_Q4_K_M.gguf",
+                        "target_dir_key": "text_encoders",
+                        "info": "Mistral 3 Small FLUX 2 text encoder in GGUF Q4_K_M format (low RAM). Saved as mistral_3_small_flux2_Q4_K_M.gguf."
+                    },
+                    {
+                        "name": "FLUX 2 Dev GGUF Q4_K_M",
+                        "repo_id": "city96/FLUX.2-dev-gguf",
+                        "filename_in_repo": "flux2-dev-Q4_K_M.gguf",
+                        "save_filename": "FLUX_2_Dev_Q4_K_M.gguf",
+                        "companion_json": "FLUX_2_Dev_Q4_K_M.swarm.json",
+                        "companion_repo_id": "MonsterMMORPG/Wan_GGUF",
+                        "info": "FLUX 2 Dev model in GGUF Q4_K_M quantization (low RAM). Saved as FLUX_2_Dev_Q4_K_M.gguf."
                     },
                     {
                         "name": "FLUX 2 Dev GGUF Q4_1",

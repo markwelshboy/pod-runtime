@@ -28,12 +28,57 @@ class URLDownloader:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
-        
-        # Add HuggingFace authorization header if API key is provided
-        if self.huggingface_api_key:
-            self.session.headers.update({
-                'Authorization': f'Bearer {self.huggingface_api_key}'
-            })
+
+        # IMPORTANT SECURITY NOTE:
+        # We do NOT set the HuggingFace token as a global Session header, to avoid
+        # leaking it to non-HuggingFace hosts (CivitAI, arbitrary URLs, etc).
+        # Instead, we attach it per-request only for HuggingFace domains.
+
+    def _is_huggingface_host(self, host: str | None) -> bool:
+        if not host:
+            return False
+        host = host.lower()
+        return (
+            host == "huggingface.co"
+            or host.endswith(".huggingface.co")
+            or host == "hf.co"
+            or host.endswith(".hf.co")
+        )
+
+    def _headers_with_optional_hf_auth(self, url: str, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        merged: Dict[str, str] = dict(headers) if headers else {}
+        token = self.huggingface_api_key
+        if token:
+            try:
+                host = urllib.parse.urlparse(url).hostname
+            except Exception:
+                host = None
+            if self._is_huggingface_host(host):
+                merged.setdefault("Authorization", f"Bearer {token}")
+        return merged
+
+    def _request(self, method: str, url: str, *, headers: Optional[Dict[str, str]] = None, **kwargs):
+        """
+        Request helper that attaches HF auth only to HuggingFace hosts.
+        If a token is rejected (401/403), retry once without token and disable it.
+        """
+        merged_headers = self._headers_with_optional_hf_auth(url, headers)
+        resp = self.session.request(method, url, headers=merged_headers, **kwargs)
+
+        if resp.status_code in (401, 403) and self.huggingface_api_key:
+            try:
+                host = urllib.parse.urlparse(url).hostname
+            except Exception:
+                host = None
+            if self._is_huggingface_host(host):
+                resp.close()
+                # Disable token for subsequent URL requests
+                self.huggingface_api_key = None
+                retry_headers = dict(headers) if headers else {}
+                retry_headers.pop("Authorization", None)
+                return self.session.request(method, url, headers=retry_headers, **kwargs)
+
+        return resp
         
     def parse_url(self, url: str) -> Dict[str, Any]:
         """
@@ -213,7 +258,7 @@ class URLDownloader:
             print(f"Getting filename from server: {url}")
             
             # Make a HEAD request to get headers without downloading content
-            response = self.session.head(url, allow_redirects=True, timeout=30)
+            response = self._request("HEAD", url, allow_redirects=True, timeout=30)
             
             print(f"Response status: {response.status_code}")
             print(f"Response headers: {dict(response.headers)}")
@@ -241,7 +286,7 @@ class URLDownloader:
             if 'civitai.com' in url.lower() and (response.status_code != 200 or 'text/html' in response.headers.get('Content-Type', '')):
                 print("HEAD request failed for CivitAI or returned HTML, trying GET with Range header...")
                 headers = {'Range': 'bytes=0-1023'}  # Request first 1KB only
-                response = self.session.get(url, headers=headers, timeout=30, allow_redirects=True)
+                response = self._request("GET", url, headers=headers, timeout=30, allow_redirects=True)
                 
                 print(f"GET Range response status: {response.status_code}")
                 print(f"GET Range response headers: {dict(response.headers)}")
@@ -315,7 +360,9 @@ class URLDownloader:
             os.makedirs(target_dir, exist_ok=True)
             
             # Use the robust downloader for actual download
-            downloader = RobustDownloader(self.config)
+            # Pass token through so HuggingFace URLs can be authenticated (private repos / rate limits),
+            # while still being safe if a token is invalid (RobustDownloader retries without it).
+            downloader = RobustDownloader(self.config, hf_token=self.huggingface_api_key or False)
             if cancel_event:
                 downloader.cancel_event = cancel_event
             
@@ -357,7 +404,7 @@ class URLDownloader:
             
             # Get file size first to determine download method
             try:
-                response = downloader.session.head(url, timeout=30, allow_redirects=True)
+                response = downloader._request("HEAD", url, timeout=30, allow_redirects=True)
                 total_size = 0
                 
                 if response.status_code == 200:
@@ -368,7 +415,7 @@ class URLDownloader:
                     # HEAD failed (common with CivitAI) - try Range request
                     print(f"HEAD request failed (status {response.status_code}), trying Range request...")
                     headers = {'Range': 'bytes=0-1023'}
-                    response = downloader.session.get(url, headers=headers, timeout=30, allow_redirects=True)
+                    response = downloader._request("GET", url, headers=headers, timeout=30, allow_redirects=True)
                     
                     if response.status_code == 206:  # Partial Content
                         # Extract total size from Content-Range header
@@ -386,7 +433,7 @@ class URLDownloader:
                     else:
                         # Range not supported, try regular GET for size
                         print(f"Range request failed (status {response.status_code}), trying streaming GET...")
-                        response = downloader.session.get(url, stream=True, timeout=30)
+                        response = downloader._request("GET", url, stream=True, timeout=30)
                         total_size = int(response.headers.get('content-length', 0))
                         response.close()
                         print(f"Got file size from streaming GET: {total_size}")
@@ -460,7 +507,7 @@ class URLDownloader:
             download_url = download_info['download_url']
             
             # Make a HEAD request to check if URL is accessible
-            response = self.session.head(download_url, allow_redirects=True, timeout=30)
+            response = self._request("HEAD", download_url, allow_redirects=True, timeout=30)
             
             if response.status_code == 200:
                 content_length = response.headers.get('content-length')
@@ -472,7 +519,7 @@ class URLDownloader:
             elif response.status_code == 405:  # Method Not Allowed (HEAD not supported)
                 # Try a GET request with range header to check accessibility
                 headers = {'Range': 'bytes=0-1023'}  # Request first 1KB
-                response = self.session.get(download_url, headers=headers, timeout=30)
+                response = self._request("GET", download_url, headers=headers, timeout=30)
                 if response.status_code in [200, 206]:  # 206 = Partial Content
                     return True, "✓ URL is valid (HEAD not supported, but GET works)"
                 else:

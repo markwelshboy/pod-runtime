@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 import os
 
@@ -66,31 +67,43 @@ def get_system_hf_token() -> str | None:
     This covers tokens created via `huggingface-cli login` and common env vars
     used by `huggingface_hub` itself (HF_TOKEN / HUGGINGFACE_HUB_TOKEN).
     """
-    # Prefer the official token store if available.
-    try:
-        from huggingface_hub import HfFolder
-
-        token = _normalize_token(HfFolder.get_token())
-        if token:
-            return token
-    except Exception:
-        pass
-
-    # Newer versions expose get_token() helper
-    try:
-        from huggingface_hub.utils import get_token  # type: ignore
-
-        token = _normalize_token(get_token())
-        if token:
-            return token
-    except Exception:
-        pass
-
-    # Fallback env vars (covers cases where HfFolder/get_token aren't available)
+    # 1) System-wide env vars (do NOT include HUGGING_FACE_HUB_TOKEN here, because that is the
+    #    app-preferred env var and must NOT override the user's stored login token when invalid).
     for env_name in ("HF_TOKEN", "HUGGINGFACE_HUB_TOKEN"):
         token = _normalize_token(os.environ.get(env_name))
         if token:
             return token
+
+    # 2) Token stored on disk by `hf auth login` / `huggingface_hub.login`
+    #    Use huggingface_hub constants path if available, otherwise fall back to a reasonable default.
+    try:
+        import huggingface_hub.constants as hf_constants  # type: ignore
+
+        token_path = Path(hf_constants.HF_TOKEN_PATH)
+        if token_path.exists():
+            token = _normalize_token(token_path.read_text(encoding="utf-8", errors="ignore"))
+            if token:
+                return token
+    except Exception:
+        pass
+
+    # 3) Stored tokens file (may contain multiple named tokens)
+    try:
+        from huggingface_hub.utils import get_stored_tokens  # type: ignore
+
+        stored = get_stored_tokens() or {}
+        if isinstance(stored, dict) and stored:
+            if "default" in stored:
+                token = _normalize_token(stored.get("default"))
+                if token:
+                    return token
+            # Otherwise, return any token
+            for _name, tok in stored.items():
+                token = _normalize_token(tok)
+                if token:
+                    return token
+    except Exception:
+        pass
     return None
 
 
@@ -178,5 +191,6 @@ def resolve_hf_token(
         env_status=env_status,
         system_status=system_status,
     )
+
 
 

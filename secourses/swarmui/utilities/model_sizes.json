@@ -100,13 +100,43 @@
       "category": "Image Generation Models",
       "sub_category": "FLUX 2 Models"
     },
-    "Image Generation Models::FLUX 2 Models::Mistral 3 Small FLUX 2 Text Encoder FP8": {
-      "name": "Mistral 3 Small FLUX 2 Text Encoder FP8",
-      "repo_id": "MonsterMMORPG/Wan_GGUF",
-      "filename": "FLUX_2_Models/mistral_3_small_flux2_fp8.safetensors",
+    "Image Generation Models::FLUX 2 Models::Mistral 3 Small FLUX 2 Text Encoder FP8 Scaled": {
+      "name": "Mistral 3 Small FLUX 2 Text Encoder FP8 Scaled",
+      "repo_id": "silveroxides/FLUX.2-dev-fp8_scaled",
+      "filename": "mistral_3_small_flux2_fp8mixed.safetensors",
       "is_snapshot": false,
-      "size_bytes": 18034640095,
-      "size_gb": 16.8,
+      "size_bytes": 18510030029,
+      "size_gb": 17.24,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX 2 Models"
+    },
+    "Image Generation Models::FLUX 2 Models::Flux_2_Turbo_LoRA_Fixed.safetensors": {
+      "name": "Flux_2_Turbo_LoRA_Fixed.safetensors",
+      "repo_id": "MonsterMMORPG/Wan_GGUF",
+      "filename": "Flux_2_Turbo_LoRA_Fixed.safetensors",
+      "is_snapshot": false,
+      "size_bytes": 2760947243,
+      "size_gb": 2.57,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX 2 Models"
+    },
+    "Image Generation Models::FLUX 2 Models::Mistral 3 Small FLUX 2 Text Encoder GGUF Q4_K_M": {
+      "name": "Mistral 3 Small FLUX 2 Text Encoder GGUF Q4_K_M",
+      "repo_id": "mcmonkey/Flux2MistralGGUF",
+      "filename": "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M-flux2fixed.gguf",
+      "is_snapshot": false,
+      "size_bytes": 10895202592,
+      "size_gb": 10.15,
+      "category": "Image Generation Models",
+      "sub_category": "FLUX 2 Models"
+    },
+    "Image Generation Models::FLUX 2 Models::FLUX 2 Dev GGUF Q4_K_M": {
+      "name": "FLUX 2 Dev GGUF Q4_K_M",
+      "repo_id": "city96/FLUX.2-dev-gguf",
+      "filename": "flux2-dev-Q4_K_M.gguf",
+      "is_snapshot": false,
+      "size_bytes": 20082414560,
+      "size_gb": 18.7,
       "category": "Image Generation Models",
       "sub_category": "FLUX 2 Models"
     },
@@ -2895,8 +2925,8 @@
     "SwarmUI Bundles::bundle_0": {
       "name": "Complete Image Generation and Editing Bundle",
       "category": "SwarmUI Bundles",
-      "total_size_bytes": 232849961189,
-      "total_size_gb": 216.86,
+      "total_size_bytes": 236086298366,
+      "total_size_gb": 219.87,
       "models": [
         {
           "name": "Z Image Turbo BF16",
@@ -3074,12 +3104,17 @@
           "size_gb": 0.31
         },
         {
-          "name": "Mistral 3 Small FLUX 2 Text Encoder FP8",
-          "size_bytes": 18034640095,
-          "size_gb": 16.8
+          "name": "Mistral 3 Small FLUX 2 Text Encoder FP8 Scaled",
+          "size_bytes": 18510030029,
+          "size_gb": 17.24
+        },
+        {
+          "name": "Flux_2_Turbo_LoRA_Fixed.safetensors",
+          "size_bytes": 2760947243,
+          "size_gb": 2.57
         }
       ],
-      "model_count": 36
+      "model_count": 37
     },
     "SwarmUI Bundles::bundle_1": {
       "name": "Z Image Turbo Core Bundle",
@@ -3118,8 +3153,8 @@
     "SwarmUI Bundles::bundle_2": {
       "name": "FLUX 2 Core Bundle",
       "category": "SwarmUI Bundles",
-      "total_size_bytes": 53826519313,
-      "total_size_gb": 50.13,
+      "total_size_bytes": 57062856490,
+      "total_size_gb": 53.14,
       "models": [
         {
           "name": "FLUX 2 Dev FP8 Mixed Scaled High Quality",
@@ -3132,14 +3167,48 @@
           "size_gb": 0.31
         },
         {
-          "name": "Mistral 3 Small FLUX 2 Text Encoder FP8",
-          "size_bytes": 18034640095,
-          "size_gb": 16.8
+          "name": "Mistral 3 Small FLUX 2 Text Encoder FP8 Scaled",
+          "size_bytes": 18510030029,
+          "size_gb": 17.24
+        },
+        {
+          "name": "Flux_2_Turbo_LoRA_Fixed.safetensors",
+          "size_bytes": 2760947243,
+          "size_gb": 2.57
         }
       ],
-      "model_count": 3
+      "model_count": 4
     },
     "SwarmUI Bundles::bundle_3": {
+      "name": "⚡ FLUX 2 Low RAM Bundle",
+      "category": "SwarmUI Bundles",
+      "total_size_bytes": 34074777951,
+      "total_size_gb": 31.73,
+      "models": [
+        {
+          "name": "FLUX 2 VAE",
+          "size_bytes": 336213556,
+          "size_gb": 0.31
+        },
+        {
+          "name": "FLUX 2 Dev GGUF Q4_K_M",
+          "size_bytes": 20082414560,
+          "size_gb": 18.7
+        },
+        {
+          "name": "Mistral 3 Small FLUX 2 Text Encoder GGUF Q4_K_M",
+          "size_bytes": 10895202592,
+          "size_gb": 10.15
+        },
+        {
+          "name": "Flux_2_Turbo_LoRA_Fixed.safetensors",
+          "size_bytes": 2760947243,
+          "size_gb": 2.57
+        }
+      ],
+      "model_count": 4
+    },
+    "SwarmUI Bundles::bundle_4": {
       "name": "Qwen Image Core Bundle",
       "category": "SwarmUI Bundles",
       "total_size_bytes": 60862036437,
@@ -3238,7 +3307,7 @@
       ],
       "model_count": 18
     },
-    "SwarmUI Bundles::bundle_4": {
+    "SwarmUI Bundles::bundle_5": {
       "name": "Wan 2.2 Core 4 Steps Bundle",
       "category": "SwarmUI Bundles",
       "total_size_bytes": 111844951409,
@@ -3362,7 +3431,7 @@
       ],
       "model_count": 23
     },
-    "SwarmUI Bundles::bundle_5": {
+    "SwarmUI Bundles::bundle_6": {
       "name": "Wan 2.1 Core Models Bundle (GGUF Q6_K + Best LoRAs)",
       "category": "SwarmUI Bundles",
       "total_size_bytes": 40940128058,
@@ -3451,7 +3520,7 @@
       ],
       "model_count": 16
     },
-    "SwarmUI Bundles::bundle_6": {
+    "SwarmUI Bundles::bundle_7": {
       "name": "FLUX Models Bundle",
       "category": "SwarmUI Bundles",
       "total_size_bytes": 132056043117,
@@ -3530,7 +3599,7 @@
       ],
       "model_count": 14
     },
-    "SwarmUI Bundles::bundle_7": {
+    "SwarmUI Bundles::bundle_8": {
       "name": "HiDream-I1 Dev Bundle (Recommended)",
       "category": "SwarmUI Bundles",
       "total_size_bytes": 40612630916,
@@ -3594,7 +3663,7 @@
       ],
       "model_count": 11
     },
-    "SwarmUI Bundles::bundle_8": {
+    "SwarmUI Bundles::bundle_9": {
       "name": "Trained Models Min Requirements",
       "category": "SwarmUI Bundles",
       "total_size_bytes": 33424385576,
@@ -3767,6 +3836,6 @@
       "model_count": 9
     }
   },
-  "fetch_timestamp": 1766954019.7615573,
-  "fetch_date": "2025-12-28 23:33:39"
+  "fetch_timestamp": 1767126520.9581037,
+  "fetch_date": "2025-12-30 23:28:40"
 }
