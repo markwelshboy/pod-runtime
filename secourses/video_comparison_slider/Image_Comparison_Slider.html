@@ -1,0 +1,1911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Comparison Slider</title>
+    <style>
+        :root {
+            /* Light theme (default) */
+            --bg-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --bg-secondary: white;
+            --bg-tertiary: #f8f9fa;
+            --text-primary: #333;
+            --text-secondary: #666;
+            --text-muted: #888;
+            --accent-primary: #667eea;
+            --accent-secondary: #764ba2;
+            --border-color: #e9ecef;
+            --shadow: rgba(0,0,0,0.1);
+            --shadow-light: rgba(0,0,0,0.08);
+            --shadow-dark: rgba(0,0,0,0.2);
+            --shadow-heavy: rgba(0,0,0,0.3);
+            --overlay-bg: rgba(0,0,0,0.7);
+            --overlay-bg-light: rgba(0,0,0,0.8);
+            --control-bg: rgba(255,255,255,0.2);
+            --control-bg-hover: rgba(255,255,255,0.3);
+            --progress-bg: rgba(255,255,255,0.3);
+            --error-bg: #dc3545;
+            --success-bg: #28a745;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                /* Dark theme */
+                --bg-primary: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%) !important;
+                --bg-secondary: #2d3748 !important;
+                --bg-tertiary: #1a202c !important;
+                --text-primary: #f7fafc !important;
+                --text-secondary: #cbd5e0 !important;
+                --text-muted: #a0aec0 !important;
+                --accent-primary: #667eea;
+                --accent-secondary: #764ba2;
+                --border-color: #4a5568 !important;
+                --shadow: rgba(0,0,0,0.3) !important;
+                --shadow-light: rgba(0,0,0,0.25) !important;
+                --shadow-dark: rgba(0,0,0,0.4) !important;
+                --shadow-heavy: rgba(0,0,0,0.5) !important;
+                --overlay-bg: rgba(0,0,0,0.8) !important;
+                --overlay-bg-light: rgba(0,0,0,0.9) !important;
+                --control-bg: rgba(255,255,255,0.15) !important;
+                --control-bg-hover: rgba(255,255,255,0.25) !important;
+                --progress-bg: rgba(255,255,255,0.2) !important;
+                --error-bg: #e53e3e !important;
+                --success-bg: #38a169 !important;
+            }
+        }
+
+        /* Manual theme override - Light theme when explicitly set */
+        [data-theme="light"] {
+            /* Light theme - force override dark mode */
+            --bg-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            --bg-secondary: white !important;
+            --bg-tertiary: #f8f9fa !important;
+            --text-primary: #333 !important;
+            --text-secondary: #666 !important;
+            --text-muted: #888 !important;
+            --accent-primary: #667eea !important;
+            --accent-secondary: #764ba2 !important;
+            --border-color: #e9ecef !important;
+            --shadow: rgba(0,0,0,0.1) !important;
+            --shadow-light: rgba(0,0,0,0.08) !important;
+            --shadow-dark: rgba(0,0,0,0.2) !important;
+            --shadow-heavy: rgba(0,0,0,0.3) !important;
+            --overlay-bg: rgba(0,0,0,0.7) !important;
+            --overlay-bg-light: rgba(0,0,0,0.8) !important;
+            --control-bg: rgba(255,255,255,0.2) !important;
+            --control-bg-hover: rgba(255,255,255,0.3) !important;
+            --progress-bg: rgba(255,255,255,0.3) !important;
+            --error-bg: #dc3545 !important;
+            --success-bg: #28a745 !important;
+        }
+
+        /* Manual theme override - Dark theme when explicitly set */
+        [data-theme="dark"] {
+            /* Dark theme */
+            --bg-primary: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%) !important;
+            --bg-secondary: #2d3748 !important;
+            --bg-tertiary: #1a202c !important;
+            --text-primary: #f7fafc !important;
+            --text-secondary: #cbd5e0 !important;
+            --text-muted: #a0aec0 !important;
+            --accent-primary: #667eea;
+            --accent-secondary: #764ba2;
+            --border-color: #4a5568 !important;
+            --shadow: rgba(0,0,0,0.3) !important;
+            --shadow-light: rgba(0,0,0,0.25) !important;
+            --shadow-dark: rgba(0,0,0,0.4) !important;
+            --shadow-heavy: rgba(0,0,0,0.5) !important;
+            --overlay-bg: rgba(0,0,0,0.8) !important;
+            --overlay-bg-light: rgba(0,0,0,0.9) !important;
+            --control-bg: rgba(255,255,255,0.15) !important;
+            --control-bg-hover: rgba(255,255,255,0.25) !important;
+            --progress-bg: rgba(255,255,255,0.2) !important;
+            --error-bg: #e53e3e !important;
+            --success-bg: #38a169 !important;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--text-primary);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px var(--shadow);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(45deg, var(--accent-primary), var(--accent-secondary));
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .header h1 a {
+            color: rgba(255, 255, 255, 0.9);
+            text-decoration: none;
+            font-size: 0.5em;
+            font-weight: 400;
+            margin-left: 10px;
+            padding: 5px 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            transition: all 0.3s ease;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        .header h1 a:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .controls {
+            padding: 30px;
+            background: var(--bg-tertiary);
+        }
+
+        .upload-section {
+            background: var(--bg-secondary);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 5px 15px var(--shadow-light);
+            margin-bottom: 30px;
+        }
+
+        .upload-section h3 {
+            color: var(--text-primary);
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+            text-align: center;
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--accent-primary);
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            color: var(--accent-primary);
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .drop-zone.dragover {
+            border-color: var(--success-bg);
+            background-color: rgba(40, 167, 69, 0.1);
+        }
+
+        .drop-zone p {
+            margin: 10px 0;
+            font-size: 1.1rem;
+        }
+
+        .drop-zone .icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-input-label {
+            display: block;
+            padding: 15px 40px;
+            background: linear-gradient(45deg, var(--accent-primary), var(--accent-secondary));
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            font-size: 1.1rem;
+        }
+
+        .file-input-label:hover {
+            transform: scale(1.02);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .url-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .url-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        .image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: var(--bg-tertiary);
+        }
+
+        .image-gallery-item {
+            position: relative;
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px var(--shadow);
+            transition: transform 0.3s ease;
+        }
+
+        .image-gallery-item:hover {
+            transform: scale(1.05);
+        }
+
+        .image-gallery-item img {
+            width: 100%;
+            height: 80px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .image-gallery-item .info {
+            padding: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        .image-gallery-item .name {
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .image-gallery-item .remove-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: var(--error-bg);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .image-gallery-item:hover .remove-btn {
+            opacity: 1;
+        }
+
+        .comparison-selectors {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .selector-group {
+            background: var(--bg-secondary);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 15px var(--shadow-light);
+        }
+
+        .selector-group h4 {
+            color: var(--text-primary);
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+            text-align: center;
+        }
+
+        .image-selector {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--border-color);
+            border-radius: 10px;
+            font-size: 16px;
+            background: var(--bg-secondary);
+            cursor: pointer;
+            transition: border-color 0.3s ease;
+        }
+
+        .image-selector:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        .selected-preview {
+            margin-top: 15px;
+            text-align: center;
+            border-radius: 10px;
+            overflow: hidden;
+            background: var(--bg-tertiary);
+        }
+
+        .selected-preview img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+        }
+
+        .selected-preview .info {
+            padding: 10px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .reset-zoom-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(45deg, #17a2b8, #138496);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        .reset-zoom-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 10px 25px rgba(23, 162, 184, 0.3);
+        }
+
+        .image-comparison {
+            position: relative;
+            background: #000;
+            margin: 20px;
+            border-radius: 15px;
+            overflow: hidden;
+            min-height: 500px;
+            display: none;
+        }
+
+        .image-comparison.active {
+            display: block;
+        }
+
+        .image-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 500px;
+            overflow: hidden;
+            cursor: grab;
+            transform-origin: center center;
+            transition: transform 0.2s ease;
+        }
+
+        .image-container.zoomed {
+            cursor: move;
+        }
+
+        .image-container.dragging {
+            cursor: grabbing;
+        }
+
+        .image-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .image-left {
+            z-index: 1;
+        }
+
+        .image-right {
+            z-index: 2;
+            clip-path: polygon(50% 0%, 100% 0%, 100% 100%, 50% 100%);
+        }
+
+        .comparison-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        .slider-container {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 4px;
+            height: 100%;
+            background: #fff;
+            z-index: 10;
+            cursor: ew-resize;
+            transform: translateX(-50%);
+        }
+
+        .slider-handle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 40px;
+            height: 40px;
+            background: #fff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: ew-resize;
+        }
+
+        .slider-handle::before,
+        .slider-handle::after {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            position: absolute;
+        }
+
+        .slider-handle::before {
+            left: 10px;
+        }
+
+        .slider-handle::after {
+            right: 10px;
+        }
+
+        .comparison-controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 20;
+            gap: 20px;
+        }
+
+        .image-selector-overlay {
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 10px;
+            border: none;
+            font-size: 14px;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            min-width: 200px;
+            flex: 1;
+        }
+
+        .image-selector-overlay:hover {
+            background: rgba(0,0,0,0.8);
+        }
+
+        .zoom-controls {
+            position: absolute;
+            top: 20px;
+            right: 80px;
+            display: flex;
+            gap: 10px;
+            z-index: 20;
+        }
+
+        .zoom-btn {
+            width: 40px;
+            height: 40px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            font-size: 18px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        .zoom-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.1);
+        }
+
+        .zoom-indicator {
+            position: absolute;
+            top: 70px;
+            right: 20px;
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .zoom-indicator.visible {
+            opacity: 1;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            width: 45px;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            z-index: 20;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .image-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            z-index: 15;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .image-info.visible {
+            opacity: 1;
+        }
+
+        .image-info-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        .error-message {
+            background: #dc3545;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px;
+            display: none;
+        }
+
+        .fullscreen-mode {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999 !important;
+            margin: 0 !important;
+            border-radius: 0 !important;
+        }
+
+        .fullscreen-mode .image-container {
+            min-height: 100vh !important;
+            height: 100vh !important;
+        }
+
+        .fullscreen-mode .image-wrapper {
+            width: 100% !important;
+            height: 100% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+
+        .fullscreen-mode .comparison-image {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: contain !important;
+            max-width: none !important;
+            max-height: none !important;
+            display: block !important;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state .icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+            color: var(--text-primary);
+        }
+
+        .empty-state p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            .comparison-selectors {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .controls {
+                padding: 20px;
+            }
+
+            .comparison-controls {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .image-selector-overlay {
+                min-width: 150px;
+            }
+
+            .image-gallery {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+        }
+        /* Fix select and input styling for better visibility in dark mode */
+        input[type="url"] {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 2px solid var(--border-color);
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 16px;
+            width: 100%;
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="url"]:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        input[type="url"]::placeholder {
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
+        /* Ensure all selects have proper styling */
+        select {
+            color: var(--text-primary) !important;
+        }
+        
+        select option {
+            background: var(--bg-secondary) !important;
+            color: var(--text-primary) !important;
+        }
+
+        /* Fix checkbox styling in dark mode */
+        input[type="checkbox"] {
+            opacity: 1;
+        }
+
+        /* Theme toggle button */
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            border-radius: 50px;
+            padding: 10px 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 16px;
+            color: var(--text-primary);
+            box-shadow: 0 2px 10px var(--shadow);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .theme-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px var(--shadow-dark);
+        }
+
+        .theme-toggle .icon {
+            font-size: 20px;
+        }
+
+        /* Hide text on smaller screens */
+        @media (max-width: 768px) {
+            .theme-toggle span {
+                display: none;
+            }
+            .theme-toggle {
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" id="themeToggle" title="Toggle theme">
+        <span class="icon">🌙</span>
+        <span>Dark Mode</span>
+    </button>
+
+    <div class="container">
+        <div class="header">
+            <h1>Image Comparison Slider V11 : <a href="https://www.patreon.com/posts/133935178">patreon.com/posts/133935178</a> </h1>
+            <p>Upload images and compare them side by side with an interactive slider</p>
+        </div>
+
+        <div class="controls">
+            <div class="upload-section">
+                <h3>📁 Upload Images</h3>
+                <div class="drop-zone" id="dropZone">
+                    <div class="icon">📸</div>
+                    <p><strong>Drag and drop images here</strong></p>
+                    <p>or</p>
+                </div>
+                <div class="file-input-wrapper">
+                    <input type="file" id="imageFiles" class="file-input" accept="image/*" multiple>
+                    <label for="imageFiles" class="file-input-label">
+                        📁 Choose Image Files
+                    </label>
+                </div>
+                <input type="url" id="imageUrl" class="url-input" placeholder="Or enter image URL and press Enter...">
+                
+                <div class="image-gallery" id="imageGallery">
+                    <div class="empty-state">
+                        <div class="icon">🖼️</div>
+                        <h3>No images uploaded yet</h3>
+                        <p>Upload images to start comparing</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="comparison-selectors">
+                <div class="selector-group">
+                    <h4>👈 Left Image</h4>
+                    <select id="leftImageSelector" class="image-selector">
+                        <option value="">Select an image...</option>
+                    </select>
+                    <div class="selected-preview" id="leftPreview"></div>
+                </div>
+
+                <div class="selector-group">
+                    <h4>👉 Right Image</h4>
+                    <select id="rightImageSelector" class="image-selector">
+                        <option value="">Select an image...</option>
+                    </select>
+                    <div class="selected-preview" id="rightPreview"></div>
+                </div>
+            </div>
+
+            <button id="resetZoomBtn" class="reset-zoom-btn">
+                🔍 Reset Zoom
+            </button>
+
+            <button id="fullscreenBtn2" class="reset-zoom-btn" style="background: linear-gradient(45deg, #6f42c1, #e83e8c);">
+                📺 Fullscreen
+            </button>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+
+        <div class="image-comparison" id="imageComparison">
+            <div class="image-container" id="imageContainer">
+                <div class="image-wrapper image-left">
+                    <img id="image1" class="comparison-image">
+                </div>
+                <div class="image-wrapper image-right">
+                    <img id="image2" class="comparison-image">
+                </div>
+
+                <div class="slider-container" id="sliderContainer">
+                    <div class="slider-handle" id="sliderHandle"></div>
+                </div>
+
+                <div class="comparison-controls">
+                    <select id="leftImageSelectorOverlay" class="image-selector-overlay">
+                        <option value="">Select left image...</option>
+                    </select>
+                    <select id="rightImageSelectorOverlay" class="image-selector-overlay">
+                        <option value="">Select right image...</option>
+                    </select>
+                </div>
+
+                <button class="fullscreen-btn" id="fullscreenBtn" title="Toggle Fullscreen">
+                    ⛶
+                </button>
+
+                <div class="zoom-controls">
+                    <button class="zoom-btn" id="zoomInBtn" title="Zoom In">+</button>
+                    <button class="zoom-btn" id="zoomOutBtn" title="Zoom Out">-</button>
+                    <button class="zoom-btn" id="zoomResetBtn" title="Reset Zoom">⌂</button>
+                </div>
+                <div class="zoom-indicator" id="zoomIndicator">100%</div>
+
+                <div class="image-info" id="imageInfo">
+                    <div class="image-info-content">
+                        <div id="leftImageInfo">Left: -</div>
+                        <div id="rightImageInfo">Right: -</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Theme Manager
+        class ThemeManager {
+            constructor() {
+                this.init();
+            }
+
+            init() {
+                // Detect system preference
+                this.systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+                
+                // Check for saved user preference
+                this.userPreference = localStorage.getItem('theme-preference');
+                
+                // Apply initial theme
+                this.applyTheme();
+                
+                // Listen for system changes
+                this.systemPrefersDark.addEventListener('change', () => {
+                    if (!this.userPreference) {
+                        this.applyTheme();
+                    }
+                });
+            }
+
+            applyTheme() {
+                const isDark = this.userPreference === 'dark' || 
+                               (!this.userPreference && this.systemPrefersDark.matches);
+                
+                document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+            }
+
+            setTheme(theme) {
+                this.userPreference = theme;
+                if (theme === 'auto') {
+                    localStorage.removeItem('theme-preference');
+                    this.userPreference = null;
+                } else {
+                    localStorage.setItem('theme-preference', theme);
+                }
+                this.applyTheme();
+            }
+
+            toggleTheme() {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                this.setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+            }
+
+            getCurrentTheme() {
+                return document.documentElement.getAttribute('data-theme') || 'light';
+            }
+        }
+
+        class ImageComparison {
+            constructor() {
+                this.init();
+                this.setupEventListeners();
+            }
+
+            init() {
+                this.image1 = document.getElementById('image1');
+                this.image2 = document.getElementById('image2');
+                this.imageComparison = document.getElementById('imageComparison');
+                this.imageContainer = document.getElementById('imageContainer');
+                this.sliderContainer = document.getElementById('sliderContainer');
+                this.sliderHandle = document.getElementById('sliderHandle');
+                this.resetZoomBtn = document.getElementById('resetZoomBtn');
+                this.errorMessage = document.getElementById('errorMessage');
+                this.imageGallery = document.getElementById('imageGallery');
+                
+                // Control elements
+                this.fullscreenBtn = document.getElementById('fullscreenBtn');
+                this.zoomInBtn = document.getElementById('zoomInBtn');
+                this.zoomOutBtn = document.getElementById('zoomOutBtn');
+                this.zoomResetBtn = document.getElementById('zoomResetBtn');
+                this.zoomIndicator = document.getElementById('zoomIndicator');
+                this.imageInfo = document.getElementById('imageInfo');
+                this.leftImageInfo = document.getElementById('leftImageInfo');
+                this.rightImageInfo = document.getElementById('rightImageInfo');
+
+                // Selectors
+                this.leftImageSelector = document.getElementById('leftImageSelector');
+                this.rightImageSelector = document.getElementById('rightImageSelector');
+                this.leftImageSelectorOverlay = document.getElementById('leftImageSelectorOverlay');
+                this.rightImageSelectorOverlay = document.getElementById('rightImageSelectorOverlay');
+                this.leftPreview = document.getElementById('leftPreview');
+                this.rightPreview = document.getElementById('rightPreview');
+
+                // Image storage
+                this.images = [];
+                this.currentLeftImage = null;
+                this.currentRightImage = null;
+
+                // State
+                this.isDragging = false;
+                this.isFullscreen = false;
+                this.sliderPosition = 50;
+                this.currentZoom = 1;
+                this.minZoom = 0.1;
+                this.maxZoom = 5;
+                this.zoomStep = 0.2;
+                this.panX = 0;
+                this.panY = 0;
+                this.isDraggingPan = false;
+                this.lastPanX = 0;
+                this.lastPanY = 0;
+
+                // Touch handling
+                this.initialPinchDistance = null;
+                this.initialZoom = null;
+                this.pinchCenterX = 0;
+                this.pinchCenterY = 0;
+            }
+
+            setupEventListeners() {
+                // File input
+                document.getElementById('imageFiles').addEventListener('change', (e) => this.handleFileInput(e));
+                
+                // URL input
+                document.getElementById('imageUrl').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.handleUrlInput();
+                    }
+                });
+
+                // Drag and drop
+                this.setupDragAndDrop();
+
+                // Image selectors
+                this.leftImageSelector.addEventListener('change', (e) => {
+                    console.log('Left selector changed to:', e.target.value);
+                    this.changeLeftImage(e.target.value);
+                });
+                this.rightImageSelector.addEventListener('change', (e) => {
+                    console.log('Right selector changed to:', e.target.value);
+                    this.changeRightImage(e.target.value);
+                });
+                
+                // Overlay selectors (for fullscreen mode)
+                this.leftImageSelectorOverlay.addEventListener('change', (e) => {
+                    console.log('Left overlay selector changed to:', e.target.value);
+                    e.preventDefault();
+                    this.changeLeftImage(e.target.value);
+                });
+                this.rightImageSelectorOverlay.addEventListener('change', (e) => {
+                    console.log('Right overlay selector changed to:', e.target.value);
+                    e.preventDefault();
+                    this.changeRightImage(e.target.value);
+                });
+
+                // Buttons
+                this.resetZoomBtn.addEventListener('click', () => this.resetZoom());
+                this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+                document.getElementById('fullscreenBtn2').addEventListener('click', () => this.toggleFullscreen());
+                this.zoomInBtn.addEventListener('click', () => this.zoomIn());
+                this.zoomOutBtn.addEventListener('click', () => this.zoomOut());
+                this.zoomResetBtn.addEventListener('click', () => this.resetZoom());
+
+                // Slider events
+                this.sliderContainer.addEventListener('mousedown', (e) => this.startDragging(e));
+                this.sliderHandle.addEventListener('mousedown', (e) => this.startDragging(e));
+                document.addEventListener('mousemove', (e) => this.handleDragging(e));
+                document.addEventListener('mouseup', () => this.stopDragging());
+
+                // Touch events
+                this.sliderContainer.addEventListener('touchstart', (e) => this.startDragging(e));
+                this.sliderHandle.addEventListener('touchstart', (e) => this.startDragging(e));
+                document.addEventListener('touchmove', (e) => this.handleDragging(e));
+                document.addEventListener('touchend', () => this.stopDragging());
+
+                // Zoom and pan events
+                this.imageContainer.addEventListener('wheel', (e) => this.handleWheel(e), { passive: false });
+                this.imageContainer.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+                this.imageContainer.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+                this.imageContainer.addEventListener('mouseup', () => this.handleMouseUp());
+                this.imageContainer.addEventListener('mouseleave', () => this.handleMouseUp());
+                this.imageContainer.addEventListener('dblclick', (e) => this.handleDoubleClick(e));
+
+                // Touch events for mobile
+                this.imageContainer.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
+                this.imageContainer.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
+                this.imageContainer.addEventListener('touchend', () => this.handleTouchEnd());
+
+                // Fullscreen and keyboard events
+                document.addEventListener('fullscreenchange', () => this.handleFullscreenChange());
+                document.addEventListener('keydown', (e) => this.handleKeydown(e));
+
+                // Show image info on hover
+                this.imageContainer.addEventListener('mouseenter', () => {
+                    this.imageInfo.classList.add('visible');
+                });
+                this.imageContainer.addEventListener('mouseleave', () => {
+                    this.imageInfo.classList.remove('visible');
+                });
+            }
+
+            setupDragAndDrop() {
+                const dropZone = document.getElementById('dropZone');
+
+                dropZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    dropZone.classList.add('dragover');
+                });
+
+                dropZone.addEventListener('dragleave', () => {
+                    dropZone.classList.remove('dragover');
+                });
+
+                dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('dragover');
+                    
+                    const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+                    if (files.length > 0) {
+                        this.addImages(files);
+                    }
+                });
+
+                dropZone.addEventListener('click', () => {
+                    document.getElementById('imageFiles').click();
+                });
+            }
+
+            handleFileInput(event) {
+                const files = Array.from(event.target.files);
+                if (files.length > 0) {
+                    this.addImages(files);
+                }
+            }
+
+            handleUrlInput() {
+                const urlInput = document.getElementById('imageUrl');
+                const url = urlInput.value.trim();
+                
+                if (url) {
+                    this.addImageFromUrl(url);
+                    urlInput.value = '';
+                }
+            }
+
+            addImages(files) {
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const imageData = {
+                            id: String(Date.now() + Math.random()), // Convert to string
+                            name: file.name,
+                            size: this.formatFileSize(file.size),
+                            src: e.target.result,
+                            type: 'file'
+                        };
+                        
+                        this.images.push(imageData);
+                        this.images.sort((a, b) => this.naturalSort(a, b));
+                        this.updateImageGallery();
+                        this.updateImageSelectors();
+                        this.autoSelectImages();
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            addImageFromUrl(url) {
+                const img = new Image();
+                img.onload = () => {
+                    const imageData = {
+                        id: String(Date.now() + Math.random()), // Convert to string
+                        name: this.getFilenameFromUrl(url),
+                        size: 'Unknown',
+                        src: url,
+                        type: 'url'
+                    };
+                    
+                    this.images.push(imageData);
+                    this.images.sort((a, b) => this.naturalSort(a, b));
+                    this.updateImageGallery();
+                    this.updateImageSelectors();
+                    this.autoSelectImages();
+                };
+                img.onerror = () => {
+                    this.showError('Failed to load image from URL');
+                };
+                img.src = url;
+            }
+
+            updateImageGallery() {
+                if (this.images.length === 0) {
+                    this.imageGallery.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">🖼️</div>
+                            <h3>No images uploaded yet</h3>
+                            <p>Upload images to start comparing</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                this.imageGallery.innerHTML = '';
+                
+                this.images.forEach(image => {
+                    const item = document.createElement('div');
+                    item.className = 'image-gallery-item';
+                    
+                    item.innerHTML = `
+                        <img src="${image.src}" alt="${image.name}">
+                        <div class="info">
+                            <div class="name">${image.name}</div>
+                            <div class="size">${image.size}</div>
+                        </div>
+                        <button class="remove-btn" onclick="imageApp.removeImage('${image.id}')">×</button>
+                    `;
+                    
+                    this.imageGallery.appendChild(item);
+                });
+            }
+
+            updateImageSelectors() {
+                const mainSelectors = [
+                    this.leftImageSelector,
+                    this.rightImageSelector
+                ];
+
+                // Update main selectors first
+                mainSelectors.forEach(selector => {
+                    const currentValue = selector.value;
+                    
+                    selector.innerHTML = '<option value="">Select an image...</option>';
+                    
+                    this.images.forEach(image => {
+                        const option = document.createElement('option');
+                        option.value = image.id;
+                        option.textContent = image.name;
+                        selector.appendChild(option);
+                    });
+                    
+                    // Restore previous selection if still available
+                    if (currentValue && this.images.find(img => img.id == currentValue)) { // Use == for type coercion
+                        selector.value = currentValue;
+                    }
+                });
+                
+                // Sync overlay selectors after main selectors are updated
+                this.syncOverlaySelectors();
+            }
+
+            autoSelectImages() {
+                if (this.images.length >= 2 && !this.currentLeftImage && !this.currentRightImage) {
+                    // Auto-select first two images
+                    this.changeLeftImage(this.images[0].id);
+                    this.changeRightImage(this.images[1].id);
+                } else if (this.images.length >= 1 && !this.currentLeftImage) {
+                    // Auto-select first image for left if no left image selected
+                    this.changeLeftImage(this.images[0].id);
+                } else if (this.images.length >= 1 && !this.currentRightImage && this.currentLeftImage) {
+                    // Auto-select first different image for right
+                    const differentImage = this.images.find(img => img.id != this.currentLeftImage.id); // Use != for type coercion
+                    if (differentImage) {
+                        this.changeRightImage(differentImage.id);
+                    }
+                }
+            }
+
+            changeLeftImage(imageId) {
+                console.log('changeLeftImage called with:', imageId, 'type:', typeof imageId);
+                console.log('Available images:', this.images.map(img => ({id: img.id, name: img.name, idType: typeof img.id})));
+                if (imageId) {
+                    const image = this.images.find(img => img.id == imageId); // Use == instead of === for type coercion
+                    if (image) {
+                        console.log('Found left image:', image.name);
+                        this.currentLeftImage = image;
+                        this.updateAllSelectors('left', imageId);
+                        this.updatePreview('left', image);
+                        
+                        // Always update the comparison image if it exists
+                        if (this.image1) {
+                            this.image1.src = image.src;
+                            console.log('Updated left image src to:', image.src);
+                        }
+                        
+                        this.updateImageInfo();
+                        
+                        // Auto-compare if we have both images
+                        if (this.currentRightImage && !this.imageComparison.classList.contains('active')) {
+                            this.autoCompare();
+                        } else if (this.imageComparison.classList.contains('active')) {
+                            // Force image to refresh
+                            this.image1.onload = () => {
+                                console.log('Left image loaded successfully');
+                            };
+                        }
+                    } else {
+                        console.log('LEFT IMAGE NOT FOUND for ID:', imageId);
+                    }
+                } else {
+                    // Clear left image
+                    this.currentLeftImage = null;
+                    this.updateAllSelectors('left', '');
+                    this.updatePreview('left', null);
+                    if (this.image1) {
+                        this.image1.src = '';
+                    }
+                    this.updateImageInfo();
+                }
+            }
+
+            changeRightImage(imageId) {
+                console.log('changeRightImage called with:', imageId, 'type:', typeof imageId);
+                console.log('Available images:', this.images.map(img => ({id: img.id, name: img.name, idType: typeof img.id})));
+                if (imageId) {
+                    const image = this.images.find(img => img.id == imageId); // Use == instead of === for type coercion
+                    if (image) {
+                        console.log('Found right image:', image.name);
+                        this.currentRightImage = image;
+                        this.updateAllSelectors('right', imageId);
+                        this.updatePreview('right', image);
+                        
+                        // Always update the comparison image if it exists
+                        if (this.image2) {
+                            this.image2.src = image.src;
+                            console.log('Updated right image src to:', image.src);
+                        }
+                        
+                        this.updateImageInfo();
+                        
+                        // Auto-compare if we have both images
+                        if (this.currentLeftImage && !this.imageComparison.classList.contains('active')) {
+                            this.autoCompare();
+                        } else if (this.imageComparison.classList.contains('active')) {
+                            // Force image to refresh
+                            this.image2.onload = () => {
+                                console.log('Right image loaded successfully');
+                            };
+                        }
+                    } else {
+                        console.log('RIGHT IMAGE NOT FOUND for ID:', imageId);
+                    }
+                } else {
+                    // Clear right image
+                    this.currentRightImage = null;
+                    this.updateAllSelectors('right', '');
+                    this.updatePreview('right', null);
+                    if (this.image2) {
+                        this.image2.src = '';
+                    }
+                    this.updateImageInfo();
+                }
+            }
+
+            updateAllSelectors(side, imageId) {
+                console.log(`updateAllSelectors called: ${side} = ${imageId}`);
+                if (side === 'left') {
+                    // Update main selector
+                    this.leftImageSelector.value = imageId;
+                    // Update overlay selector
+                    if (this.leftImageSelectorOverlay) {
+                        this.leftImageSelectorOverlay.value = imageId;
+                    }
+                } else {
+                    // Update main selector
+                    this.rightImageSelector.value = imageId;
+                    // Update overlay selector
+                    if (this.rightImageSelectorOverlay) {
+                        this.rightImageSelectorOverlay.value = imageId;
+                    }
+                }
+            }
+
+            syncOverlaySelectors() {
+                // Ensure overlay selectors exist and have the same options as main selectors
+                if (this.leftImageSelectorOverlay && this.rightImageSelectorOverlay) {
+                    // Update options
+                    this.leftImageSelectorOverlay.innerHTML = this.leftImageSelector.innerHTML;
+                    this.rightImageSelectorOverlay.innerHTML = this.rightImageSelector.innerHTML;
+                    
+                    // Sync current values immediately
+                    if (this.currentLeftImage) {
+                        this.leftImageSelectorOverlay.value = this.currentLeftImage.id;
+                    } else {
+                        this.leftImageSelectorOverlay.value = '';
+                    }
+                    if (this.currentRightImage) {
+                        this.rightImageSelectorOverlay.value = this.currentRightImage.id;
+                    } else {
+                        this.rightImageSelectorOverlay.value = '';
+                    }
+                }
+            }
+
+            updatePreview(side, image) {
+                const preview = side === 'left' ? this.leftPreview : this.rightPreview;
+                
+                if (image) {
+                    preview.innerHTML = `
+                        <img src="${image.src}" alt="${image.name}">
+                        <div class="info">
+                            <div class="name">${image.name}</div>
+                            <div class="size">${image.size}</div>
+                        </div>
+                    `;
+                } else {
+                    preview.innerHTML = '';
+                }
+            }
+
+            autoCompare() {
+                console.log('autoCompare called - left:', this.currentLeftImage?.name, 'right:', this.currentRightImage?.name);
+                if (this.currentLeftImage && this.currentRightImage) {
+                    this.compareImages();
+                }
+            }
+
+            compareImages() {
+                console.log('compareImages called');
+                if (!this.currentLeftImage || !this.currentRightImage) {
+                    console.log('Missing images for comparison');
+                    return;
+                }
+
+                console.log('Setting image sources:', this.currentLeftImage.name, this.currentRightImage.name);
+                this.image1.src = this.currentLeftImage.src;
+                this.image2.src = this.currentRightImage.src;
+                
+                // Wait for images to load
+                Promise.all([
+                    this.waitForImageLoad(this.image1),
+                    this.waitForImageLoad(this.image2)
+                ]).then(() => {
+                    console.log('Images loaded, activating comparison');
+                    this.imageComparison.classList.add('active');
+                    this.resetZoom();
+                    this.updateImageInfo();
+                    // Ensure overlay selectors are properly synchronized
+                    this.syncOverlaySelectors();
+                    this.hideError();
+                }).catch(error => {
+                    console.error('Failed to load images:', error);
+                    this.showError('Failed to load images for comparison');
+                });
+            }
+
+            waitForImageLoad(img) {
+                return new Promise((resolve, reject) => {
+                    if (img.complete && img.naturalWidth !== 0) {
+                        console.log('Image already loaded:', img.src);
+                        resolve();
+                    } else {
+                        console.log('Waiting for image to load:', img.src);
+                        img.onload = () => {
+                            console.log('Image loaded:', img.src);
+                            resolve();
+                        };
+                        img.onerror = (error) => {
+                            console.error('Image load error:', img.src, error);
+                            reject(error);
+                        };
+                    }
+                });
+            }
+
+            updateImageInfo() {
+                console.log('updateImageInfo called');
+                if (this.currentLeftImage) {
+                    this.leftImageInfo.textContent = `Left: ${this.currentLeftImage.name}`;
+                } else {
+                    this.leftImageInfo.textContent = 'Left: -';
+                }
+                
+                if (this.currentRightImage) {
+                    this.rightImageInfo.textContent = `Right: ${this.currentRightImage.name}`;
+                } else {
+                    this.rightImageInfo.textContent = 'Right: -';
+                }
+            }
+
+            removeImage(imageId) {
+                this.images = this.images.filter(img => img.id != imageId); // Use != for type coercion
+                
+                // Update current selections if removed
+                if (this.currentLeftImage && this.currentLeftImage.id == imageId) {
+                    this.currentLeftImage = null;
+                }
+                if (this.currentRightImage && this.currentRightImage.id == imageId) {
+                    this.currentRightImage = null;
+                }
+                
+                this.updateImageGallery();
+                this.updateImageSelectors();
+                this.updatePreview('left', this.currentLeftImage);
+                this.updatePreview('right', this.currentRightImage);
+                this.updateImageInfo();
+                
+                // Auto-select new images if needed
+                this.autoSelectImages();
+            }
+
+            // Slider functionality
+            startDragging(e) {
+                e.preventDefault();
+                this.isDragging = true;
+                this.handleDragging(e);
+            }
+
+            handleDragging(e) {
+                if (!this.isDragging) return;
+
+                const rect = this.imageContainer.getBoundingClientRect();
+                const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+                
+                const x = (clientX - rect.left) / this.currentZoom - this.panX / this.currentZoom;
+                const percentage = Math.max(0, Math.min(100, (x / (rect.width / this.currentZoom)) * 100));
+                
+                this.updateSliderPosition(percentage);
+            }
+
+            stopDragging() {
+                this.isDragging = false;
+            }
+
+            updateSliderPosition(percentage) {
+                this.sliderPosition = percentage;
+                this.sliderContainer.style.left = `${percentage}%`;
+                const imageRight = document.querySelector('.image-right');
+                imageRight.style.clipPath = `polygon(${percentage}% 0%, 100% 0%, 100% 100%, ${percentage}% 100%)`;
+            }
+
+            // Zoom and pan functionality
+            zoomIn(centerX, centerY) {
+                const newZoom = Math.min(this.maxZoom, this.currentZoom + this.zoomStep);
+                this.applyZoom(newZoom, centerX, centerY);
+            }
+
+            zoomOut(centerX, centerY) {
+                const newZoom = Math.max(this.minZoom, this.currentZoom - this.zoomStep);
+                this.applyZoom(newZoom, centerX, centerY);
+            }
+
+            applyZoom(newZoom, centerX, centerY) {
+                const rect = this.imageContainer.getBoundingClientRect();
+                const cx = centerX !== undefined ? centerX : rect.width / 2;
+                const cy = centerY !== undefined ? centerY : rect.height / 2;
+                
+                // Calculate the zoom change ratio
+                const zoomChange = newZoom / this.currentZoom;
+                
+                // Calculate the point in the current transformed space
+                const pointX = (cx - this.panX) / this.currentZoom;
+                const pointY = (cy - this.panY) / this.currentZoom;
+                
+                // Update zoom level
+                this.currentZoom = newZoom;
+                
+                // Calculate new pan to keep the point under the mouse cursor
+                this.panX = cx - pointX * this.currentZoom;
+                this.panY = cy - pointY * this.currentZoom;
+                
+                this.updateZoom();
+            }
+
+            updateZoom() {
+                const transform = `scale(${this.currentZoom}) translate(${this.panX}px, ${this.panY}px)`;
+                this.imageContainer.style.transform = transform;
+                
+                if (this.currentZoom > 1) {
+                    this.imageContainer.classList.add('zoomed');
+                } else {
+                    this.imageContainer.classList.remove('zoomed');
+                }
+                
+                this.zoomIndicator.textContent = `${Math.round(this.currentZoom * 100)}%`;
+                this.zoomIndicator.classList.add('visible');
+                
+                setTimeout(() => {
+                    this.zoomIndicator.classList.remove('visible');
+                }, 2000);
+            }
+
+            resetZoom() {
+                this.currentZoom = 1;
+                this.panX = 0;
+                this.panY = 0;
+                this.updateZoom();
+            }
+
+            handleWheel(e) {
+                e.preventDefault();
+                
+                const rect = this.imageContainer.getBoundingClientRect();
+                const centerX = e.clientX - rect.left;
+                const centerY = e.clientY - rect.top;
+                
+                // Use smaller zoom steps for smoother wheel zooming
+                const wheelZoomStep = 0.1;
+                const newZoom = e.deltaY < 0 ? 
+                    Math.min(this.maxZoom, this.currentZoom + wheelZoomStep) : 
+                    Math.max(this.minZoom, this.currentZoom - wheelZoomStep);
+                
+                this.applyZoom(newZoom, centerX, centerY);
+            }
+
+            handleMouseDown(e) {
+                if (this.currentZoom > 1 && !e.target.closest('.slider-container') && !e.target.closest('.comparison-controls')) {
+                    this.isDraggingPan = true;
+                    this.lastPanX = e.clientX;
+                    this.lastPanY = e.clientY;
+                    this.imageContainer.classList.add('dragging');
+                    e.preventDefault();
+                }
+            }
+
+            handleMouseMove(e) {
+                if (this.isDraggingPan) {
+                    const deltaX = e.clientX - this.lastPanX;
+                    const deltaY = e.clientY - this.lastPanY;
+                    
+                    this.panX += deltaX;
+                    this.panY += deltaY;
+                    
+                    this.lastPanX = e.clientX;
+                    this.lastPanY = e.clientY;
+                    
+                    this.updateZoom();
+                }
+            }
+
+            handleMouseUp() {
+                this.isDraggingPan = false;
+                this.imageContainer.classList.remove('dragging');
+            }
+
+            handleDoubleClick(e) {
+                if (e.target.closest('.comparison-controls') || e.target.closest('.zoom-controls')) {
+                    return;
+                }
+                this.resetZoom();
+            }
+
+            // Touch events for mobile
+            handleTouchStart(e) {
+                if (e.touches.length === 1) {
+                    if (this.currentZoom > 1) {
+                        this.isDraggingPan = true;
+                        this.lastPanX = e.touches[0].clientX;
+                        this.lastPanY = e.touches[0].clientY;
+                        this.imageContainer.classList.add('dragging');
+                    }
+                } else if (e.touches.length === 2) {
+                    e.preventDefault();
+                    const touch1 = e.touches[0];
+                    const touch2 = e.touches[1];
+                    
+                    this.initialPinchDistance = Math.sqrt(
+                        Math.pow(touch2.clientX - touch1.clientX, 2) +
+                        Math.pow(touch2.clientY - touch1.clientY, 2)
+                    );
+                    
+                    this.initialZoom = this.currentZoom;
+                    this.pinchCenterX = (touch1.clientX + touch2.clientX) / 2;
+                    this.pinchCenterY = (touch1.clientY + touch2.clientY) / 2;
+                    
+                    const rect = this.imageContainer.getBoundingClientRect();
+                    this.pinchCenterX -= rect.left;
+                    this.pinchCenterY -= rect.top;
+                }
+            }
+
+            handleTouchMove(e) {
+                if (e.touches.length === 1 && this.isDraggingPan) {
+                    e.preventDefault();
+                    const deltaX = e.touches[0].clientX - this.lastPanX;
+                    const deltaY = e.touches[0].clientY - this.lastPanY;
+                    
+                    this.panX += deltaX;
+                    this.panY += deltaY;
+                    
+                    this.lastPanX = e.touches[0].clientX;
+                    this.lastPanY = e.touches[0].clientY;
+                    
+                    this.updateZoom();
+                } else if (e.touches.length === 2 && this.initialPinchDistance) {
+                    e.preventDefault();
+                    const touch1 = e.touches[0];
+                    const touch2 = e.touches[1];
+                    
+                    const currentDistance = Math.sqrt(
+                        Math.pow(touch2.clientX - touch1.clientX, 2) +
+                        Math.pow(touch2.clientY - touch1.clientY, 2)
+                    );
+                    
+                    const scale = currentDistance / this.initialPinchDistance;
+                    const newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.initialZoom * scale));
+                    
+                    this.applyZoom(newZoom, this.pinchCenterX, this.pinchCenterY);
+                }
+            }
+
+            handleTouchEnd() {
+                this.isDraggingPan = false;
+                this.imageContainer.classList.remove('dragging');
+                this.initialPinchDistance = null;
+                this.initialZoom = null;
+            }
+
+            // Fullscreen functionality
+            toggleFullscreen() {
+                if (!this.isFullscreen) {
+                    // Ensure overlay selectors are synced before entering fullscreen
+                    this.syncOverlaySelectors();
+                    
+                    if (this.imageComparison.requestFullscreen) {
+                        this.imageComparison.requestFullscreen();
+                    } else if (this.imageComparison.webkitRequestFullscreen) {
+                        this.imageComparison.webkitRequestFullscreen();
+                    } else if (this.imageComparison.msRequestFullscreen) {
+                        this.imageComparison.msRequestFullscreen();
+                    }
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    } else if (document.webkitExitFullscreen) {
+                        document.webkitExitFullscreen();
+                    } else if (document.msExitFullscreen) {
+                        document.msExitFullscreen();
+                    }
+                }
+            }
+
+            handleFullscreenChange() {
+                this.isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+                
+                const fullscreenBtn2 = document.getElementById('fullscreenBtn2');
+                
+                if (this.isFullscreen) {
+                    this.imageComparison.classList.add('fullscreen-mode');
+                    fullscreenBtn2.textContent = '🔲 Exit Fullscreen';
+                    // Reset zoom and pan when entering fullscreen for better scaling
+                    this.resetZoom();
+                    // Sync overlay selectors for fullscreen
+                    this.syncOverlaySelectors();
+                } else {
+                    this.imageComparison.classList.remove('fullscreen-mode');
+                    fullscreenBtn2.textContent = '📺 Fullscreen';
+                }
+            }
+
+            // Keyboard shortcuts
+            handleKeydown(e) {
+                if (!this.imageComparison.classList.contains('active')) return;
+
+                switch (e.code) {
+                    case 'KeyF':
+                        e.preventDefault();
+                        this.toggleFullscreen();
+                        break;
+                    case 'Escape':
+                        if (this.isFullscreen) {
+                            this.toggleFullscreen();
+                        }
+                        break;
+                    case 'Equal':
+                    case 'NumpadAdd':
+                        e.preventDefault();
+                        this.zoomIn();
+                        break;
+                    case 'Minus':
+                    case 'NumpadSubtract':
+                        e.preventDefault();
+                        this.zoomOut();
+                        break;
+                    case 'Digit0':
+                    case 'Numpad0':
+                        e.preventDefault();
+                        this.resetZoom();
+                        break;
+                    case 'ArrowLeft':
+                        e.preventDefault();
+                        this.updateSliderPosition(Math.max(0, this.sliderPosition - 5));
+                        break;
+                    case 'ArrowRight':
+                        e.preventDefault();
+                        this.updateSliderPosition(Math.min(100, this.sliderPosition + 5));
+                        break;
+                }
+            }
+
+            // Utility functions
+            formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+
+            // Windows-style natural sorting for consistent file ordering
+            naturalSort(a, b) {
+                const nameA = a.name || '';
+                const nameB = b.name || '';
+                
+                // Split strings into parts with numeric and non-numeric segments
+                const partsA = nameA.match(/(\d+|\D+)/g) || [];
+                const partsB = nameB.match(/(\d+|\D+)/g) || [];
+                
+                const maxLength = Math.max(partsA.length, partsB.length);
+                
+                for (let i = 0; i < maxLength; i++) {
+                    const partA = partsA[i] || '';
+                    const partB = partsB[i] || '';
+                    
+                    // Check if both parts are numeric
+                    const numA = parseInt(partA, 10);
+                    const numB = parseInt(partB, 10);
+                    
+                    if (!isNaN(numA) && !isNaN(numB)) {
+                        // Numeric comparison
+                        if (numA !== numB) {
+                            return numA - numB;
+                        }
+                    } else {
+                        // String comparison (case-insensitive)
+                        const comparison = partA.toLowerCase().localeCompare(partB.toLowerCase());
+                        if (comparison !== 0) {
+                            return comparison;
+                        }
+                    }
+                }
+                
+                return 0;
+            }
+
+            getFilenameFromUrl(url) {
+                try {
+                    const urlPath = new URL(url).pathname;
+                    const filename = urlPath.split('/').pop();
+                    return filename || 'Image URL';
+                } catch (e) {
+                    return 'Image URL';
+                }
+            }
+
+            showError(message) {
+                this.errorMessage.textContent = message;
+                this.errorMessage.style.display = 'block';
+                setTimeout(() => {
+                    this.hideError();
+                }, 5000);
+            }
+
+            hideError() {
+                this.errorMessage.style.display = 'none';
+            }
+        }
+
+        // Initialize the application
+        let imageApp;
+        let themeManager;
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Initializing Image Comparison App');
+            
+            // Initialize theme manager
+            themeManager = new ThemeManager();
+            
+            // Initialize image comparison app
+            imageApp = new ImageComparison();
+            console.log('Image Comparison App initialized');
+
+            // Setup theme toggle button
+            const themeToggle = document.getElementById('themeToggle');
+            const updateThemeToggle = () => {
+                const isDark = themeManager.getCurrentTheme() === 'dark';
+                const icon = themeToggle.querySelector('.icon');
+                const text = themeToggle.querySelector('span:not(.icon)');
+                
+                if (isDark) {
+                    icon.textContent = '☀️';
+                    if (text) text.textContent = 'Light Mode';
+                } else {
+                    icon.textContent = '🌙';
+                    if (text) text.textContent = 'Dark Mode';
+                }
+            };
+
+            // Set initial state
+            updateThemeToggle();
+
+            // Handle click
+            themeToggle.addEventListener('click', () => {
+                themeManager.toggleTheme();
+                updateThemeToggle();
+            });
+        });
+    </script>
+</body>
+</html> 
