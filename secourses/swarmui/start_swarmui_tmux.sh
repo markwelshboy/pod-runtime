@@ -22,6 +22,9 @@ set -euo pipefail
 
 : "${DOTNET_ROOT:=/opt/dotnet}"
 
+: "${SWARMUI_PRESETS_IMPORT:=false}"  # true to run preset import on boot
+: "${SWARMUI_PRESETS_ONCE:=true}"     # prevent repeating every restart
+
 mkdir -p "${SWARMUI_LOG_DIR}"
 
 # Source pod-runtime env/helpers (your layout)
@@ -123,7 +126,53 @@ if ! tmux has-session -t "${SWARMUI_TMUX_SESSION}" 2>/dev/null; then
   exit 1
 fi
 
-print_info "SwarmUI is launching in tmux session: ${SWARMUI_TMUX_SESSION}"
+# -----------------------------------------------------------------------------
+# Optional: reset+import presets via SwarmUI API (dangerous; wipes existing)
+# -----------------------------------------------------------------------------
+if [[ "${SWARMUI_PRESETS_IMPORT,,}" == "true" ]]; then
+  STAMP="${WORKSPACE}/.swarmui_presets_imported_${SWARMUI_PORT}"
+  if [[ "${SWARMUI_PRESETS_ONCE,,}" == "true" && -f "${STAMP}" ]]; then
+    print_info "Presets already imported (stamp exists): ${STAMP} — skipping."
+  else
+    print_info "Preset import enabled; waiting for SwarmUI on localhost:${SWARMUI_PORT} ..."
+
+    ok="false"
+    for _ in $(seq 1 60); do
+      if curl -fsS "http://127.0.0.1:${SWARMUI_PORT}/" >/dev/null 2>&1; then ok="true"; break; fi
+      sleep 2
+    done
+
+    if [[ "${ok}" != "true" ]]; then
+      print_warn "SwarmUI not reachable on :${SWARMUI_PORT}; skipping preset import."
+    else
+      PY="/usr/bin/python3"
+      [[ -x "/workspace/ComfyUI/venv/bin/python" ]] && PY="/workspace/ComfyUI/venv/bin/python"
+
+      MANAGER="${WORKSPACE}/utilities/swarmui_preset_manager.py"
+      PRESET_LOG="${SWARMUI_LOG_DIR}/swarmui-presets-import.log"
+
+      if [[ ! -f "${MANAGER}" ]]; then
+        print_warn "Preset manager missing: ${MANAGER}"
+      else
+        print_info "Running preset reset+import (this deletes ALL existing presets) ..."
+        (
+          cd /workspace
+          "${PY}" "${MANAGER}"
+        ) >> "${PRESET_LOG}" 2>&1 || print_warn "Preset import failed; see ${PRESET_LOG}"
+
+        # mark success-ish (even if partial, you probably don’t want repeats)
+        date -Is > "${STAMP}" 2>/dev/null || true
+        print_info "Preset import log: ${PRESET_LOG}"
+      fi
+    fi
+  fi
+else
+  print_info "SWARMUI_PRESETS_IMPORT is not true; skipping preset import"
+fi
+
+print_info "SwarmUI is launched in tmux session: ${SWARMUI_TMUX_SESSION}"
 print_info "Logs: ${SWARMUI_LOG}"
 print_info "tmux stderr: ${SWARMUI_TMUX_ERR}"
 print_info "Attach: tmux attach -t ${SWARMUI_TMUX_SESSION}"
+print_info "Preset backups are in: ${WORKSPACE}/presets_backups"
+

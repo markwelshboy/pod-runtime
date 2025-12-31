@@ -1,43 +1,55 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Minimal fallbacks (helpers.sh may override)
 print_info() { printf "[musubi-links] INFO: %s\n" "$*"; }
 print_warn() { printf "[musubi-links] WARN: %s\n" "$*"; }
 
 : "${WORKSPACE:=/workspace}"
 : "${POD_RUNTIME_DIR:=/workspace/pod-runtime}"
 
+# Where the “zip-style” assets live in your repo
 : "${MUSUBI_ASSETS_SRC:=${POD_RUNTIME_DIR}/secourses/musubi_trainer}"
-: "${MUSUBI_ASSETS_LINK:=${WORKSPACE}/musubi_trainer_zip_assets}"
 
-: "${MUSUBI_TRAINER_DIR:=${WORKSPACE}/SECourses_Musubi_Trainer}"
-: "${MUSUBI_TRAINER_DIR_ASSETS_LINK:=${MUSUBI_TRAINER_DIR}/musubi_trainer_assets}"
+# Where we want things staged for tutorial expectations
+: "${MUSUBI_STAGE_DIR:=${WORKSPACE}}"
 
-# Ensure workspace exists
 mkdir -p "${WORKSPACE}"
 
 if [[ ! -d "${MUSUBI_ASSETS_SRC}" ]]; then
-  print_warn "Assets dir not found at: ${MUSUBI_ASSETS_SRC} (skipping)"
+  print_warn "Assets dir not found: ${MUSUBI_ASSETS_SRC} (skipping)"
   exit 0
 fi
 
-# Link into /workspace for "drop zone" convenience
-if [[ -e "${MUSUBI_ASSETS_LINK}" && ! -L "${MUSUBI_ASSETS_LINK}" ]]; then
-  print_warn "${MUSUBI_ASSETS_LINK} exists and is not a symlink; leaving alone."
-else
-  ln -sfn "${MUSUBI_ASSETS_SRC}" "${MUSUBI_ASSETS_LINK}"
-  print_info "Linked: ${MUSUBI_ASSETS_LINK} -> ${MUSUBI_ASSETS_SRC}"
-fi
-
-# Optional: also link into the trainer repo (handy for relative paths)
-if [[ -d "${MUSUBI_TRAINER_DIR}" ]]; then
-  if [[ -e "${MUSUBI_TRAINER_DIR_ASSETS_LINK}" && ! -L "${MUSUBI_TRAINER_DIR_ASSETS_LINK}" ]]; then
-    print_warn "${MUSUBI_TRAINER_DIR_ASSETS_LINK} exists and is not a symlink; leaving alone."
-  else
-    ln -sfn "${MUSUBI_ASSETS_SRC}" "${MUSUBI_TRAINER_DIR_ASSETS_LINK}"
-    print_info "Linked: ${MUSUBI_TRAINER_DIR_ASSETS_LINK} -> ${MUSUBI_ASSETS_SRC}"
+# Helper: force a symlink at dst -> src
+link_one() {
+  local src="$1" dst="$2"
+  if [[ -e "${dst}" || -L "${dst}" ]]; then
+    rm -f "${dst}"
   fi
-else
-  print_warn "Trainer dir not found at: ${MUSUBI_TRAINER_DIR} (skipping trainer link)"
-fi
+  ln -s "${src}" "${dst}"
+}
+
+print_info "Staging Musubi assets into ${MUSUBI_STAGE_DIR} (symlinks)"
+
+# 1) Link all top-level *.toml files (tutorials often expect these in /workspace)
+shopt -s nullglob
+for f in "${MUSUBI_ASSETS_SRC}"/*.toml; do
+  base="$(basename "$f")"
+  link_one "${f}" "${MUSUBI_STAGE_DIR}/${base}"
+  print_info "Linked TOML: ${MUSUBI_STAGE_DIR}/${base} -> ${f}"
+done
+shopt -u nullglob
+
+# 2) Link “*_Training_Configs” folders (and any other config dirs you care about)
+for d in "${MUSUBI_ASSETS_SRC}"/*_Training_Configs "${MUSUBI_ASSETS_SRC}"/*Training_Configs "${MUSUBI_ASSETS_SRC}"/Wan22_Training_Configs; do
+  [[ -d "${d}" ]] || continue
+  base="$(basename "$d")"
+  link_one "${d}" "${MUSUBI_STAGE_DIR}/${base}"
+  print_info "Linked DIR : ${MUSUBI_STAGE_DIR}/${base} -> ${d}"
+done
+
+# 3) Optional: a single “drop zone” link to the whole assets folder
+link_one "${MUSUBI_ASSETS_SRC}" "${WORKSPACE}/musubi_trainer_zip_assets"
+print_info "Linked: ${WORKSPACE}/musubi_trainer_zip_assets -> ${MUSUBI_ASSETS_SRC}"
+
+print_info "Musubi workspace links ready."
