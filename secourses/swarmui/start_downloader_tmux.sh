@@ -50,6 +50,17 @@ if [[ -x "${COMFY_VENV}/bin/python" ]]; then
   PY="${COMFY_VENV}/bin/python"
 fi
 
+# Ensure gradio is present in the selected python env (fast + idempotent)
+if ! "${PY}" -c "import gradio" >/dev/null 2>&1; then
+  print_warn "gradio not found in ${PY}. Installing into Comfy venv..."
+  if [[ -x "${COMFY_VENV}/bin/pip" ]]; then
+    "${COMFY_VENV}/bin/pip" install --no-cache-dir "gradio==6.2.0"
+  else
+    print_err "Missing pip in Comfy venv: ${COMFY_VENV}/bin/pip"
+    exit 1
+  fi
+fi
+
 # Runner script for tmux (avoids quoting bugs)
 RUNNER="/tmp/run_swarmui_downloader_${SWARMUI_DL_PORT}.sh"
 cat > "${RUNNER}" <<EOF
