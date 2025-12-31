@@ -4,6 +4,7 @@ set -euo pipefail
 # ----------------------------
 # Defaults (override via env vars)
 # ----------------------------
+: "${WORKSPACE:=/workspace}"
 : "${SWARMUI_HOME:=/workspace/SwarmUI}"
 
 : "${SWARMUI_ENABLE_CLOUDFLARED:=true}"
@@ -53,6 +54,22 @@ fi
 cloudflared_arg_str=""
 if [[ "${SWARMUI_ENABLE_CLOUDFLARED,,}" == "true" ]]; then
   cloudflared_arg_str="--cloudflared-path ${SWARMUI_CLOUDFLARED_PATH@Q}"
+fi
+
+# -----------------------------------------------------------------------------
+# Stage / link presets into /workspace (zip-style layout expected by tutorials)
+# -----------------------------------------------------------------------------
+PRESETS_VERSION="v40"
+PRESETS_SRC="${POD_RUNTIME_DIR}/secourses/swarmui/Amazing_SwarmUI_Presets_${PRESETS_VERSION}.json"
+PRESETS_DST="${WORKSPACE}/Amazing_SwarmUI_Presets_${PRESETS_VERSION}.json"
+
+# If your actual file is "..._v40.json" (with the v), this matches.
+# If you ever switch versions, just change PRESETS_VERSION.
+if [[ -f "${PRESETS_SRC}" ]]; then
+  ln -sf "${PRESETS_SRC}" "${PRESETS_DST}"
+  print_info "Linked presets: ${PRESETS_DST} -> ${PRESETS_SRC}"
+else
+  print_warn "Presets source missing: ${PRESETS_SRC}"
 fi
 
 # Write a small runner script that tmux executes.
