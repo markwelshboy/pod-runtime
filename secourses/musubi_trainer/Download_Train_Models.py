@@ -31,6 +31,17 @@ MODEL_CONFIGS = {
         "description": "Qwen 2.5 VL 7B model with BF16 precision for image training",
         "default_dir": "Training_Models_Qwen"
     },
+    "qwen_image_2512": {
+        "repo_id": "MonsterMMORPG/Wan_GGUF",
+        "files": [
+            "qwen_2.5_vl_7b_bf16.safetensors",
+            "qwen_train_vae.safetensors",
+            "Qwen_Image_2512_BF16.safetensors"
+        ],
+        "name": "Qwen Image (2512) Training Models",
+        "description": "Qwen Image 2512 model with BF16 precision for image training",
+        "default_dir": "Training_Models_Qwen"
+    },
     "qwen_image_edit_plus": {
         "repo_id": "MonsterMMORPG/Wan_GGUF",
         "files": [
@@ -1248,33 +1259,39 @@ def get_model_choice():
     print("   - qwen_image_bf16.safetensors")
     print("   Default directory: Training_Models_Qwen")
     print()
-    print("2. Qwen Image Edit Plus (2509) Training Models")
+    print("2. Qwen Image (2512) Training Models")
+    print("   - qwen_2.5_vl_7b_bf16.safetensors")
+    print("   - qwen_train_vae.safetensors")
+    print("   - Qwen_Image_2512_BF16.safetensors")
+    print("   Default directory: Training_Models_Qwen")
+    print()
+    print("3. Qwen Image Edit Plus (2509) Training Models")
     print("   - qwen_2.5_vl_7b_bf16.safetensors")
     print("   - qwen_train_vae.safetensors")
     print("   - Qwen_Image_Edit_Plus_2509_bf16.safetensors")
     print("   Default directory: Training_Models_Qwen")
     print()
-    print("3. Qwen Image Edit (2511) Training Models")
+    print("4. Qwen Image Edit (2511) Training Models")
     print("   - qwen_2.5_vl_7b_bf16.safetensors")
     print("   - qwen_train_vae.safetensors")
     print("   - Qwen_Image_Edit_2511_BF16.safetensors")
     print("   Default directory: Training_Models_Qwen")
     print()
-    print("4. Wan 2.1 Text to Video Training Models")
+    print("5. Wan 2.1 Text to Video Training Models")
     print("   - Wan2_1_VAE_bf16.safetensors")
     print("   - models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors")
     print("   - umt5-xxl-enc-bf16.safetensors")
     print("   - wan2.1_t2v_14B_bf16.safetensors")
     print("   Default directory: Training_Models_Wan")
     print()
-    print("5. Wan 2.2 Text to Video Training Models")
+    print("6. Wan 2.2 Text to Video Training Models")
     print("   - Wan2_1_VAE_bf16.safetensors")
     print("   - umt5-xxl-enc-bf16.safetensors")
     print("   - Wan-2.2-T2V-High-Noise-BF16.safetensors")
     print("   - Wan-2.2-T2V-Low-Noise-BF16.safetensors")
     print("   Default directory: Training_Models_Wan")
     print()
-    print("6. Wan 2.2 Image to Video Training Models")
+    print("7. Wan 2.2 Image to Video Training Models")
     print("   - Wan2_1_VAE_bf16.safetensors")
     print("   - umt5-xxl-enc-bf16.safetensors")
     print("   - Wan-2.2-I2V-Low-Noise-BF16.safetensors")
@@ -1284,21 +1301,23 @@ def get_model_choice():
 
     while True:
         try:
-            choice = input("Please select model (1-6): ").strip()
+            choice = input("Please select model (1-7): ").strip()
             if choice == "1":
                 return "qwen_image"
             elif choice == "2":
-                return "qwen_image_edit_plus"
+                return "qwen_image_2512"
             elif choice == "3":
-                return "qwen_image_edit_2511"
+                return "qwen_image_edit_plus"
             elif choice == "4":
-                return "wan21_t2v"
+                return "qwen_image_edit_2511"
             elif choice == "5":
-                return "wan22_t2v"
+                return "wan21_t2v"
             elif choice == "6":
+                return "wan22_t2v"
+            elif choice == "7":
                 return "wan22_i2v"
             else:
-                print("Invalid choice. Please enter 1, 2, 3, 4, 5, or 6.")
+                print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6, or 7.")
         except KeyboardInterrupt:
             print("\nDownload cancelled.")
             sys.exit(0)
@@ -1421,8 +1440,8 @@ def download_models(model_id: Optional[str] = None, download_dir: Optional[str] 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Download training models for Qwen Image or Wan Text-to-Video')
-    parser.add_argument('--model', choices=['qwen_image', 'qwen_image_edit_plus', 'qwen_image_edit_2511', 'wan21_t2v', 'wan22_t2v', 'wan22_i2v'],
-                       help='Model to download: qwen_image (Qwen Image Training), qwen_image_edit_plus (Qwen Image Edit Plus 2509), qwen_image_edit_2511 (Qwen Image Edit 2511), wan21_t2v (Wan 2.1 Text-to-Video), wan22_t2v (Wan 2.2 Text-to-Video), or wan22_i2v (Wan 2.2 Image-to-Video)')
+    parser.add_argument('--model', choices=['qwen_image', 'qwen_image_2512', 'qwen_image_edit_plus', 'qwen_image_edit_2511', 'wan21_t2v', 'wan22_t2v', 'wan22_i2v'],
+                       help='Model to download: qwen_image (Qwen Image Training), qwen_image_2512 (Qwen Image 2512), qwen_image_edit_plus (Qwen Image Edit Plus 2509), qwen_image_edit_2511 (Qwen Image Edit 2511), wan21_t2v (Wan 2.1 Text-to-Video), wan22_t2v (Wan 2.2 Text-to-Video), or wan22_i2v (Wan 2.2 Image-to-Video)')
     parser.add_argument('--dir', type=str,
                        help='Download directory (supports both full and relative paths for Windows and Linux)')
 
@@ -1432,6 +1451,7 @@ if __name__ == "__main__":
     if not args.model:
         print("No model specified. Available options:")
         print("  --model qwen_image         : Download Qwen Image Training Models")
+        print("  --model qwen_image_2512    : Download Qwen Image (2512) Training Models")
         print("  --model qwen_image_edit_plus: Download Qwen Image Edit Plus (2509) Training Models")
         print("  --model qwen_image_edit_2511: Download Qwen Image Edit (2511) Training Models")
         print("  --model wan21_t2v          : Download Wan 2.1 Text-to-Video Training Models")
