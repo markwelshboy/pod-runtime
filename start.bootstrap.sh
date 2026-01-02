@@ -3,13 +3,20 @@ set -euo pipefail
 
 log() { echo "[bootstrap] $*"; }
 
-: "${WORKSPACE:=/workspace}"
 export DEBIAN_FRONTEND=noninteractive
+: "${WORKSPACE:=/workspace}"
 
-cd "$(dirname "$0")"  # pod-runtime root
+log "Starting pod-runtime bootstrap"
+log "Workspace: ${WORKSPACE}"
 
-# If you want the full "known-good" package set:
-if ! dpkg -s tmux >/dev/null 2>&1; then
+# Ensure we're running from pod-runtime root
+cd "$(dirname "$0")"
+
+# --------------------------------------------------------------------
+# Baseline packages (NO SSH – Vast already provides it)
+# Guarded so restarts are fast.
+# --------------------------------------------------------------------
+if ! command -v tmux >/dev/null 2>&1; then
   log "Installing baseline packages..."
   apt-get update
   apt-get install -y --no-install-recommends \
@@ -18,31 +25,29 @@ if ! dpkg -s tmux >/dev/null 2>&1; then
     tmux jq unzip gawk coreutils \
     net-tools rsync ncurses-base bash-completion less nano \
     ninja-build aria2 vim \
-    psmisc \
-    openssh-server
-  mkdir -p /run/sshd /var/run/sshd
+    psmisc
   git lfs install --system || true
   apt-get clean
   rm -rf /var/lib/apt/lists/*
 else
-  log "Baseline packages already present; skipping apt."
+  log "Baseline packages already installed; skipping apt."
 fi
 
-# Source helpers and run your ssh setup
+# --------------------------------------------------------------------
+# Optional: source helpers (for env, aliases, functions, etc.)
+# --------------------------------------------------------------------
 if [[ -f "./helpers.sh" ]]; then
+  log "Sourcing helpers.sh"
   # shellcheck disable=SC1091
   source "./helpers.sh"
 else
-  log "ERR: helpers.sh not found in pod-runtime root"
-  exit 1
+  log "helpers.sh not found (this is OK for playground use)"
 fi
 
-if declare -F setup_ssh >/dev/null 2>&1; then
-  log "Running setup_ssh..."
-  setup_ssh
-else
-  log "ERR: setup_ssh not found after sourcing helpers.sh"
-  exit 1
-fi
+# --------------------------------------------------------------------
+# Workspace sanity
+# --------------------------------------------------------------------
+mkdir -p "${WORKSPACE}"
+chmod 755 "${WORKSPACE}" || true
 
-log "Bootstrap done."
+log "Bootstrap complete."
