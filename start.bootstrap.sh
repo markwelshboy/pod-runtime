@@ -5,6 +5,8 @@ log() { echo "[bootstrap] $*"; }
 
 export DEBIAN_FRONTEND=noninteractive
 : "${WORKSPACE:=/workspace}"
+: "${HF_HOME:=/workspace}"
+: "${POD_RUNTIME:=/workspace/pod-runtime}"
 
 log "Starting pod-runtime bootstrap"
 log "Workspace: ${WORKSPACE}"
@@ -36,12 +38,20 @@ fi
 # --------------------------------------------------------------------
 # Optional: source helpers (for env, aliases, functions, etc.)
 # --------------------------------------------------------------------
-if [[ -f "./helpers.sh" ]]; then
-  log "Sourcing helpers.sh"
+if [[ -f "${POD_RUNTIME}/.env" ]]; then
+  log "Sourcing ${POD_RUNTIME}/.env"
   # shellcheck disable=SC1091
-  source "./helpers.sh"
+  source "${POD_RUNTIME}/.env"
 else
-  log "helpers.sh not found (this is OK for playground use)"
+  log "${POD_RUNTIME}/.env not found (this is OK for playground use)"
+fi
+
+if [[ -f "${POD_RUNTIME}/helpers.sh" ]]; then
+  log "Sourcing ${POD_RUNTIME}/helpers.sh"
+  # shellcheck disable=SC1091
+  source "${POD_RUNTIME}/helpers.sh"
+else
+  log "${POD_RUNTIME}/helpers.sh not found (this is OK for playground use)"
 fi
 
 # --------------------------------------------------------------------
@@ -49,5 +59,6 @@ fi
 # --------------------------------------------------------------------
 mkdir -p "${WORKSPACE}"
 chmod 755 "${WORKSPACE}" || true
+cd "${WORKSPACE}"
 
 log "Bootstrap complete."
