@@ -22,6 +22,8 @@ set -euo pipefail
 : "${MUSUBI_DL_APP:=${POD_RUNTIME_DIR}/secourses/musubi_trainer/Download_Train_Models.py}" # interactive script path (FYI)
 : "${MUSUBI_DL_SESSION:=musubi_downloader-interactive}"
 
+TMUX_ENSURE="${POD_RUNTIME_DIR}/secourses/lib/ensure_tmux_conf.sh"
+
 install_root_shell_dotfiles() {
   local repo_root="${1:-/workspace/pod-runtime}"
   local target_home="/root"
@@ -141,6 +143,13 @@ section 0 "Prepare logging"
 start_logging
 
 install_root_shell_dotfiles "${POD_RUNTIME_DIR}"
+
+# Ensure tmux config is installed + loaded (fixes wheel ^[[ junk)
+if [[ -x "$TMUX_ENSURE" ]]; then
+  "$TMUX_ENSURE" || print_warn "ensure_tmux_conf.sh failed (non-fatal)"
+else
+  print_warn "ensure_tmux_conf.sh not found/executable at: $TMUX_ENSURE (non-fatal)"
+fi
 
 section 1 "Musubi role startup"
 mkdir -p "${WORKSPACE}" "${MUSUBI_LOGS_DIR}"
