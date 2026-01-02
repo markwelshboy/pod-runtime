@@ -27,6 +27,14 @@ command -v tmux >/dev/null 2>&1 || { print_err "tmux not found"; exit 1; }
 [[ -d "${MUSUBI_VENV}" ]] || { print_err "Trainer venv not found: ${MUSUBI_VENV}"; exit 1; }
 [[ -f "${MUSUBI_DL_APP}" ]] || { print_err "Downloader not found: ${MUSUBI_DL_APP}"; exit 1; }
 
+# Ensure tmux config is installed + loaded (fixes wheel ^[[ junk)
+TMUX_ENSURE="${POD_RUNTIME_DIR}/secourses/lib/ensure_tmux_conf.sh"
+if [[ -x "$TMUX_ENSURE" ]]; then
+  "$TMUX_ENSURE" || print_warn "ensure_tmux_conf.sh failed (non-fatal)"
+else
+  print_warn "ensure_tmux_conf.sh not found/executable at: $TMUX_ENSURE (non-fatal)"
+fi
+
 # Stage links into /workspace (non-fatal)
 LINKER="${POD_RUNTIME_DIR}/secourses/musubi_trainer/ensure_musubi_workspace_links.sh"
 if [[ -f "${LINKER}" ]]; then
@@ -41,6 +49,7 @@ fi
 cmd=$(
   cat <<EOF
 set -euo pipefail
+export TERM=tmux-256color
 cd ${WORKSPACE@Q}
 source ${MUSUBI_VENV@Q}/bin/activate
 unset LD_LIBRARY_PATH || true
