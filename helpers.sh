@@ -3990,6 +3990,11 @@ setup_ssh() {
     sed -ri 's/^#?PermitRootLogin .*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
   fi
 
+  if [[ ! -f /etc/ssh/ssh_host_ed25519_key && ! -f /etc/ssh/ssh_host_rsa_key ]]; then
+    echo "[ssh] Generating SSH host keys..."
+    ssh-keygen -A
+  fi
+  
   # Start sshd in the background, logging to stdout
   /usr/sbin/sshd -D -e &
   echo "[ssh] sshd started."
