@@ -6,59 +6,64 @@ log() { echo "[bootstrap] $*"; }
 export DEBIAN_FRONTEND=noninteractive
 : "${WORKSPACE:=/workspace}"
 : "${HF_HOME:=/workspace}"
-: "${POD_RUNTIME:=/workspace/pod-runtime}"
+
+# pod-runtime root = where this script lives
+POD_RUNTIME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STAMP="${WORKSPACE}/.podruntime_baseline_installed.v1"
 
 log "Starting pod-runtime bootstrap"
-log "Workspace: ${WORKSPACE}"
+log "Workspace : ${WORKSPACE}"
+log "PodRuntime: ${POD_RUNTIME}"
 
-# Ensure we're running from pod-runtime root
-cd "$(dirname "$0")"
+# Workspace must exist before stamp + your env script side-effects
+mkdir -p "${WORKSPACE}"
+chmod 755 "${WORKSPACE}" || true
 
 # --------------------------------------------------------------------
-# Baseline packages (NO SSH – Vast already provides it)
-# Guarded so restarts are fast.
+# Baseline packages (first run per /workspace volume)
 # --------------------------------------------------------------------
-if ! command -v tmux >/dev/null 2>&1; then
-  log "Installing baseline packages..."
+if [[ ! -f "${STAMP}" ]]; then
+  log "Installing baseline packages (first run)..."
   apt-get update
   apt-get install -y --no-install-recommends \
     ca-certificates curl wget \
     git git-lfs \
-    tmux jq unzip gawk coreutils \
+    jq unzip gawk coreutils \
     net-tools rsync ncurses-base bash-completion less nano \
     ninja-build aria2 vim \
     psmisc
   git lfs install --system || true
   apt-get clean
   rm -rf /var/lib/apt/lists/*
+  date -Is > "${STAMP}"
+  log "Baseline install complete; wrote ${STAMP}"
 else
-  log "Baseline packages already installed; skipping apt."
+  log "Baseline already installed (stamp exists): ${STAMP}"
 fi
 
 # --------------------------------------------------------------------
-# Optional: source helpers (for env, aliases, functions, etc.)
+# Source your "env.sh" (it's named .env but it's a shell script)
 # --------------------------------------------------------------------
-if [[ -f "${POD_RUNTIME}/.env" ]]; then
-  log "Sourcing ${POD_RUNTIME}/.env"
-  # shellcheck disable=SC1091
-  source "${POD_RUNTIME}/.env"
+ENV_SH="${POD_RUNTIME}/.env"
+if [[ -f "${ENV_SH}" ]]; then
+  log "Sourcing ${ENV_SH}"
+  # shellcheck disable=SC1090
+  source "${ENV_SH}"
 else
-  log "${POD_RUNTIME}/.env not found (this is OK for playground use)"
-fi
-
-if [[ -f "${POD_RUNTIME}/helpers.sh" ]]; then
-  log "Sourcing ${POD_RUNTIME}/helpers.sh"
-  # shellcheck disable=SC1091
-  source "${POD_RUNTIME}/helpers.sh"
-else
-  log "${POD_RUNTIME}/helpers.sh not found (this is OK for playground use)"
+  log "${ENV_SH} not found (OK for playground)"
 fi
 
 # --------------------------------------------------------------------
-# Workspace sanity
+# Helpers (optional)
 # --------------------------------------------------------------------
-mkdir -p "${WORKSPACE}"
-chmod 755 "${WORKSPACE}" || true
+HELPERS="${POD_RUNTIME}/helpers.sh"
+if [[ -f "${HELPERS}" ]]; then
+  log "Sourcing ${HELPERS}"
+  # shellcheck disable=SC1090
+  source "${HELPERS}"
+else
+  log "${HELPERS} not found (OK for playground)"
+fi
+
 cd "${WORKSPACE}"
-
 log "Bootstrap complete."
