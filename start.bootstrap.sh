@@ -208,7 +208,7 @@ POD_RUNTIME=${POD_RUNTIME_DIR}
 : "${SWARM_POD:=${SWARM_POD:-false}}"
 : "${TRAIN_POD:=${TRAIN_POD:-false}}"
 
-: "${SECOURSES_DELETE:=${SECOURSES_DELETE:-1}}"  # 1=rsync --delete to make /workspace match exactly
+: "${SECOURSES_DELETE:=${SECOURSES_DELETE:-0}}"  # 1=rsync --delete to make /workspace match exactly
 
 
 print_info "Workspace : ${WORKSPACE}"
