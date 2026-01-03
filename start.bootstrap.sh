@@ -211,8 +211,8 @@ POD_RUNTIME=${POD_RUNTIME_DIR}
 : "${SECOURSES_DELETE:=${SECOURSES_DELETE:-1}}"  # 1=rsync --delete to make /workspace match exactly
 
 
-log "Workspace : ${WORKSPACE}"
-log "PodRuntime: ${POD_RUNTIME}"
+print_info "Workspace : ${WORKSPACE}"
+print_info "PodRuntime: ${POD_RUNTIME}"
 
 mkdir -p "${WORKSPACE}"
 chmod 755 "${WORKSPACE}" || true
@@ -221,7 +221,7 @@ cd "${WORKSPACE}"
 
 # Optionally update pod-runtime itself (useful on long-lived volumes)
 if [[ "${BOOTSTRAP_PULL_REPO}" == "1" && -d "${POD_RUNTIME}/.git" ]]; then
-  log "Updating pod-runtime repo..."
+  print_info "Updating/refreshing pod-runtime repo..."
   git -C "${POD_RUNTIME}" pull --rebase --autostash || true
 fi
 
@@ -229,7 +229,7 @@ fi
 # Baseline packages (idempotent)
 # -------------------------------
 if [[ "${BOOTSTRAP_INSTALL_BASELINE}" == "1" && ! -f "${BASELINE_STAMP}" ]]; then
-  log "Installing baseline packages (first run)..."
+  print_info "Installing baseline packages (first run)..."
   apt-get update
   apt-get install -y --no-install-recommends \
     ca-certificates curl wget \
@@ -242,9 +242,9 @@ if [[ "${BOOTSTRAP_INSTALL_BASELINE}" == "1" && ! -f "${BASELINE_STAMP}" ]]; the
   apt-get clean
   rm -rf /var/lib/apt/lists/*
   date -Is > "${BASELINE_STAMP}"
-  log "Baseline install complete; wrote ${BASELINE_STAMP}"
+  print_info "Baseline install complete; wrote ${BASELINE_STAMP}"
 else
-  log "Baseline install skipped (already stamped or disabled)."
+  print_info "Baseline install skipped (already stamped or disabled)."
 fi
 
 #----------------------------------------------
@@ -256,14 +256,14 @@ ENVIRONMENT="${ENVIRONMENT:-$SCRIPT_DIR/.env}"
 HELPERS="${HELPERS:-$SCRIPT_DIR/helpers.sh}"
 
 if [[ ! -f "$ENVIRONMENT" ]]; then
-  echo "[fatal] .env not found at: $ENVIRONMENT" >&2
+  print_err "[fatal] .env not found at: $ENVIRONMENT" >&2
   exit 1
 fi
 # shellcheck source=/dev/null
 source "$ENVIRONMENT"
 
 if [[ ! -f "$HELPERS" ]]; then
-  echo "[fatal] helpers.sh not found at: $HELPERS" >&2
+  print_err "[fatal] helpers.sh not found at: $HELPERS" >&2
   exit 1
 fi
 # shellcheck source=/dev/null
@@ -334,9 +334,9 @@ stage_src_secourses_into_workspace
 
 #-- And we're done! --------------------------------
 
-log "Bootstrap complete."
+print_info "Bootstrap complete."
 
 if [[ "${BOOTSTRAP_KEEPALIVE}" == "1" ]]; then
-  log "Keeping container alive..."
+  print_info "Keeping container alive..."
   exec tail -f /dev/null
 fi
