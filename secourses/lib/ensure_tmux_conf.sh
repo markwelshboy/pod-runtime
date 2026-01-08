@@ -22,6 +22,12 @@ require_root() {
   fi
 }
 
+ensure_tmux() {
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y --no-install-recommends tmux
+}
+
 # Content: tuned for tmux 3.2a+ and "no junk while scrolling"
 tmux_conf_content() {
   cat <<'TMUX'
@@ -145,6 +151,7 @@ reload_running_servers() {
 
 main() {
   require_root
+  ensure_tmux
   write_conf_if_needed
   reload_running_servers
   log "Done."

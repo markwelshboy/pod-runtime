@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+
 log(){ echo "[bootstrap] $*"; }
 
 # -----------------------------------------------------------------------------
@@ -164,6 +166,13 @@ stage_src_secourses_into_workspace() {
     staged_any=1
   fi
 
+  if _bool "${IMAGE_POD:-false}"; then
+    : "${IMAGE_SE_VERSION:?IMAGE_POD=true but IMAGE_SE_VERSION is unset}"
+    echo "[secourses] IMAGE_POD enabled -> ${IMAGE_SE_VERSION}"
+    _flatten_rsync_to_workspace "${repo_dst%/}/${IMAGE_SE_VERSION}" "${WORKSPACE}"
+    staged_any=1
+  fi
+
   if [[ "$staged_any" -eq 0 ]]; then
     echo "[secourses] NOTE: no *_POD flags were true; nothing staged into ${WORKSPACE}"
   fi
@@ -185,8 +194,6 @@ stage_src_secourses_into_workspace() {
 
 : "${ENABLE_SAGE:=true}"
 
-export DEBIAN_FRONTEND=noninteractive
-
 # Where this script lives (pod-runtime root)
 POD_RUNTIME=${POD_RUNTIME_DIR}
 
@@ -204,9 +211,22 @@ POD_RUNTIME=${POD_RUNTIME_DIR}
 : "${COMFY_SE_VERSION:=${COMFY_SE_VERSION:-comfyui_v71}}"
 : "${SWARM_SE_VERSION:=${SWARM_SE_VERSION:-swarmui_v119}}"
 : "${TRAIN_SE_VERSION:=${TRAIN_SE_VERSION:-musubi_trainer_v26}}"
+: "${IMAGE_SE_VERSION:=${IMAGE_SE_VERSION:-ulti_image_process_v26}}"
+
 : "${COMFY_POD:=${COMFY_POD:-false}}"
 : "${SWARM_POD:=${SWARM_POD:-false}}"
 : "${TRAIN_POD:=${TRAIN_POD:-false}}"
+: "${IMAGE_POD:=${IMAGE_POD:-false}}"
+
+: "${TMUX_SETUP_SCRIPT:=${POD_RUNTIME}/secourses/lib/ensure_tmux_conf.sh}"
+
+: "${TRAIN_LOG_DIR:=${WORKSPACE}/logs}"
+: "${TRAIN_TMUX_SESSION:=trainer}"
+: "${TRAIN_TMUX_ERR:=${TRAIN_LOG_DIR}/trainer.tmux.err}"
+: "${TRAIN_LOG:=${TRAIN_LOG_DIR}/trainer.log}"
+: "${IMAGE_TMUX_SESSION:=image_processor}"
+: "${IMAGE_TMUX_ERR:=${TRAIN_LOG_DIR}/image_processor.tmux.err}"
+: "${IMAGE_LOG:=${TRAIN_LOG_DIR}/image_processor.log}"
 
 : "${SECOURSES_DELETE:=${SECOURSES_DELETE:-0}}"  # 1=rsync --delete to make /workspace match exactly
 
@@ -236,7 +256,7 @@ if [[ "${BOOTSTRAP_INSTALL_BASELINE}" == "1" && ! -f "${BASELINE_STAMP}" ]]; the
     git git-lfs \
     jq unzip gawk coreutils \
     net-tools rsync ncurses-base bash-completion less nano \
-    ninja-build aria2 vim \
+    ninja-build aria2 vim tmux \
     psmisc
   git lfs install --system || true
   apt-get clean
@@ -268,6 +288,16 @@ if [[ ! -f "$HELPERS" ]]; then
 fi
 # shellcheck source=/dev/null
 source "$HELPERS"
+
+if [[ ! -f "${TMUX_SETUP_SCRIPT}" ]]; then
+  print_err "[fatal] tmux setup script not found at: $TMUX_SETUP_SCRIPT" >&2
+  exit 1
+fi
+
+bash "$TMUX_SETUP_SCRIPT" || {
+  print_err "[fatal] tmux setup script failed: $TMUX_SETUP_SCRIPT" >&2
+  exit 1
+}
 
 # -------------------------------
 # SSH decision logic
@@ -332,7 +362,172 @@ fi
 
 stage_src_secourses_into_workspace
 
-#-- And we're done! --------------------------------
+#----------------------------------------------
+# Launch training GUI and Image Processor in tmuxes (if enabled)
+
+tmux_run_foreground_job() {
+  local sess="$1" cmd="$2" errfile="$3"
+  mkdir -p "$(dirname "$errfile")"
+
+  # Helpful when something dies: pane stays visible
+  tmux set-option -g remain-on-exit on >/dev/null 2>&1 || true
+
+  if tmux has-session -t "$sess" >/dev/null 2>&1; then
+    print_info "Respawning tmux pane: $sess"
+    # Deterministic restart: always targets window 0, pane 0
+    tmux respawn-pane -k -t "${sess}:0.0" "bash -c ${cmd@Q}" 2>>"$errfile" || true
+  else
+    print_info "Launching new tmux session: $sess"
+    tmux new-session -d -s "$sess" "bash -c ${cmd@Q}" 2>>"$errfile" || true
+  fi
+
+  tmux has-session -t "$sess" >/dev/null 2>&1
+}
+
+stamp_run() {
+  # Run a command only once per stamp file
+  local stamp="$1"; shift
+  if [[ -f "$stamp" ]]; then
+    print_info "Skipping (stamp exists): $stamp"
+    return 0
+  fi
+  print_info "Running once (creating stamp): $stamp"
+  "$@"
+  date -Is >"$stamp"
+}
+
+patch_trainer_installer_add_pip() {
+  local src="${WORKSPACE}/RunPod_Install_Trainer.sh"
+  local dst="${WORKSPACE}/RunPod_Install_Trainer.sh.patched"
+
+  [[ -f "$src" ]] || { print_err "Missing $src"; return 1; }
+
+  if [[ -f "$dst" && "$dst" -nt "$src" ]]; then
+    print_info "Patched installer already up to date: $dst"
+    return 0
+  fi
+
+  local patched="0"
+  : >"$dst" || { print_err "Cannot write $dst"; return 1; }
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^[[:space:]]*python(3)?[[:space:]]+-m[[:space:]]+venv[[:space:]]+venv[[:space:]]*$ ]]; then
+      local indent="${line%%python*}"
+      echo "${indent}python -m venv venv && (venv/bin/python -m pip install -q --disable-pip-version-check huggingface_hub requests || true)" >>"$dst"
+      patched="1"
+    else
+      echo "$line" >>"$dst"
+    fi
+  done <"$src"
+
+  chmod +x "$dst" || true
+
+  if [[ "$patched" != "1" ]]; then
+    print_warn "Did not find venv creation line to patch; using original installer."
+    rm -f "$dst"
+    return 2
+  fi
+
+  print_info "Created patched trainer installer: $dst"
+  return 0
+}
+
+if [[ "${TRAIN_POD,,}" == "true" ]]; then
+
+  cd ${WORKSPACE}
+
+  patch_trainer_installer_add_pip || true
+
+RUNNER="/tmp/run_training_gui.sh"
+cat > "${RUNNER}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p ${WORKSPACE@Q}/logs || true
+echo "[training-gui] starting at \$(date -Is)" >> ${TRAIN_LOG@Q}
+
+cd ${WORKSPACE@Q}
+
+# Keep these per your requirements.
+export WORKSPACE=${WORKSPACE@Q}
+export HF_HOME="/workspace"
+
+INSTALLER="./RunPod_Install_Trainer.sh"
+if [[ -x "./RunPod_Install_Trainer.sh.patched" ]]; then
+  INSTALLER="./RunPod_Install_Trainer.sh.patched"
+fi
+chmod +x "\${INSTALLER}" || true
+
+exec "\${INSTALLER}" >> ${TRAIN_LOG@Q} 2>&1
+EOF
+
+  chmod +x "${RUNNER}"
+
+  if ! tmux_run_foreground_job "${TRAIN_TMUX_SESSION}" "${RUNNER}" "${TRAIN_TMUX_ERR}"; then
+    print_err "tmux session was not created: ${TRAIN_TMUX_SESSION}"
+    print_err "See: ${TRAIN_TMUX_ERR}"
+    tmux ls || true
+  fi
+
+  print_info "Logs:         ${TRAIN_LOG}"
+  print_info "tmux stderr:  ${TRAIN_TMUX_ERR}"
+  print_info "Attach:       tmux attach -t ${TRAIN_TMUX_SESSION}"
+
+else
+  print_info "TRAIN_POD is not true; skipping training launch."
+fi
+
+
+if [[ "${IMAGE_POD,,}" == "true" ]]; then
+
+  # Run installer ONCE outside tmux (per your requirement)
+  chmod +x "${WORKSPACE}/Runpod_Install_Img_Process.sh"
+
+  # If you want the stamp to auto-refresh when the zip updates the installer:
+  # IMG_SHA="$(sha256sum "${WORKSPACE}/Runpod_Install_Img_Process.sh" | awk '{print $1}')"
+  # STAMP="/workspace/.imgproc_installed.${IMG_SHA}.stamp"
+  STAMP="/workspace/.imgproc_installed.v1.stamp"
+
+  stamp_run "${STAMP}" env HF_HOME="${WORKSPACE}" bash -lc "cd ${WORKSPACE} && ./Runpod_Install_Img_Process.sh"
+
+  RUNNER="/tmp/run_image_processing_gui.sh"
+  cat > "${RUNNER}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p ${WORKSPACE@Q}/logs || true
+echo "[image-processing-gui] starting at \$(date -Is)" >> ${IMAGE_LOG@Q}
+
+cd ${WORKSPACE@Q}
+
+ulimit -n 65536 || true
+export WORKSPACE=${WORKSPACE@Q}
+export HF_HOME="/workspace"
+export PYTHONWARNINGS="ignore"
+
+# venv is built in /workspace for image processor
+source ${WORKSPACE@Q}/venv/bin/activate
+
+exec python ./app.py --share >> ${IMAGE_LOG@Q} 2>&1
+EOF
+
+  chmod +x "${RUNNER}"
+
+  if ! tmux_run_foreground_job "${IMAGE_TMUX_SESSION}" "${RUNNER}" "${IMAGE_TMUX_ERR}"; then
+    print_err "tmux session was not created: ${IMAGE_TMUX_SESSION}"
+    print_err "See: ${IMAGE_TMUX_ERR}"
+    tmux ls || true
+  fi
+
+  print_info "Logs:         ${IMAGE_LOG}"
+  print_info "tmux stderr:  ${IMAGE_TMUX_ERR}"
+  print_info "Attach:       tmux attach -t ${IMAGE_TMUX_SESSION}"
+
+else
+  print_info "IMAGE_POD is not true; skipping image processing launch."
+fi
+
+#-- And we're done! ---------------------------
 
 print_info "Bootstrap complete."
 
