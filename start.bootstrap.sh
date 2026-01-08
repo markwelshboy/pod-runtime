@@ -456,8 +456,10 @@ echo "[training-gui] starting at \$(date -Is)" >> ${TRAIN_LOG@Q}
 cd ${WORKSPACE@Q}
 
 # Keep these per your requirements.
-export WORKSPACE=${WORKSPACE@Q}
+export WORKSPACE="/workspace"
 export HF_HOME="/workspace"
+export PYTHONUNBUFFERED=1
+export HF_HUB_ENABLE_HF_TRANSFER=1
 
 INSTALLER="./RunPod_Install_Trainer.sh"
 if [[ -x "./RunPod_Install_Trainer.sh.patched" ]]; then
@@ -465,7 +467,7 @@ if [[ -x "./RunPod_Install_Trainer.sh.patched" ]]; then
 fi
 chmod +x "\${INSTALLER}" || true
 
-exec "\${INSTALLER}" >> ${TRAIN_LOG@Q} 2>&1
+exec stdbuf -oL -eL "\${INSTALLER}" >> ${TRAIN_LOG@Q} 2>&1
 EOF
 
   chmod +x "${RUNNER}"
@@ -511,16 +513,19 @@ echo "[image-processing-gui] starting at \$(date -Is)" >> ${IMAGE_LOG@Q}
 
 cd ${WORKSPACE@Q}
 
-ulimit -n 65536 || true
-export WORKSPACE=${WORKSPACE@Q}
-export HF_HOME="/workspace"
-export PYTHONWARNINGS="ignore"
-export HF_HUB_ENABLE_HF_TRANSFER=1
-
 # venv is built in /workspace for image processor
 source ${WORKSPACE@Q}/venv/bin/activate
 
-exec python ./app.py --share >> ${IMAGE_LOG@Q} 2>&1
+ulimit -n 65536 || true
+export WORKSPACE="/workspace"
+export HF_HOME="/workspace"
+export PYTHONWARNINGS="ignore"
+export HF_HUB_ENABLE_HF_TRANSFER=1
+export PYTHONUNBUFFERED=1
+export GRADIO_LOG_LEVEL=info
+export LOGLEVEL=INFO
+
+exec stdbuf -oL -eL python ./app.py --share 2>&1 | tee -a ${IMAGE_LOG@Q}
 EOF
 
   chmod +x "${RUNNER}"
