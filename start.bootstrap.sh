@@ -413,7 +413,7 @@ patch_trainer_installer_add_pip() {
   while IFS= read -r line || [[ -n "$line" ]]; do
     if [[ "$line" =~ ^[[:space:]]*python(3)?[[:space:]]+-m[[:space:]]+venv[[:space:]]+venv[[:space:]]*$ ]]; then
       local indent="${line%%python*}"
-      echo "${indent}python -m venv venv && (venv/bin/python -m pip install -q --disable-pip-version-check huggingface_hub requests || true)" >>"$dst"
+      echo "${indent}python -m venv venv && (venv/bin/python -m pip install -q --disable-pip-version-check huggingface_hub requests hf_transfer || true)" >>"$dst"
       patched="1"
     else
       echo "$line" >>"$dst"
