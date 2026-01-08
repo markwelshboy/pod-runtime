@@ -468,7 +468,8 @@ fi
 chmod +x "\${INSTALLER}" || true
 
 #exec stdbuf -oL -eL "\${INSTALLER}" >> ${TRAIN_LOG@Q} 2>&1
-exec stdbuf -oL -eL bash -lc "cd ${WORKSPACE@Q} && bash ${INSTALLER@Q}" >> ${TRAIN_LOG@Q} 2>&1
+exec stdbuf -oL -eL bash "\${INSTALLER}" >> ${TRAIN_LOG@Q} 2>&1
+
 EOF
 
   chmod +x "${RUNNER}"
