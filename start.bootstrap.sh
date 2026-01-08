@@ -432,6 +432,13 @@ patch_trainer_installer_add_pip() {
   return 0
 }
 
+ensure_req_line() {
+  local reqfile="$1" line="$2"
+  [[ -f "$reqfile" ]] || return 0  # silently skip if file isn't there
+  grep -qxF "$line" "$reqfile" && return 0
+  echo "$line" >>"$reqfile"
+}
+
 if [[ "${TRAIN_POD,,}" == "true" ]]; then
 
   cd ${WORKSPACE}
@@ -480,6 +487,10 @@ fi
 
 if [[ "${IMAGE_POD,,}" == "true" ]]; then
 
+  cd ${WORKSPACE}
+
+  ensure_req_line "${WORKSPACE}/requirements_image_process.txt" "hf_transfer"
+
   # Run installer ONCE outside tmux (per your requirement)
   chmod +x "${WORKSPACE}/Runpod_Install_Img_Process.sh"
 
@@ -504,6 +515,7 @@ ulimit -n 65536 || true
 export WORKSPACE=${WORKSPACE@Q}
 export HF_HOME="/workspace"
 export PYTHONWARNINGS="ignore"
+export HF_HUB_ENABLE_HF_TRANSFER=1
 
 # venv is built in /workspace for image processor
 source ${WORKSPACE@Q}/venv/bin/activate
