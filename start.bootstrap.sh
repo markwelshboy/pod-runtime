@@ -467,7 +467,8 @@ if [[ -x "./RunPod_Install_Trainer.sh.patched" ]]; then
 fi
 chmod +x "\${INSTALLER}" || true
 
-exec stdbuf -oL -eL "\${INSTALLER}" >> ${TRAIN_LOG@Q} 2>&1
+#exec stdbuf -oL -eL "\${INSTALLER}" >> ${TRAIN_LOG@Q} 2>&1
+exec stdbuf -oL -eL bash -lc "cd ${WORKSPACE@Q} && bash ${INSTALLER@Q}" >> ${TRAIN_LOG@Q} 2>&1
 EOF
 
   chmod +x "${RUNNER}"
@@ -525,7 +526,7 @@ export PYTHONUNBUFFERED=1
 export GRADIO_LOG_LEVEL=info
 export LOGLEVEL=INFO
 
-exec stdbuf -oL -eL python ./app.py --share 2>&1 | tee -a ${IMAGE_LOG@Q}
+exec stdbuf -oL -eL python ./app.py --share >> ${IMAGE_LOG@Q} 2>&1
 EOF
 
   chmod +x "${RUNNER}"
