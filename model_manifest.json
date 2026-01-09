@@ -522,7 +522,7 @@
         "path": "{TEXT_ENCODERS_DIR}/qwen_2.5_vl_7b_fp8_scaled.safetensors"
       },
       {
-        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
         "path": "{VAE_DIR}/qwen_image_vae.safetensors"
       },
       {
