@@ -416,7 +416,7 @@ fi
 source "$HELPERS"
 
 # -------------------------------
-section 3 "Deploy SSH if required"
+section 3 "Deploy SSH (if required)"
 # -------------------------------
 have_authorized_keys() {
   [[ -s /root/.ssh/authorized_keys ]] || [[ -s "${HOME:-/root}/.ssh/authorized_keys" ]]
