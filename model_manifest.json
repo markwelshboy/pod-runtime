@@ -511,6 +511,42 @@
         "url": "https://huggingface.co/Aitrepreneur/FLX/resolve/main/4x-ClearRealityV1.pth",
         "path": "{UPSCALE_DIR}/4x-ClearRealityV1.pth"
       }
+    ],
+    "download_qwen_image_edit": [
+      {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2511_bf16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/qwen_image_edit_2511_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/qwen_2.5_vl_7b_fp8_scaled.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
+        "path": "{VAE_DIR}/qwen_image_vae.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+        "path": "{LORAS_DIR}/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA/resolve/main/qwen-image-edit-2511-multiple-angles-lora.safetensors",
+        "path": "{LORAS_DIR}/qwen-image-edit-2511-multiple-angles-lora.safetensors"
+      }
+    ],
+    "download_qwen": [
+      {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_bf16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/qwen_image_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/qwen_2.5_vl_7b_fp8_scaled.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
+        "path": "{VAE_DIR}/qwen_image_vae.safetensors"
+      }
     ]
   }
 }
