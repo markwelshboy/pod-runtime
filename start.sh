@@ -109,12 +109,6 @@ section 0.5 "Basic Housekeeping"
 #----------------------------------------------
 
 #----------------------------------------------
-# Fix Numeric stack
-#----------------------------------------------
-
-fix_numeric_stack_if_broken
-
-#----------------------------------------------
 # Install fast HF backend (safe, quiet)
 #----------------------------------------------
 
@@ -313,6 +307,13 @@ section 12 "ComfyUI Launch"
 snapshot_custom_nodes_state --summary "before-comfy-launch" || true
 
 cd "${COMFY_HOME:-/workspace/ComfyUI}"
+
+#----------------------------------------------
+# Fix Numeric stack
+#----------------------------------------------
+
+fix_numeric_stack_if_broken
+
 
 echo ""
 echo "▶️  Starting ComfyUI"
