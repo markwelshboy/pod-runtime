@@ -78,6 +78,7 @@ mkdir -p ${SWARMUI_DL_LOG_DIR@Q}
 echo "[swarmui-downloader] starting at \$(date -Is)" >> ${SWARMUI_DL_LOG@Q}
 
 export WORKSPACE=${WORKSPACE@Q}
+export HF_HOME=${WORKSPACE@Q}
 export SWARMUI_DL_PORT=${SWARMUI_DL_PORT@Q}
 export SWARMUI_DL_HOST=${SWARMUI_DL_HOST@Q}
 export SWARMUI_DL_SHARE=${SWARMUI_DL_SHARE@Q}
