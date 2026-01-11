@@ -601,7 +601,7 @@
       },
       {
         "url": "https://huggingface.co/f5aiteam/Controlnet/resolve/main/controlnet-tile-sdxl-1.0.safetensors",
-        "path": "{CTRLNET_DIR}/controlnet-tile-sdxl-1.0.safetensors"
+        "path": "{LORAS_DIR}/controlnet-tile-sdxl-1.0.safetensors"
       }
     ]
   }
