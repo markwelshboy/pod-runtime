@@ -547,6 +547,62 @@
         "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
         "path": "{VAE_DIR}/qwen_image_vae.safetensors"
       }
+    ],
+    "download_wan22_svi": [
+      {
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/wan2.2_i2v_high_noise_14B_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/wan2.2_i2v_low_noise_14B_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-bf16.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/umt5-xxl-enc-bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors",
+        "path": "{CLIP_VISION_DIR}/clip_vision_h.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
+        "path": "{VAE_DIR}/wan_2.1_vae.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors",
+        "path": "{VAE_DIR}/Wan2_1_VAE_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/LoRAs/Stable-Video-Infinity/v2.0/SVI_v2_PRO_Wan2.2-I2V-A14B_HIGH_lora_rank_128_fp16.safetensors",
+        "path": "{LORAS_DIR}/SVI_v2_PRO_Wan2.2-I2V-A14B_HIGH_lora_rank_128_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/LoRAs/Stable-Video-Infinity/v2.0/SVI_v2_PRO_Wan2.2-I2V-A14B_LOW_lora_rank_128_fp16.safetensors",
+        "path": "{LORAS_DIR}/SVI_v2_PRO_Wan2.2-I2V-A14B_LOW_lora_rank_128_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/LoRAs/Stable-Video-Infinity/v2.0/SVI_Wan2.1-I2V-14B_lora_v2.0_rank_128_fp16.safetensors",
+        "path": "{LORAS_DIR}/SVI_Wan2.1-I2V-14B_lora_v2.0_rank_128_fp16.safetensors"
+      }
+    ],
+    "download_upscale": [
+      {
+        "url": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/blob/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/ByteDance/SDXL-Lightning/resolve/main/sdxl_lightning_8step_lora.safetensors",
+        "path": "{LORAS_DIR}/sdxl_lightning_8step_lora.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/f5aiteam/Controlnet/resolve/main/controlnet-tile-sdxl-1.0.safetensors",
+        "path": "{CTRLNET_DIR}/controlnet-tile-sdxl-1.0.safetensors"
+      }
     ]
   }
 }
