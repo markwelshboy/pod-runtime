@@ -5745,10 +5745,10 @@ hff() {
 
   case "$cmd" in
     snapshot)
-      exec "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" snapshot --snapdir "$snapdir" "$@"
+      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" snapshot --snapdir "$snapdir" "$@"
       ;;
     ls|mkdir|mv|rm|put|get|doctor)
-      exec "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" "$cmd" "$@"
+      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" "$cmd" "$@"
       ;;
     help|-h|--help|"")
       cat <<EOF
