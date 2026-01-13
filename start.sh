@@ -4,6 +4,53 @@ set -euo pipefail
 touch ~/.no_auto_tmux
 umask 0022
 
+install_root_shell_dotfiles() {
+  local repo_root="${1:-/workspace/pod-runtime}"   # pass POD_RUNTIME_DIR if you like
+  local target_home="/root"
+  local ts; ts="$(date +%Y%m%d_%H%M%S)"
+
+  mkdir -p "$target_home"
+
+  # Backups (if files already exist)
+  for f in .bashrc .bash_aliases .bash_functions; do
+    if [[ -f "${target_home}/${f}" ]]; then
+      cp -a "${target_home}/${f}" "${target_home}/${f}.bak.${ts}"
+    fi
+  done
+
+  # Render .bashrc with precise placeholder substitution (atomic)
+  local src_bashrc="${repo_root}/.bashrc"
+  local tmp; tmp="$(mktemp "${target_home}/.bashrc.tmp.XXXXXX")"
+
+  awk -v rr="$repo_root" '
+    BEGIN {done=0}
+    /^[[:space:]]*REPO_ROOT=<CHANGEME>[[:space:]]*$/ {
+      print "REPO_ROOT=" rr
+      done=1
+      next
+    }
+    {print}
+    END {
+      if (!done) {
+        # If you want strict mode, uncomment:
+        print "ERROR: REPO_ROOT=<CHANGEME> placeholder not found" > "/dev/stderr"
+        exit 2
+      }
+    }
+  ' "$src_bashrc" > "$tmp"
+
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "${target_home}/.bashrc"
+
+  # Copy the others
+  install -m 0644 "${repo_root}/.bash_aliases"   "${target_home}/.bash_aliases"
+  install -m 0644 "${repo_root}/.bash_functions" "${target_home}/.bash_functions"
+  install -m 0644 "${repo_root}/.bash_prompt"    "${target_home}/.bash_prompt"
+  install -m 0644 "${repo_root}/.git-qol.sh"     "${target_home}/.git-qol.sh"
+
+  echo "[dotfiles] Installed bash dotfiles into ${target_home} (repo_root=${repo_root})"
+}
+
 ensure_hf_tools_venv() {
   local venv="${HFF_VENV:-/opt/hf-tools-venv}"
   local py="${PYTHON:-python3}"
@@ -66,6 +113,8 @@ install_system_hff || {
   exit 1
 }
 
+install_root_shell_dotfiles || true
+
 echo "=== ComfyUI bootstrap: $(date) ==="
 
 #----------------------------------------------
@@ -90,12 +139,17 @@ VARS=(
   MODEL_MANIFEST_URL CUSTOM_NODES_MANIFEST_URL
   ENABLE_MODEL_MANIFEST_DOWNLOAD ENABLE_CIVITAI_DOWNLOAD ENABLE_SAGE 
   INSTALL_CUSTOM_NODES LAUNCH_JUPYTER
-  download_480p_native_models download_720p_native_models download_wan22 
-  download_wan22_lightning download_vae
-  download_wan_animate download_detection download_optimization_loras
-  download_wan22_animate_god_mode_25 download_gguf 
-  download_aio_mega download_vace_artofficial 
-  wan_fun_and_sdxl_helper
+  download_480p_native_models download_720p_native_models 
+  download_wan22 download_wan22_lightning download_wan_animate 
+  download_wan22_animate_god_mode_25 download_wan_fun_and_sdxl_helper 
+  download_wan22_svi
+  download_vae download_detection
+  download_optimization_loras
+  download_gguf
+  download_aio_mega
+  download_vace_artofficial
+  download_qwen download_qwen_image_edit
+  download_upscale
 )
 
 {
