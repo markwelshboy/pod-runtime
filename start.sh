@@ -4,6 +4,68 @@ set -euo pipefail
 touch ~/.no_auto_tmux
 umask 0022
 
+ensure_hf_tools_venv() {
+  local venv="${HFF_VENV:-/opt/hf-tools-venv}"
+  local py="${PYTHON:-python3}"
+
+  if [[ -x "$venv/bin/python" ]]; then
+    export HFF_VENV="$venv"
+    return 0
+  fi
+
+  echo "[hf-tools] Creating venv: $venv"
+  "$py" -m venv "$venv" || return 1
+
+  "$venv/bin/python" -m pip install -U pip >/dev/null || return 1
+
+  # If you want hard pins, uncomment and set versions:
+  # "$venv/bin/pip" install -U "huggingface-hub==1.3.1" "hf-transfer==0.1.9" >/dev/null || return 1
+
+  "$venv/bin/pip" install -U huggingface-hub hf-transfer >/dev/null || return 1
+
+  export HFF_VENV="$venv"
+  echo "[hf-tools] Ready: $venv"
+}
+
+install_hff_py() {
+  local src="${POD_RUNTIME_DIR}/bin/hff.py"
+  local dst="/usr/local/bin/hff.py"
+
+  if [[ ! -f "$src" ]]; then
+    echo "[hf-tools] hff.py not found: $src" >&2
+    return 1
+  fi
+
+  install -m 0755 "$src" "$dst"
+  echo "[hf-tools] Installed: $dst"
+}
+
+hf_tools_verify() {
+  local venv="${HFF_VENV:-/opt/hf-tools-venv}"
+  "$venv/bin/python" - <<'PY'
+import huggingface_hub, os
+print("huggingface_hub:", getattr(huggingface_hub, "__version__", "?"))
+print("HF_HUB_ENABLE_HF_TRANSFER:", os.environ.get("HF_HUB_ENABLE_HF_TRANSFER"))
+try:
+  import hf_transfer
+  print("hf_transfer: OK")
+except Exception as e:
+  print("hf_transfer: missing:", e)
+PY
+  command -v "$venv/bin/huggingface-cli" >/dev/null 2>&1 && echo "huggingface-cli: OK" || echo "huggingface-cli: missing"
+}
+
+install_system_hff() {
+  ensure_hf_tools_venv || return 1
+  install_hff_py || return 1
+  hf_tools_verify
+}
+
+install_system_hff || {
+  echo "[fatal] hf-tools installation failed." >&2
+  exit 1
+}
+
 echo "=== ComfyUI bootstrap: $(date) ==="
 
 #----------------------------------------------
@@ -91,10 +153,6 @@ source "$HELPERS"
 
 ensure_comfy_dirs
 
-# Intall hff helper
-
-install_hff || true
-
 #------------------------------------------------------------------------
 section 0 "Prepare Session Logging"
 #----------------------------------------------
@@ -113,7 +171,7 @@ section 0.5 "Basic Housekeeping"
 #----------------------------------------------
 
 #----------------------------------------------
-# Install fast HF backend (safe, quiet)
+# Install fast HF backend (safe, quiet) into ComfyUI venv
 #----------------------------------------------
 
 # Map helper knobs into hf_transfer / hub vars

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 import argparse
-import fnmatch
 import inspect
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import List, Set, Tuple
+from typing import List, Set
 
 from huggingface_hub import HfApi
 
@@ -18,6 +18,8 @@ try:
 except Exception:
     from huggingface_hub._commit_api import CommitOperationAdd, CommitOperationDelete, CommitOperationCopy  # type: ignore
 
+
+# ---------------- utils ----------------
 
 def die(msg: str, code: int = 2) -> None:
     print(f"[hff] ERROR: {msg}", file=sys.stderr)
@@ -32,16 +34,12 @@ def need_token() -> str:
 
 
 def normalize_path(p: str) -> str:
-    p = p.strip()
+    p = (p or "").strip()
     p = p.lstrip("/")  # treat as repo-relative
     p = p.replace("\\", "/")
     while p.startswith("./"):
         p = p[2:]
     return p.strip("/")
-
-
-def is_root(path: str) -> bool:
-    return "/" not in normalize_path(path)
 
 
 def parent_dir(path: str) -> str:
@@ -75,21 +73,61 @@ def unique_dest(dest: str, existing: Set[str]) -> str:
         i += 1
 
 
+# ---------------- huggingface-cli runner (venv-aware) ----------------
+
+def _hf_cli_bin() -> str:
+    """
+    Prefer huggingface-cli from the dedicated HF tools venv (HFF_VENV).
+    If HFF_STRICT_CLI=1, require it to exist.
+    """
+    venv = os.environ.get("HFF_VENV", "/opt/hf-tools-venv")
+    cand = os.path.join(venv, "bin", "huggingface-cli")
+    if os.path.exists(cand):
+        return cand
+    if os.environ.get("HFF_STRICT_CLI") == "1":
+        die(f"huggingface-cli not found in HFF_VENV: {cand}")
+    return "huggingface-cli"
+
+
+def _run_hf_cli(cmd_tail: List[str], quiet: bool = False) -> None:
+    """
+    Run: <huggingface-cli> <cmd_tail...>
+    """
+    cmd = [_hf_cli_bin(), *cmd_tail]
+    try:
+        if quiet:
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            subprocess.run(cmd, check=True)
+    except FileNotFoundError:
+        die("huggingface-cli not found (and not present in HFF_VENV)")
+    except subprocess.CalledProcessError as e:
+        raise SystemExit(e.returncode)
+
+
+# ---------------- commit op constructors (signature-safe) ----------------
+
 def _make_copy_op(src: str, dst: str):
     sig = inspect.signature(CommitOperationCopy.__init__)
     params = set(sig.parameters.keys())
     params.discard("self")
 
+    # common signatures across hub versions:
     if {"path_in_repo", "path_in_repo_dest"} <= params:
         return CommitOperationCopy(path_in_repo=src, path_in_repo_dest=dst)
     if {"path_in_repo", "dest_path_in_repo"} <= params:
         return CommitOperationCopy(path_in_repo=src, dest_path_in_repo=dst)
     if {"src_path_in_repo", "path_in_repo"} <= params:
+        # dst is "path_in_repo" in this variant
         return CommitOperationCopy(src_path_in_repo=src, path_in_repo=dst)
     if {"from_path", "to_path"} <= params:
         return CommitOperationCopy(from_path=src, to_path=dst)
 
-    positional = [p for p in sig.parameters.values() if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+    # positional fallback (self, src, dst)
+    positional = [
+        p for p in sig.parameters.values()
+        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+    ]
     if len(positional) >= 3:
         return CommitOperationCopy(src, dst)
 
@@ -118,6 +156,8 @@ def _make_add_op(path: str, content: bytes = b""):
     return CommitOperationAdd(path, content)
 
 
+# ---------------- API helpers ----------------
+
 def api(repo: str, token: str) -> HfApi:
     return HfApi(token=token)
 
@@ -136,32 +176,25 @@ def cmd_ls(args) -> None:
     path = normalize_path(args.path or "")
     if path:
         prefix = path.rstrip("/") + "/"
-        # show immediate children under prefix
-        kids_files = [f for f in files if f.startswith(prefix)]
-        if not kids_files:
+        kids = [f for f in files if f.startswith(prefix)]
+        if not kids:
             print("(empty)")
             return
+
         children = set()
-        for f in kids_files:
+        for f in kids:
             rest = f[len(prefix):]
-            if rest == "":
+            if not rest:
                 continue
             first = rest.split("/", 1)[0]
-            # directory?
-            if "/" in rest:
-                children.add(first + "/")
-            else:
-                children.add(first)
+            children.add(first + "/" if "/" in rest else first)
+
         for c in sorted(children):
             print(c)
     else:
-        # root: show top-level dirs + root files
         children = set()
         for f in files:
-            if "/" in f:
-                children.add(f.split("/", 1)[0] + "/")
-            else:
-                children.add(f)
+            children.add(f.split("/", 1)[0] + "/" if "/" in f else f)
         for c in sorted(children):
             print(c)
 
@@ -176,7 +209,6 @@ def cmd_mkdir(args) -> None:
         die("mkdir: path is empty")
 
     ops = ensure_dir_ops(files, d)
-
     if not ops:
         print("exists")
         return
@@ -197,9 +229,10 @@ def cmd_rm(args) -> None:
     if not p:
         die("rm: path is empty")
 
-    # Support prefix delete if user passes something ending with /
     files = list_files(a, args.repo, args.type)
     targets: List[str] = []
+
+    # prefix delete if ends with /
     if p.endswith("/"):
         pref = p
         targets = [f for f in files if f.startswith(pref)]
@@ -230,14 +263,13 @@ def cmd_mv(args) -> None:
     if not src or not dst:
         die("mv: src/dst required")
 
-    # Allow "mv file dir/" semantics
+    # mv file dir/ semantics
     if dst.endswith("/"):
         dst = dst + Path(src).name
 
     if src not in files:
         die(f"mv: src not found: {src}", 1)
 
-    # Ensure destination dir exists
     ops: List[object] = []
     ops += ensure_dir_ops(files, parent_dir(dst))
 
@@ -266,17 +298,12 @@ def cmd_put(args) -> None:
     dst = normalize_path(args.dst)
     if not dst:
         die("put: dst required")
-
-    # If dst ends with / treat as directory
     if dst.endswith("/"):
         dst = dst + local.name
 
-    # Ensure destination dir exists
+    # ensure destination dir exists
     ops: List[object] = []
     ops += ensure_dir_ops(files, parent_dir(dst))
-
-    # upload_file is simplest & fastest; commit message included
-    # Note: upload_file creates its own commit, so we do mkdir via commit first if needed.
     if ops:
         a.create_commit(
             repo_id=args.repo,
@@ -297,18 +324,13 @@ def cmd_put(args) -> None:
 
 def cmd_get(args) -> None:
     tok = need_token()
-    a = api(args.repo, tok)
-
     src = normalize_path(args.src)
     if not src:
         die("get: src required")
 
     out = Path(args.out or Path(src).name).expanduser()
-    out_parent = out.parent
-    out_parent.mkdir(parents=True, exist_ok=True)
+    out.parent.mkdir(parents=True, exist_ok=True)
 
-    # download_file
-    # We use hf_hub_download via HfApi as a stable path: download to cache then copy to out.
     from huggingface_hub import hf_hub_download  # type: ignore
 
     cached = hf_hub_download(
@@ -318,22 +340,27 @@ def cmd_get(args) -> None:
         token=tok,
         cache_dir=args.cache_dir or None,
     )
-    Path(cached).replace(out) if args.move else Path(cached).read_bytes() and out.write_bytes(Path(cached).read_bytes())
-    # Above line keeps compatibility if cached is on different FS; simpler explicit:
-    # out.write_bytes(Path(cached).read_bytes())
+    cached_p = Path(cached)
+
+    try:
+        if args.move:
+            try:
+                os.replace(str(cached_p), str(out))
+            except OSError:
+                shutil.copy2(str(cached_p), str(out))
+                try:
+                    cached_p.unlink()
+                except OSError:
+                    pass
+        else:
+            shutil.copy2(str(cached_p), str(out))
+    except Exception as e:
+        die(f"get: failed to write {out}: {e}", 1)
+
     print(str(out))
 
 
 # ---------------- Snapshot commands ----------------
-
-def _run_hf_cli(cmd: List[str]) -> None:
-    try:
-        subprocess.run(cmd, check=True)
-    except FileNotFoundError:
-        die("huggingface-cli not found (install huggingface-hub to get it)")
-    except subprocess.CalledProcessError as e:
-        raise SystemExit(e.returncode)
-
 
 def snap_id_from_name(name: str) -> str:
     slug = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name).strip("._-")
@@ -344,8 +371,7 @@ def snap_id_from_name(name: str) -> str:
 
 
 def cmd_snapshot_create(args) -> None:
-    tok = need_token()
-    # enable hf_transfer if user wants it
+    need_token()
     if os.environ.get("HF_HUB_ENABLE_HF_TRANSFER") is None:
         os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 
@@ -358,7 +384,6 @@ def cmd_snapshot_create(args) -> None:
     tmp = Path(args.tmp_dir or ".").expanduser() / f"{sid}.tar"
     tmp.parent.mkdir(parents=True, exist_ok=True)
 
-    # Tar (simple, gzip optional)
     tar_path = tmp
     if args.compress == "gz":
         tar_path = tmp.with_suffix(".tar.gz")
@@ -367,23 +392,37 @@ def cmd_snapshot_create(args) -> None:
         subprocess.run(["tar", "-cf", str(tar_path), *args.items], check=True)
 
     manifest = tmp.with_suffix(".manifest.json")
-    manifest.write_text(json.dumps({
-        "id": sid,
-        "name": args.name,
-        "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "items": args.items,
-        "tar": {"basename": tar_path.name, "bytes": tar_path.stat().st_size, "compress": args.compress},
-    }, indent=2), encoding="utf-8")
+    manifest.write_text(
+        json.dumps(
+            {
+                "id": sid,
+                "name": args.name,
+                "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "items": args.items,
+                "tar": {"basename": tar_path.name, "bytes": tar_path.stat().st_size, "compress": args.compress},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
-    # Upload both under snapshot dir
     path_in_repo = normalize_path(args.snapdir)
-    _run_hf_cli([
-        "huggingface-cli", "upload", args.repo,
-        str(tar_path), str(manifest),
-        "--repo-type", args.type,
-        "--path-in-repo", path_in_repo,
-        "--commit-message", f"snapshot: {sid} - {args.name}",
-    ])
+
+    _run_hf_cli(
+        [
+            "upload",
+            args.repo,
+            str(tar_path),
+            str(manifest),
+            "--repo-type",
+            args.type,
+            "--path-in-repo",
+            path_in_repo,
+            "--commit-message",
+            f"snapshot: {sid} - {args.name}",
+        ]
+    )
+
     print(sid)
 
 
@@ -407,14 +446,12 @@ def cmd_snapshot_show(args) -> None:
 
     pref = normalize_path(args.snapdir).rstrip("/") + "/"
     sid = args.id
-    if not sid:
-        die("snapshot show: id required (wire in fzf/select later if you want)")
-
     mf = f"{pref}{sid}.manifest.json"
     if mf not in files:
         die(f"snapshot show: manifest not found: {mf}", 1)
 
     from huggingface_hub import hf_hub_download  # type: ignore
+
     cached = hf_hub_download(repo_id=args.repo, repo_type=args.type, filename=mf, token=tok)
     print(Path(cached).read_text(encoding="utf-8"))
 
@@ -431,30 +468,35 @@ def cmd_snapshot_get(args) -> None:
     extract_dir = Path(args.extract_dir or ".").expanduser()
     extract_dir.mkdir(parents=True, exist_ok=True)
 
-    # Try common tar extensions
     for ext in ("tar.zst", "tar.gz", "tar"):
         inc = f"{pref}/{args.id}.{ext}"
-        cmd = [
-            "huggingface-cli", "download", args.repo,
-            "--repo-type", args.type,
-            "--include", inc,
-            "--local-dir", str(args.local_dir or "."),
-            "--local-dir-use-symlinks", "False",
-        ]
         try:
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            # find downloaded file under local-dir
+            _run_hf_cli(
+                [
+                    "download",
+                    args.repo,
+                    "--repo-type",
+                    args.type,
+                    "--include",
+                    inc,
+                    "--local-dir",
+                    str(args.local_dir or "."),
+                    "--local-dir-use-symlinks",
+                    "False",
+                ],
+                quiet=True,
+            )
+
             local_root = Path(args.local_dir or ".")
             tar_path = local_root / pref / f"{args.id}.{ext}"
             if tar_path.exists():
-                # Extract
                 if ext.endswith(".tar.gz"):
                     subprocess.run(["tar", "-xzf", str(tar_path), "-C", str(extract_dir)], check=True)
                 else:
                     subprocess.run(["tar", "-xf", str(tar_path), "-C", str(extract_dir)], check=True)
                 print("ok")
                 return
-        except subprocess.CalledProcessError:
+        except SystemExit:
             continue
 
     die("snapshot get: could not find tar for that id (tried .tar.zst/.tar.gz/.tar)", 1)
@@ -489,6 +531,90 @@ def cmd_snapshot_destroy(args) -> None:
         commit_message=f"destroy snapshot {args.id}",
     )
     print("ok")
+
+
+# ---------------- Doctor ----------------
+
+def cmd_doctor(args) -> None:
+    tok = os.environ.get("HF_TOKEN", "")
+    venv = os.environ.get("HFF_VENV", "/opt/hf-tools-venv")
+    cli = _hf_cli_bin()
+
+    report = {
+        "python": sys.executable,
+        "hff_venv_env": venv,
+        "huggingface_cli": cli,
+        "hf_token_set": bool(tok),
+        "doctor_checks": {
+            "cli_exists": (cli == "huggingface-cli") or os.path.exists(cli),
+            "cli_in_venv": (cli != "huggingface-cli") and cli.startswith(os.path.join(venv, "bin") + os.sep),
+        },
+        "env": {
+            "HF_HUB_ENABLE_HF_TRANSFER": os.environ.get("HF_HUB_ENABLE_HF_TRANSFER"),
+            "HUGGINGFACE_HUB_TOKEN_set": bool(os.environ.get("HUGGINGFACE_HUB_TOKEN")),
+            "HF_HOME": os.environ.get("HF_HOME"),
+            "HF_HUB_CACHE": os.environ.get("HF_HUB_CACHE"),
+            "HFF_STRICT_CLI": os.environ.get("HFF_STRICT_CLI"),
+        },
+        "packages": {},
+        "hub_smoke": {},
+    }
+
+    # packages
+    try:
+        import huggingface_hub
+        report["packages"]["huggingface_hub"] = getattr(huggingface_hub, "__version__", "?")
+    except Exception as e:
+        report["packages"]["huggingface_hub"] = f"ERROR: {e}"
+
+    try:
+        import hf_transfer
+        report["packages"]["hf_transfer"] = getattr(hf_transfer, "__version__", "OK")
+    except Exception as e:
+        report["packages"]["hf_transfer"] = f"missing/ERROR: {e}"
+
+    # cli version
+    try:
+        p = subprocess.run([cli, "--version"], check=True, capture_output=True, text=True)
+        report["huggingface_cli_version"] = (p.stdout or p.stderr).strip()
+    except Exception as e:
+        report["huggingface_cli_version"] = f"ERROR: {e}"
+
+    # hub smoke
+    if tok:
+        try:
+            a = HfApi(token=tok)
+            report["hub_smoke"]["whoami"] = a.whoami().get("name", "?")
+            try:
+                a.repo_info(repo_id=args.repo, repo_type=args.type)
+                report["hub_smoke"]["repo_access"] = f"OK: {args.repo} ({args.type})"
+            except Exception as e:
+                report["hub_smoke"]["repo_access"] = f"ERROR: {e}"
+        except Exception as e:
+            report["hub_smoke"]["whoami"] = f"ERROR: {e}"
+    else:
+        report["hub_smoke"]["whoami"] = "SKIPPED (HF_TOKEN not set)"
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return
+
+    print("=== hff doctor ===")
+    print("python:", report["python"])
+    print("HFF_VENV:", report["hff_venv_env"])
+    print("huggingface-cli:", report["huggingface_cli"])
+    print("cli exists:", report["doctor_checks"]["cli_exists"])
+    print("cli in venv:", report["doctor_checks"]["cli_in_venv"])
+    print("huggingface-cli version:", report.get("huggingface_cli_version", "?"))
+    print("HF_TOKEN set:", report["hf_token_set"])
+    print("huggingface_hub:", report["packages"].get("huggingface_hub"))
+    print("hf_transfer:", report["packages"].get("hf_transfer"))
+    print("HF_HUB_ENABLE_HF_TRANSFER:", report["env"].get("HF_HUB_ENABLE_HF_TRANSFER"))
+    print("HUGGINGFACE_HUB_TOKEN set:", report["env"].get("HUGGINGFACE_HUB_TOKEN_set"))
+    print("HFF_STRICT_CLI:", report["env"].get("HFF_STRICT_CLI"))
+    print("whoami:", report["hub_smoke"].get("whoami"))
+    print("repo access:", report["hub_smoke"].get("repo_access"))
+    print("==================")
 
 
 # ---------------- CLI ----------------
@@ -530,7 +656,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--move", action="store_true", help="move cached file into place (best-effort)")
     sp.set_defaults(fn=cmd_get)
 
-    # snapshots grouped
     sp = sub.add_parser("snapshot")
     sp.add_argument("--snapdir", default="snapshot", help="remote snapshot dir")
     ssub = sp.add_subparsers(dest="scmd", required=True)
@@ -560,6 +685,10 @@ def build_parser() -> argparse.ArgumentParser:
     s5.add_argument("-y", "--yes", action="store_true")
     s5.set_defaults(fn=cmd_snapshot_destroy)
 
+    sp = sub.add_parser("doctor")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(fn=cmd_doctor)
+
     return p
 
 
@@ -571,3 +700,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+# End of hff.py

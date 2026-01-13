@@ -5725,46 +5725,40 @@ rsync_or_symlink_source_to_destination() {
 hff() {
   set -euo pipefail
 
-  # Defaults (override via env)
   local repo_id="${HFF_REPO:-markwelshboyx/MyLoras}"
   local repo_type="${HFF_REPO_TYPE:-model}"
   local snapdir="${HFF_SNAPSHOT_DIR:-snapshot}"
 
+  local venv="${HFF_VENV:-/opt/hf-tools-venv}"
   local hff_py="${HFF_PY:-/usr/local/bin/hff.py}"
 
+  if [[ ! -x "$venv/bin/python" ]]; then
+    echo "[hff] ERROR: missing venv python: $venv/bin/python" >&2
+    return 127
+  fi
   if [[ ! -x "$hff_py" ]]; then
-    echo "[hff] ERROR: python helper not found: $hff_py" >&2
+    echo "[hff] ERROR: missing helper: $hff_py" >&2
     return 127
   fi
 
-  local cmd="${1:-}"
-  shift || true
+  local cmd="${1:-}"; shift || true
 
   case "$cmd" in
-    # -------- FS --------
-    ls|mkdir|mv|rm|put|get)
-      python "$hff_py" \
-        --repo "$repo_id" \
-        --type "$repo_type" \
-        "$cmd" "$@"
-      ;;
-
-    # -------- Snapshots --------
     snapshot)
-      python "$hff_py" \
-        --repo "$repo_id" \
-        --type "$repo_type" \
-        snapshot --snapdir "$snapdir" "$@"
+      exec "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" snapshot --snapdir "$snapdir" "$@"
       ;;
-
+    ls|mkdir|mv|rm|put|get|doctor)
+      exec "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" "$cmd" "$@"
+      ;;
     help|-h|--help|"")
       cat <<EOF
-hff — HuggingFace filesystem-ish helper
+hff — HF filesystem-ish helper
 
 Env:
   HFF_REPO=owner/name
   HFF_REPO_TYPE=model|dataset
   HFF_SNAPSHOT_DIR=snapshot
+  HFF_VENV=/opt/hf-tools-venv
   HFF_PY=/usr/local/bin/hff.py
 
 FS:
@@ -5783,24 +5777,9 @@ Snapshots:
   hff snapshot destroy <id> [-y]
 EOF
       ;;
-
     *)
-      echo "[hff] unknown command: $cmd" >&2
+      echo "[hff] unknown command: ${cmd:-<none>}" >&2
       return 2
       ;;
   esac
-}
-
-install_hff() {
-  local src="${POD_RUNTIME_DIR}/bin/hff.py"
-  local dst="/usr/local/bin/hff"
-
-  if [[ ! -f "$src" ]]; then
-    echo "[start] hff: missing $src" >&2
-    return 1
-  fi
-
-  # Ensure executable & on PATH
-  install -m 0755 "$src" "$dst"
-  echo "[start] installed hff -> $dst"
 }
