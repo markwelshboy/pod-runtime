@@ -1,0 +1,126 @@
+# ~/.bash_prompt
+[[ $- != *i* ]] && return
+
+# ----- Colors (ANSI, readline-safe) -----
+RESET="\[\e[0m\]"
+BOLD="\[\e[1m\]"
+
+FG_R="\[\e[31m\]"
+FG_G="\[\e[32m\]"
+FG_Y="\[\e[33m\]"
+FG_B="\[\e[34m\]"
+FG_C="\[\e[36m\]"
+FG_W="\[\e[37m\]"
+
+# ----- Deterministic git segment (portable, no git-prompt.sh dependency) -----
+__git_ps1() {
+  git rev-parse --is-inside-work-tree &>/dev/null || return 0
+
+  local b ahead behind dirty stashcount
+  local a=0 u=0
+
+  b="$(git symbolic-ref --short -q HEAD 2>/dev/null || git describe --tags --always 2>/dev/null)"
+  [[ -n "$b" ]] || return 0
+
+  # ahead/behind (TAB-safe)
+  if git rev-parse --abbrev-ref '@{u}' &>/dev/null; then
+    local ab
+    ab="$(git rev-list --left-right --count HEAD...@{u} 2>/dev/null || true)"
+    read -r a u <<<"$ab"
+    [[ "$a" =~ ^[0-9]+$ ]] || a=0
+    [[ "$u" =~ ^[0-9]+$ ]] || u=0
+  fi
+
+  ahead=""; behind=""
+  (( a > 0 )) && ahead="↑$a"
+  (( u > 0 )) && behind="↓$u"
+
+  # dirty: staged/unstaged/untracked
+  dirty=""
+  git diff --quiet --ignore-submodules --cached || dirty="*"
+  git diff --quiet --ignore-submodules || dirty="*"
+  if [[ -z "$dirty" ]] && git ls-files --others --exclude-standard --directory --no-empty-directory 2>/dev/null | head -n1 | grep -q .; then
+    dirty="*"
+  fi
+
+  stashcount="$(git rev-list --walk-reflogs --count refs/stash 2>/dev/null || echo 0)"
+
+  local abtxt="" stashtxt=""
+  [[ -n "$ahead$behind" ]] && abtxt="$ahead$behind"
+  (( stashcount > 0 )) && stashtxt="|$stashcount"
+
+  printf " (%s%s%s%s)" "$b" "$abtxt" "$dirty" "$stashtxt"
+}
+
+__bp_git() { __git_ps1; }
+
+# ----- WezTerm right-status: publish SSH host (safe) -----
+__bp_wezterm_last_host=""
+__bp_wezterm_set_user_var() {
+  # only for interactive terminals
+  [[ $- == *i* ]] || return 0
+  [[ -t 1 ]] || return 0
+  command -v base64 >/dev/null 2>&1 || return 0
+
+  local host="LOCAL"
+  if [[ -n "${SSH_CONNECTION-}${SSH_CLIENT-}${SSH_TTY-}" ]]; then
+    host="${HOSTNAME:-SSH}"
+  fi
+
+  [[ "$host" == "$__bp_wezterm_last_host" ]] && return 0
+  __bp_wezterm_last_host="$host"
+
+  local b64
+  b64="$(printf '%s' "$host" | base64 | tr -d '\n')"
+  printf '\e]1337;SetUserVar=ssh_host=%s\a' "$b64"
+}
+
+# ----- Prompt builder (runs every prompt) -----
+__bp_render_ps1() {
+  local st="$1"
+  local git="$(__bp_git)"
+
+  local tail
+  if (( st == 0 )); then
+    tail="${FG_G}\$${RESET}"
+  elif (( st == 130 )); then
+    tail="${FG_Y}^C${RESET} \$"
+  else
+    tail="${FG_R}${st}✗${RESET} \$"
+  fi
+
+  PS1="${BOLD}${FG_B}\u@\h${RESET}:${FG_C}\w${RESET}${FG_Y}${git}${RESET} ${tail} "
+}
+
+# ----- Status logic: show ^C once per 130 "streak", then clear -----
+__bp_seen_130=0
+
+__bp_prompt_hook() {
+  local st=$?
+
+  if (( st == 130 )); then
+    if (( __bp_seen_130 == 0 )); then
+      # first time we notice 130 -> show ^C
+      __bp_seen_130=1
+      st=130
+    else
+      # 130 is still hanging around -> clear it
+      st=0
+    fi
+  else
+    # any other status resets the streak
+    __bp_seen_130=0
+  fi
+
+  __bp_wezterm_set_user_var 2>/dev/null || true
+  __bp_render_ps1 "$st"
+}
+
+case ";${PROMPT_COMMAND-};" in
+  *";__bp_prompt_hook;"*) : ;;
+  "") PROMPT_COMMAND="__bp_prompt_hook" ;;
+  *)  PROMPT_COMMAND="__bp_prompt_hook; ${PROMPT_COMMAND}" ;;
+esac
+
+# Render once immediately so you get colors right after sourcing
+__bp_render_ps1 0

@@ -97,6 +97,16 @@ if [ -f "$HOME/.bash_aliases" ]; then
   . "$HOME/.bash_aliases"
 fi
 
+if [ -f "$HOME/.git-qol.sh" ]; then
+  # shellcheck disable=SC1090
+  . "$HOME/.git-qol.sh"
+fi
+
+if [ -f "$HOME/.bash_prompt" ]; then
+  # shellcheck disable=SC1090
+  . "$HOME/.bash_prompt"
+fi
+
 export repo_root="${REPO_ROOT:?REPO_ROOT not set}"
 
 # -------------------------
