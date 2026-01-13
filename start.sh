@@ -75,7 +75,7 @@ ensure_hf_tools_venv() {
 }
 
 install_hff_py() {
-  local src="${POD_RUNTIME_DIR}/bin/hff.py"
+  local src="${1:-/workspace/pod-runtime}/bin/hff.py"   # pass POD_RUNTIME if you like
   local dst="/usr/local/bin/hff.py"
 
   if [[ ! -f "$src" ]]; then
