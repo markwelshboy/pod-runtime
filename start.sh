@@ -108,13 +108,6 @@ install_system_hff() {
   hf_tools_verify
 }
 
-install_system_hff || {
-  echo "[fatal] hf-tools installation failed." >&2
-  exit 1
-}
-
-install_root_shell_dotfiles || true
-
 echo "=== ComfyUI bootstrap: $(date) ==="
 
 #----------------------------------------------
@@ -202,6 +195,17 @@ if [[ ! -f "$HELPERS" ]]; then
 fi
 # shellcheck source=/dev/null
 source "$HELPERS"
+
+# Install hf-tools into system
+
+install_system_hff || {
+  echo "[fatal] hf-tools installation failed." >&2
+  exit 1
+}
+
+# Move dotfiles into root home for other SSH connections
+
+install_root_shell_dotfiles || true
 
 # make sure dirs exist (Comfy home, models, logs, etc.)
 
