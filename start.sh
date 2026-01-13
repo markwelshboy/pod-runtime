@@ -91,6 +91,10 @@ source "$HELPERS"
 
 ensure_comfy_dirs
 
+# Intall hff helper
+
+install_hff || true
+
 #------------------------------------------------------------------------
 section 0 "Prepare Session Logging"
 #----------------------------------------------

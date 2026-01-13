@@ -4423,11 +4423,31 @@ run_musubi_cli_mode() {
   exec bash
 }
 
-hf_transfer_install() {
-  # Safe, idempotent installer for hf_transfer.
-  # Uses $PIP if defined, otherwise tries `pip`.
-
+hf_hub_install() {
+  # Safe, idempotent installer for huggingface-hub (provides huggingface-cli + python API)
   local pip_bin="${PIP:-pip}"
+
+  echo "🔍 Checking for huggingface-hub package..."
+
+  if "$pip_bin" show huggingface-hub >/dev/null 2>&1; then
+    echo "✅ huggingface-hub already installed."
+    return 0
+  fi
+
+  echo "⬆️  Installing huggingface-hub..."
+  if "$pip_bin" install -q huggingface-hub >/dev/null 2>&1; then
+    echo "✅ huggingface-hub installed successfully."
+  else
+    echo "❌ ERROR: huggingface-hub installation failed."
+    return 1
+  fi
+}
+
+hf_transfer_install() {
+  local pip_bin="${PIP:-pip}"
+
+  # Ensure base hub tooling exists (needed for hff.py + huggingface-cli)
+  hf_hub_install || return 1
 
   echo "🔍 Checking for hf_transfer package..."
 
@@ -4448,17 +4468,21 @@ hf_transfer_install() {
 
 hf_transfer_verify() {
   python3 - <<'EOF'
-import huggingface_hub
 import os
 
-enabled = os.environ.get("HF_HUB_ENABLE_HF_TRANSFER") == "1"
-print("HF_HUB_ENABLE_HF_TRANSFER:", enabled)
+print("HF_HUB_ENABLE_HF_TRANSFER:", os.environ.get("HF_HUB_ENABLE_HF_TRANSFER") == "1")
+
+try:
+    import huggingface_hub
+    print("huggingface_hub installed:", getattr(huggingface_hub, "__version__", "?"))
+except Exception as e:
+    print("huggingface_hub NOT installed:", e)
 
 try:
     from hf_transfer import __version__ as v
     print("hf_transfer installed:", v)
-except ImportError:
-    print("hf_transfer NOT installed")
+except Exception as e:
+    print("hf_transfer NOT installed:", e)
 EOF
 }
 
@@ -5309,6 +5333,55 @@ _sync_ok()   { printf '✅ %s\n' "$*" >&2; }
 _sync_warn() { printf '⚠️  %s\n' "$*" >&2; }
 _sync_err()  { printf '❌ %s\n' "$*" >&2; }
 
+hf_sync_repo() {
+  # Usage: hf_sync_repo <repo_id> <local_dir> [patterns...]
+  # Example: hf_sync_repo markwelshboyx/MyLoras /cache/.hf_repo/MyLoras '*.safetensors'
+  local repo_id="$1"
+  local local_dir="$2"
+  shift 2
+  local -a patterns=("$@")
+
+  local repo_type="${HF_REPO_TYPE:-model}"     # override if needed
+  local revision="${HF_REVISION:-}"            # optional: branch/tag/commit
+
+  mkdir -p "$local_dir"
+
+  # Prefer hf_transfer if installed; don't fail if not.
+  export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
+
+  # Build include args (if no patterns, pull everything)
+  local -a inc=()
+  local p
+  for p in "${patterns[@]}"; do
+    [[ -n "$p" ]] || continue
+    inc+=(--include "$p")
+  done
+
+  # Auth: huggingface-cli respects HF_TOKEN env var.
+  # (No username/password prompts; good for pods)
+  local -a rev_args=()
+  [[ -n "$revision" ]] && rev_args=(--revision "$revision")
+
+  echo ""
+  echo "------------------------------------------------------------------------------------------------------"
+  _sync_info "HF sync: repo=${repo_id} type=${repo_type}${revision:+ rev=${revision}} → ${local_dir}"
+  [[ ${#inc[@]} -gt 0 ]] && _sync_info "Includes: ${patterns[*]}"
+  echo ""
+
+  # This is the "git clone equivalent": download repo snapshot to local_dir
+  # Notes:
+  # - --local-dir-use-symlinks False gives you a real directory tree
+  # - repeated runs update/overwrite as needed (good for "sync on start")
+  huggingface-cli download "$repo_id" \
+    --repo-type "$repo_type" \
+    "${rev_args[@]}" \
+    "${inc[@]}" \
+    --local-dir "$local_dir" \
+    --local-dir-use-symlinks False
+
+  _sync_ok "HF sync complete: $local_dir"
+}
+
 # init_repo [--hf|--git] <repo-id-or-url> <local-dir> [track-patterns...]
 #   --hf  : repo-id like "user/repo" (or full https://huggingface.co/... URL)
 #   --git : repo-id like "user/repo" or full https:// / git@ URL (GitHub, etc.)
@@ -5348,91 +5421,115 @@ init_repo() {
   echo ""
 
   # Collect patterns (may be one arg with spaces)
-  local -a TRACK_SPECS=("$@")
-  if [[ ${#TRACK_SPECS[@]} -eq 1 && "${TRACK_SPECS[0]}" == *" "* ]]; then
-    read -r -a TRACK_SPECS <<<"${TRACK_SPECS[0]}"
+  local -a SPECS=("$@")
+  if [[ ${#SPECS[@]} -eq 1 && "${SPECS[0]}" == *" "* ]]; then
+    read -r -a SPECS <<<"${SPECS[0]}"
   fi
 
   mkdir -p "$(dirname "$LOCAL_DIR")" 2>/dev/null || true
 
-  # Decide remote URL
-  local REMOTE_URL=""
-  local LOG_URL=""
-
   case "$MODE" in
     hf)
-      # If caller passed a full URL, trust it.
-      if [[ "$REPO_ID" == http*://* ]]; then
-        REMOTE_URL="$REPO_ID"
-      else
-        # Treat REPO_ID as path under huggingface.co (can be "user/repo" or "datasets/user/repo")
-        local HF_PATH="$REPO_ID"
-
-        # If HF_TOKEN is present, embed it to avoid prompts (private repos).
-        if [[ -n "${HF_TOKEN:-}" ]]; then
-          # Username can be __token__ or your HF_USERNAME
-          local HF_USER="${HF_GIT_USER:-${HF_USERNAME:-__token__}}"
-          REMOTE_URL="https://${HF_USER}:${HF_TOKEN}@huggingface.co/${HF_PATH}"
-          LOG_URL="https://***:***@huggingface.co/${HF_PATH}"
-        else
-          REMOTE_URL="https://huggingface.co/${HF_PATH}"
-          LOG_URL="$REMOTE_URL"
-        fi
+      # ------------------------------------------------------------
+      # HF mode = snapshot-style sync (NOT git). Think: "hf clone".
+      # ------------------------------------------------------------
+      if ! command -v huggingface-cli >/dev/null 2>&1; then
+        _sync_err "init_repo --hf: huggingface-cli not found. Install huggingface-hub in a venv (or pip) to get it."
+        return 1
       fi
+
+      mkdir -p "$LOCAL_DIR" || true
+
+      local repo_type="${HF_REPO_TYPE:-model}"     # model|dataset
+      local revision="${HF_REVISION:-}"            # optional: branch/tag/commit
+
+      # Enable hf_transfer if present; do not fail if it's not available.
+      export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
+
+      # Build include args (if none provided, download whole repo)
+      local -a inc=()
+      local spec
+      for spec in "${SPECS[@]}"; do
+        [[ -n "$spec" ]] || continue
+        inc+=(--include "$spec")
+      done
+
+      local -a rev_args=()
+      [[ -n "$revision" ]] && rev_args=(--revision "$revision")
+
+      _sync_info "HF sync: repo=${REPO_ID} type=${repo_type}${revision:+ rev=${revision}} → ${LOCAL_DIR}"
+      [[ ${#inc[@]} -gt 0 ]] && _sync_info "Includes: ${SPECS[*]}"
+
+      # "Clone" (download snapshot into LOCAL_DIR). Repeatable/idempotent.
+      huggingface-cli download "$REPO_ID" \
+        --repo-type "$repo_type" \
+        "${rev_args[@]}" \
+        "${inc[@]}" \
+        --local-dir "$LOCAL_DIR" \
+        --local-dir-use-symlinks False || {
+          _sync_err "init_repo --hf: download failed for $REPO_ID"
+          return 1
+        }
+
+      _sync_ok "init_repo: ready at $LOCAL_DIR (mode=hf)"
+      return 0
       ;;
 
     git)
-      # Generic git repo: if it's not already a URL/SSH, assume GitHub user/repo
+      # ------------------------------------------------------------
+      # Git mode (your existing behavior)
+      # ------------------------------------------------------------
+      local REMOTE_URL=""
+      local LOG_URL=""
+
       if [[ "$REPO_ID" == http*://* || "$REPO_ID" == git@*:* ]]; then
         REMOTE_URL="$REPO_ID"
       else
         REMOTE_URL="https://github.com/${REPO_ID}.git"
       fi
       LOG_URL="$REMOTE_URL"
+
+      if [[ ! -d "$LOCAL_DIR/.git" ]]; then
+        _sync_info "Cloning git repo: $LOG_URL → $LOCAL_DIR"
+        GIT_TERMINAL_PROMPT=0 git clone "$REMOTE_URL" "$LOCAL_DIR" || {
+          _sync_err "init_repo: failed to clone $LOG_URL"
+          return 1
+        }
+      else
+        _sync_info "init_repo: '$LOCAL_DIR' already a git repo, skipping clone."
+      fi
+
+      # Setup LFS tracking (if requested)
+      if ((${#SPECS[@]} > 0)); then
+        ( cd "$LOCAL_DIR" || exit 1
+
+          if ! command -v git-lfs >/dev/null 2>&1; then
+            _sync_warn "git-lfs not found; cannot add LFS tracking for ${SPECS[*]}"
+            exit 0
+          fi
+
+          git lfs install --local >/dev/null 2>&1 || true
+
+          local spec
+          for spec in "${SPECS[@]}"; do
+            [[ -n "$spec" ]] || continue
+            _sync_info "Adding LFS tracking: $spec"
+            git lfs track "$spec" || _sync_warn "Failed to track '$spec' with git-lfs"
+          done
+
+          if [[ -f .gitattributes ]]; then
+            if ! git diff --cached --quiet -- .gitattributes 2>/dev/null; then
+              git add .gitattributes
+              git commit -m "Add LFS tracking: ${SPECS[*]}" || true
+            fi
+          fi
+        )
+      fi
+
+      _sync_ok "init_repo: ready at $LOCAL_DIR (mode=git)"
+      return 0
       ;;
   esac
-
-  [[ -z "$LOG_URL" ]] && LOG_URL="$REMOTE_URL"
-
-  if [[ ! -d "$LOCAL_DIR/.git" ]]; then
-    _sync_info "Cloning $MODE repo: $LOG_URL → $LOCAL_DIR"
-    GIT_TERMINAL_PROMPT=0 git clone "$REMOTE_URL" "$LOCAL_DIR" || {
-      _sync_err "init_repo: failed to clone $LOG_URL"
-      return 1
-    }
-  else
-    _sync_info "init_repo: '$LOCAL_DIR' already a git repo, skipping clone."
-  fi
-
-  # Setup LFS tracking (if requested)
-  if ((${#TRACK_SPECS[@]} > 0)); then
-    ( cd "$LOCAL_DIR" || exit 1
-
-      if ! command -v git-lfs >/dev/null 2>&1; then
-        _sync_warn "git-lfs not found; cannot add LFS tracking for ${TRACK_SPECS[*]}"
-        exit 0
-      fi
-
-      git lfs install --local >/dev/null 2>&1 || true
-
-      local spec
-      for spec in "${TRACK_SPECS[@]}"; do
-        [[ -n "$spec" ]] || continue
-        _sync_info "Adding LFS tracking: $spec"
-        git lfs track "$spec" || _sync_warn "Failed to track '$spec' with git-lfs"
-      done
-
-      # Commit .gitattributes if changed
-      if [[ -f .gitattributes ]]; then
-        if ! git diff --cached --quiet -- .gitattributes 2>/dev/null; then
-          git add .gitattributes
-          git commit -m "Add LFS tracking: ${TRACK_SPECS[*]}" || true
-        fi
-      fi
-    )
-  fi
-
-  _sync_ok "init_repo: ready at $LOCAL_DIR (mode=$MODE)"
 }
 
 # sync_to_repo [--hf|--git] <local-dir> <branch> [force]
@@ -5623,4 +5720,87 @@ rsync_or_symlink_source_to_destination() {
       return 1
       ;;
   esac
+}
+
+hff() {
+  set -euo pipefail
+
+  # Defaults (override via env)
+  local repo_id="${HFF_REPO:-markwelshboyx/MyLoras}"
+  local repo_type="${HFF_REPO_TYPE:-model}"
+  local snapdir="${HFF_SNAPSHOT_DIR:-snapshot}"
+
+  local hff_py="${HFF_PY:-/usr/local/bin/hff.py}"
+
+  if [[ ! -x "$hff_py" ]]; then
+    echo "[hff] ERROR: python helper not found: $hff_py" >&2
+    return 127
+  fi
+
+  local cmd="${1:-}"
+  shift || true
+
+  case "$cmd" in
+    # -------- FS --------
+    ls|mkdir|mv|rm|put|get)
+      python "$hff_py" \
+        --repo "$repo_id" \
+        --type "$repo_type" \
+        "$cmd" "$@"
+      ;;
+
+    # -------- Snapshots --------
+    snapshot)
+      python "$hff_py" \
+        --repo "$repo_id" \
+        --type "$repo_type" \
+        snapshot --snapdir "$snapdir" "$@"
+      ;;
+
+    help|-h|--help|"")
+      cat <<EOF
+hff — HuggingFace filesystem-ish helper
+
+Env:
+  HFF_REPO=owner/name
+  HFF_REPO_TYPE=model|dataset
+  HFF_SNAPSHOT_DIR=snapshot
+  HFF_PY=/usr/local/bin/hff.py
+
+FS:
+  hff ls [path]
+  hff mkdir <path>
+  hff mv <src> <dst>
+  hff rm <path>
+  hff put <local> <dst>
+  hff get <src> [local]
+
+Snapshots:
+  hff snapshot create --name "desc" <paths...>
+  hff snapshot list
+  hff snapshot show <id>
+  hff snapshot get <id> [--extract-dir DIR]
+  hff snapshot destroy <id> [-y]
+EOF
+      ;;
+
+    *)
+      echo "[hff] unknown command: $cmd" >&2
+      return 2
+      ;;
+  esac
+}
+
+install_hff() {
+  local src="${POD_RUNTIME_DIR}/bin/hff.py"
+  local dst="/usr/local/bin/hff"
+
+  if [[ ! -f "$src" ]]; then
+    echo "[start] hff: missing $src" >&2
+    return 1
+  fi
+
+  # Ensure executable & on PATH
+  install -m 0755 "$src" "$dst"
+  echo "[start] installed hff -> $dst"
 }
