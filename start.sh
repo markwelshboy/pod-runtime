@@ -55,22 +55,29 @@ ensure_hf_tools_venv() {
   local venv="${HFF_VENV:-/opt/hf-tools-venv}"
   local py="${PYTHON:-python3}"
 
-  if [[ -x "$venv/bin/python" ]]; then
-    export HFF_VENV="$venv"
-    return 0
+  if [[ ! -x "$venv/bin/python" ]]; then
+    echo "[hf-tools] Creating venv: $venv"
+    "$py" -m venv "$venv" || return 1
   fi
 
-  echo "[hf-tools] Creating venv: $venv"
-  "$py" -m venv "$venv" || return 1
+  export HFF_VENV="$venv"
 
+  # Always ensure pip + required packages exist (idempotent)
   "$venv/bin/python" -m pip install -U pip >/dev/null || return 1
 
-  # If you want hard pins, uncomment and set versions:
-  # "$venv/bin/pip" install -U "huggingface-hub==1.3.1" "hf-transfer==0.1.9" >/dev/null || return 1
+  # Option A: unpinned (latest at build time)
+  "$venv/bin/python" -m pip install -U huggingface-hub hf-transfer >/dev/null || return 1
 
-  "$venv/bin/pip" install -U huggingface-hub hf-transfer >/dev/null || return 1
+  # Option B: pinned (uncomment to lock)
+  # "$venv/bin/python" -m pip install -U "huggingface-hub==1.3.1" "hf-transfer==0.1.9" >/dev/null || return 1
 
-  export HFF_VENV="$venv"
+  # Sanity: ensure console script exists
+  if [[ ! -x "$venv/bin/huggingface-cli" ]]; then
+    echo "[hf-tools] WARNING: huggingface-cli not found in venv after install" >&2
+    ls -l "$venv/bin" | grep -i huggingface || true
+    return 1
+  fi
+
   echo "[hf-tools] Ready: $venv"
 }
 

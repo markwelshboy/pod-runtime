@@ -596,7 +596,6 @@ def cmd_doctor(args) -> None:
         print(f"  - {cand}: {info['exists_or_on_path']}")
     print("==================")
 
-
 # ---------------- CLI ----------------
 
 def build_parser() -> argparse.ArgumentParser:

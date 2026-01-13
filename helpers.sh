@@ -55,6 +55,29 @@ shopt -s extglob
 PY_BIN="${PY:-/opt/venv/bin/python}"
 PIP_BIN="${PIP:-/opt/venv/bin/pip}"
 
+# --- load companion "shell" helpers (portable, minimal) ---
+if [[ -z "${__PODRUNTIME_SHELL_LOADED:-}" ]]; then
+
+  # Resolve directory of this file even when sourced
+  _pr_this="${BASH_SOURCE[0]:-$0}"
+  _pr_dir="$(cd -- "$(dirname -- "$_pr_this")" && pwd -P)"
+
+  if [[ -f "$_pr_dir/helpers_shell.sh" ]]; then
+    # shellcheck disable=SC1090
+    source "$_pr_dir/helpers_shell.sh"
+  fi
+
+  unset _pr_this _pr_dir
+  __PODRUNTIME_SHELL_LOADED=1
+
+fi
+
+install_system_hff() {
+  ensure_hf_tools_venv || return 1
+  install_hff_py || return 1
+  hf_tools_verify
+}
+
 # ---------- .env loader (optional) ----------
 helpers_load_dotenv() {
   local file="${1:-.env}"
@@ -64,6 +87,56 @@ helpers_load_dotenv() {
   # shellcheck disable=SC1090
   . "$file"
   set +a
+}
+# ---------- root dotfiles installer ----------
+install_root_shell_dotfiles() {
+  local _pr_this="${BASH_SOURCE[0]:-$0}"
+  local repo_root="$(cd -- "$(dirname -- "$_pr_this")" && pwd -P)"
+  local target_home="/root"
+  local ts; ts="$(date +%Y%m%d_%H%M%S)"
+
+  # Resolve directory of this file even when sourced
+
+  mkdir -p "$target_home"
+
+  # Backups (if files already exist)
+  for f in .bashrc .bash_aliases .bash_functions .bash_prompt .git-qol.sh; do
+    if [[ -f "${target_home}/${f}" ]]; then
+      cp -a "${target_home}/${f}" "${target_home}/${f}.bak.${ts}"
+    fi
+  done
+
+  # Render .bashrc with precise placeholder substitution (atomic)
+  local src_bashrc="${repo_root}/.bashrc"
+  local tmp; tmp="$(mktemp "${target_home}/.bashrc.tmp.XXXXXX")"
+
+  awk -v rr="$repo_root" '
+    BEGIN {done=0}
+    /^[[:space:]]*REPO_ROOT=<CHANGEME>[[:space:]]*$/ {
+      print "REPO_ROOT=" rr
+      done=1
+      next
+    }
+    {print}
+    END {
+      if (!done) {
+        # If you want strict mode, uncomment:
+        print "ERROR: REPO_ROOT=<CHANGEME> placeholder not found" > "/dev/stderr"
+        exit 2
+      }
+    }
+  ' "$src_bashrc" > "$tmp"
+
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "${target_home}/.bashrc"
+
+  # Copy the others
+  install -m 0644 "${repo_root}/.bash_aliases"   "${target_home}/.bash_aliases"
+  install -m 0644 "${repo_root}/.bash_functions" "${target_home}/.bash_functions"
+  install -m 0644 "${repo_root}/.bash_prompt"    "${target_home}/.bash_prompt"
+  install -m 0644 "${repo_root}/.git-qol.sh"     "${target_home}/.git-qol.sh"
+
+  echo "[dotfiles] Installed bash dotfiles into ${target_home} (repo_root=${repo_root})"
 }
 
 # ------------------------- #
@@ -5718,68 +5791,6 @@ rsync_or_symlink_source_to_destination() {
     *)
       _sync_err "Unknown mode '$MODE' (expected 'symlink' or 'rsync')."
       return 1
-      ;;
-  esac
-}
-
-hff() {
-  set -euo pipefail
-
-  local repo_id="${HFF_REPO:-markwelshboyx/MyLoras}"
-  local repo_type="${HFF_REPO_TYPE:-model}"
-  local snapdir="${HFF_SNAPSHOT_DIR:-snapshot}"
-
-  local venv="${HFF_VENV:-/opt/hf-tools-venv}"
-  local hff_py="${HFF_PY:-/usr/local/bin/hff.py}"
-
-  if [[ ! -x "$venv/bin/python" ]]; then
-    echo "[hff] ERROR: missing venv python: $venv/bin/python" >&2
-    return 127
-  fi
-  if [[ ! -x "$hff_py" ]]; then
-    echo "[hff] ERROR: missing helper: $hff_py" >&2
-    return 127
-  fi
-
-  local cmd="${1:-}"; shift || true
-
-  case "$cmd" in
-    snapshot)
-      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" snapshot --snapdir "$snapdir" "$@"
-      ;;
-    ls|mkdir|mv|rm|put|get|doctor)
-      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" "$cmd" "$@"
-      ;;
-    help|-h|--help|"")
-      cat <<EOF
-hff — HF filesystem-ish helper
-
-Env:
-  HFF_REPO=owner/name
-  HFF_REPO_TYPE=model|dataset
-  HFF_SNAPSHOT_DIR=snapshot
-  HFF_VENV=/opt/hf-tools-venv
-  HFF_PY=/usr/local/bin/hff.py
-
-FS:
-  hff ls [path]
-  hff mkdir <path>
-  hff mv <src> <dst>
-  hff rm <path>
-  hff put <local> <dst>
-  hff get <src> [local]
-
-Snapshots:
-  hff snapshot create --name "desc" <paths...>
-  hff snapshot list
-  hff snapshot show <id>
-  hff snapshot get <id> [--extract-dir DIR]
-  hff snapshot destroy <id> [-y]
-EOF
-      ;;
-    *)
-      echo "[hff] unknown command: ${cmd:-<none>}" >&2
-      return 2
       ;;
   esac
 }
