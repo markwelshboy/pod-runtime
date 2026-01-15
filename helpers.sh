@@ -64,6 +64,7 @@ if [[ -z "${__PODRUNTIME_SHELL_LOADED:-}" ]]; then
 
   if [[ -f "$_pr_dir/helpers_shell.sh" ]]; then
     # shellcheck disable=SC1090
+    echo "$_pr_dir/Loading helpers_shell.sh"
     source "$_pr_dir/helpers_shell.sh"
   fi
 
