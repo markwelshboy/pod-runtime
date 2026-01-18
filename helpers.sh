@@ -1670,7 +1670,7 @@ PY
   rm -rf /tmp/SageAttention
   git clone https://github.com/thu-ml/SageAttention.git /tmp/SageAttention
 
-  if env -u PIP_REQUIRE_HASHES -u PIP_BUILD_CONSTRAINT $PIP install --no-build-isolation -e /tmp/SageAttention 2>&1 | tee /workspace/logs/sage_build.log; then
+  if env -u PIP_REQUIRE_HASHES -u PIP_BUILD_CONSTRAINT $PIP install --no-deps --no-build-isolation -e /tmp/SageAttention 2>&1 | tee /workspace/logs/sage_build.log; then
     echo "[sage-bundle] [install_sage_from_source] SageAttention built OK"
     return 0
   else
