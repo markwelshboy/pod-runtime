@@ -591,7 +591,7 @@ build_node() {
       echo "constraints=/opt/constraints.txt"
     else
       #unset PIP_CONSTRAINT PIP_BUILD_CONSTRAINT || true
-      #echo "constraints=none"
+      echo "constraints=none"
     fi
 
     local rc_req=0 rc_py=0
@@ -1742,7 +1742,7 @@ PY
   echo "[sage-bundle] [install_sage_from_source] TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}" >&2
 
   # Clean + build (NO build isolation, so setup can import torch)
-  echo "[sage-bundle] [install_sage_from_source] Clonging SageAttention, repo=https://github.com/thu-ml/SageAttention.git" >&2
+  echo "[sage-bundle] [install_sage_from_source] Cloning SageAttention, repo=https://github.com/thu-ml/SageAttention.git" >&2
   rm -rf /tmp/SageAttention
   git clone https://github.com/thu-ml/SageAttention.git /tmp/SageAttention
 
