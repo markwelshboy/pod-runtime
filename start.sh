@@ -227,6 +227,8 @@ if [[ "${ENABLE_SAGE:-true}" == "true" ]]; then
   echo "Ensuring SageAttention (bundle or build)..."
   if ! ensure_sage_from_bundle_or_build; then
     echo "⚠️ SageAttention failed; check logs. Continuing without aborting."
+  else
+    push_sage_bundle_if_requested || true
   fi
 else
   echo "ENABLE_SAGE=false → skipping SageAttention setup."

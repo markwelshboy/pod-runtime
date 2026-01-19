@@ -546,19 +546,95 @@ clone_or_pull() {
 }
 
 # build_node: per-node requirements + install.py (logs to CUSTOM_LOG_DIR)
+#build_node() {
+#  local dst="${1:?dst}"
+#  local name log
+#  name="$(basename "$dst")"
+#  log="${CUSTOM_LOG_DIR}/${name}.log"
+#  {
+#    echo "==> [$name] $(date -Is) start"
+#    if [[ -f "$dst/requirements.txt" ]]; then
+#      if [[ -f "/opt/constraints.txt" ]]; then
+#       "$PIP_BIN" install -c /opt/constraints.txt -r "$dst/requirements.txt" || true
+#      else
+#        "$PIP_BIN" install -r "$dst/requirements.txt" || true
+#      fi
+#    fi
+#    if [[ -f "$dst/install.py" ]]; then
+#      "$PY_BIN" "$dst/install.py" || true
+#    fi
+#    echo "==> [$name] $(date -Is) done"
+#  } >"$log" 2>&1
+#}
+
+# build_node: per-node requirements + install.py (logs to CUSTOM_LOG_DIR)
 build_node() {
   local dst="${1:?dst}"
   local name log
   name="$(basename "$dst")"
   log="${CUSTOM_LOG_DIR}/${name}.log"
+
+  mkdir -p "${CUSTOM_LOG_DIR}"
+
   {
     echo "==> [$name] $(date -Is) start"
+    echo "dst=$dst"
+    echo "PY_BIN=${PY_BIN:-python}"
+    echo "PIP_BIN=${PIP_BIN:-pip}"
+
+    # ---- Constraints (export for everything, including install.py) ----
+    if [[ -f "/opt/constraints.txt" ]]; then
+      export PIP_CONSTRAINT="/opt/constraints.txt"
+      export PIP_BUILD_CONSTRAINT="/opt/constraints.txt"
+      echo "PIP_BUILD_CONSTRAINT set"
+      echo "PIP_CONSTRAINT set"
+      echo "constraints=/opt/constraints.txt"
+    else
+      #unset PIP_CONSTRAINT PIP_BUILD_CONSTRAINT || true
+      #echo "constraints=none"
+    fi
+
+    local rc_req=0 rc_py=0
+
+    # ---- requirements.txt ----
     if [[ -f "$dst/requirements.txt" ]]; then
-      "$PIP_BIN" install -r "$dst/requirements.txt" || true
+      echo "--- pip install -r requirements.txt ---"
+      # Prefer not to churn existing packages unnecessarily
+      if [[ -f "/opt/constraints.txt" ]]; then
+        "$PIP_BIN" install \
+          --upgrade-strategy only-if-needed \
+          -c "$PIP_CONSTRAINT" \
+          -r "$dst/requirements.txt" || rc_req=$?
+      else
+        "$PIP_BIN" install \
+          --upgrade-strategy only-if-needed \
+          -r "$dst/requirements.txt" || rc_req=$?
+      fi
+      echo "requirements_rc=$rc_req"
+    else
+      echo "(no requirements.txt)"
     fi
+
+    # ---- install.py ----
     if [[ -f "$dst/install.py" ]]; then
-      "$PY_BIN" "$dst/install.py" || true
+      echo "--- python install.py ---"
+      "$PY_BIN" "$dst/install.py" || rc_py=$?
+      echo "install_py_rc=$rc_py"
+    else
+      echo "(no install.py)"
     fi
+
+    # ---- Summary ----
+    if [[ $rc_req -ne 0 || $rc_py -ne 0 ]]; then
+      echo "==> [$name] RESULT=FAIL requirements_rc=$rc_req install_py_rc=$rc_py"
+      # Optional: write a global failures list if you want
+      if [[ -n "${CUSTOM_LOG_DIR:-}" ]]; then
+        echo "$name requirements_rc=$rc_req install_py_rc=$rc_py" >> "${CUSTOM_LOG_DIR}/_failures.txt" || true
+      fi
+    else
+      echo "==> [$name] RESULT=OK"
+    fi
+
     echo "==> [$name] $(date -Is) done"
   } >"$log" 2>&1
 }
