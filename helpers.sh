@@ -6118,7 +6118,6 @@ PY
     _torch_cuda_sanity || true
     _mark_bad
 
-    # Telegram: include short pointer + where report is
     _tg_send "❌ ${tg_name}: stack BROKEN\nReason: ${why}\nReport: ${report_file}"
 
     if [[ "$mode" == "exit" ]]; then
@@ -6126,7 +6125,7 @@ PY
       echo "   Report: ${report_file}"
       return 1
     else
-      echo "⚠️ Stack unhealthy (pod kept alive): ${why}"
+      echo "⚠️  Stack unhealthy (pod kept alive): ${why}"
       echo "   Report: ${report_file}"
       return 0
     fi
@@ -6148,27 +6147,32 @@ PY
 
   _append "Check 1/5: numeric sanity (numpy/scipy)"
   if ! _numeric_sanity; then
-    return $(_fail "Numeric sanity failed (numpy/scipy integrate)")
+    _fail "Numeric sanity failed (numpy/scipy integrate)"
+    return $?
   fi
 
   _append "Check 2/5: torch import sanity (torch/vision/audio)"
   if ! _torch_import_sanity; then
-    return $(_fail "Torch import sanity failed (torch/torchvision/torchaudio)")
+    _fail "Torch import sanity failed (torch/torchvision/torchaudio)"
+    return $?
   fi
 
   _append "Check 3/5: dist-info sanity (pip show / RECORD / Metadata-Version)"
   if ! _pip_metadata_sanity; then
-    return $(_fail "dist-info metadata/RECORD sanity failed (pip/show/uninstall risk)")
+    _fail "dist-info metadata/RECORD sanity failed (pip/show/uninstall risk)"
+    return $?
   fi
 
   _append "Check 4/5: pinned version match vs constraints (core subset)"
   if ! _pin_match_check; then
-    return $(_fail "Installed versions mismatch constraints pins")
+    _fail "Installed versions mismatch constraints pins"
+    return $?
   fi
 
   _append "Check 5/5: torch cuda info (report only)"
   _torch_cuda_sanity || true
 
-  return $(_ok)
+  _ok
+  return $?
 }
 
