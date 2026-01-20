@@ -263,8 +263,8 @@ section 8 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
 #----------------------------------------------
 # Synchronize 'MyLoras' from HF to local cache repo (and symlink into ComfyUI)
 
-#init_repo --hf "$HF_MYLORA_REPO_ID" "$HF_MYLORA_REPO_LOCAL" '*.safetensors' || true
-#rsync_or_symlink_source_to_destination symlink "$HF_MYLORA_REPO_LOCAL" "$LORAS_DIR"
+init_repo --hf "$HF_MYLORA_REPO_ID" "$HF_MYLORA_REPO_LOCAL" '*.safetensors' || true
+rsync_or_symlink_source_to_destination symlink "$HF_MYLORA_REPO_LOCAL" "$LORAS_DIR"
 
 #----------------------------------------------
 # Synchronize Hearmeman WAN git repo (and copy workflows into ComfyUI - merge with existing 'workflows' dir)
@@ -280,20 +280,11 @@ init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
 rsync_or_symlink_source_to_destination rsync "$GIT_MYWORKFLOWS_REPO_LOCAL/" \
                                              "$COMFY_HOME/user/default/workflows/"
 
-#------------------------------------------------------------------------
-section 9 "Aria2 (Manifest+CivitAI) Tracking"
-#----------------------------------------------
-# Wait for all downloads to complete
-#----------------------------------------------
 
-echo "[aria2-downloads-progress] Checking download progress..."
-
-aria2_monitor_progress || true
-
-aria2_clear_results >/dev/null 2>&1 || true
+aria2_show_download_snapshot || true
 
 #------------------------------------------------------------------------
-section 10 "Jupyter Launch"
+section 9 "Jupyter Launch"
 #----------------------------------------------
 # Optionally start Jupyter if requested
 #----------------------------------------------
@@ -305,8 +296,10 @@ else
   echo "LAUNCH_JUPYTER=0 → skipping Jupyter launch..."
 fi
 
+aria2_show_download_snapshot || true
+
 #------------------------------------------------------------------------
-section 11 "Comfy Flow/Methodology Specific Configurations"
+section 10 "Comfy Flow/Methodology Specific Configurations"
 #----------------------------------------------
 # Specific Hearmeman methodologies / setups
 #-------------------------------------------
@@ -314,7 +307,7 @@ section 11 "Comfy Flow/Methodology Specific Configurations"
 change_latent_preview_method || true
 
 #------------------------------------------------------------------------
-section 12 "ComfyUI Launch"
+section 11 "ComfyUI"
 #----------------------------------------------
 # Report the Custom Nodes being used for this 
 #   session. Use tmux's to launch ComfyUI
@@ -324,14 +317,24 @@ section 12 "ComfyUI Launch"
 # Final snapshot of custom_nodes before ComfyUI launch
 snapshot_custom_nodes_state --summary "before-comfy-launch" || true
 
+#----------------------------------------------
+# Check health/status before 
+#----------------------------------------------
+
+section 11.1 "Pre-ComfyUI Launch: Confirming Stack Health"
+
+confirm_stack_health_or_stop || true
+
+if [[ -f /workspace/logs/stack_broken ]]; then
+  echo "⚠️ Stack broken; NOT launching ComfyUI."
+  echo "    You can SSH in and inspect /workspace/logs/stack_health_report.txt"
+  # Keep container alive
+  tail -f /dev/null
+fi
+
+section 11.2 "ComfyUI Launch..."
+
 cd "${COMFY_HOME:-/workspace/ComfyUI}"
-
-#----------------------------------------------
-# Fix Numeric stack
-#----------------------------------------------
-
-fix_numeric_stack_if_broken
-
 
 echo ""
 echo "▶️  Starting ComfyUI"
@@ -342,6 +345,16 @@ if ${SCRIPT_DIR}/run_comfy_mux.sh; then
 else
   tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}." || true
 fi
+
+#------------------------------------------------------------------------
+section 12 "Aria2 (Manifest+CivitAI) Tracking till completion"
+#----------------------------------------------
+# Wait for all downloads to complete
+#----------------------------------------------
+
+aria2_monitor_progress || true
+aria2_clear_results >/dev/null 2>&1 || true
+
 
 echo ""
 echo "Bootstrap complete. Bootstrap log: ${COMFY_LOGS}/startup.log"

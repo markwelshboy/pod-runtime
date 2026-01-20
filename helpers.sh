@@ -273,8 +273,8 @@ copy_hearmeman_assets_if_any() {
 
 # tg: Telegram notify (best-effort)
 tg() {
-  if [ -n "${TELEGRAM_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-    curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+  if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+    curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
       -d "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=$1" >/dev/null || true
   fi
 }
@@ -5871,3 +5871,304 @@ rsync_or_symlink_source_to_destination() {
       ;;
   esac
 }
+
+confirm_stack_health_or_stop() {
+  set -euo pipefail
+
+  local py="${PY_BIN:-/opt/venv/bin/python}"
+  local pip="${PIP_BIN:-/opt/venv/bin/pip}"
+  local constraints="${CONSTRAINTS_FILE:-/opt/constraints.txt}"
+
+  # Behavior:
+  #   warn (default): do NOT exit; write sentinel + notify; return 0
+  #   exit          : exit non-zero on failure
+  local mode="${STACK_HEALTH_MODE:-warn}"
+
+  # Pod state artifacts (so you can see status over SSH)
+  local state_dir="${STACK_STATE_DIR:-/workspace/logs}"
+  local ok_file="${STACK_OK_FILE:-${state_dir}/stack_ok}"
+  local bad_file="${STACK_BAD_FILE:-${state_dir}/stack_broken}"
+  local report_file="${STACK_REPORT_FILE:-${state_dir}/stack_health_report.txt}"
+
+  mkdir -p "$state_dir"
+
+  # Telegram (optional)
+  local tg_token="${TELEGRAM_BOT_TOKEN:-}"
+  local tg_chat="${TELEGRAM_CHAT_ID:-}"
+  local tg_name="${TELEGRAM_NAME:-comfy-pod}"
+  local tg_enable="${TELEGRAM_ENABLE:-1}"   # set 0 to disable
+  local tg_on_ok="${TELEGRAM_NOTIFY_OK:-0}" # set 1 to notify on success too
+
+  _tg_send() {
+    local msg="${1:-}"
+    [[ "${tg_enable}" == "1" ]] || return 0
+    [[ -n "$tg_token" && -n "$tg_chat" ]] || return 0
+    # Best-effort: never fail the script because Telegram is down.
+    curl -fsS -m 8 \
+      -X POST "https://api.telegram.org/bot${tg_token}/sendMessage" \
+      -d "chat_id=${tg_chat}" \
+      --data-urlencode "text=${msg}" \
+      -d "disable_web_page_preview=true" >/dev/null 2>&1 || true
+  }
+
+  _write_report_header() {
+    {
+      echo "==== stack health report ===="
+      echo "time        : $(date -Is)"
+      echo "mode        : ${mode}"
+      echo "python      : $("$py" -V 2>&1 || true)"
+      echo "py path     : ${py}"
+      echo "pip path    : ${pip}"
+      echo "pip version : $("$py" -m pip --version 2>&1 || true)"
+      echo "constraints : ${constraints}"
+      echo "cwd         : $(pwd)"
+      echo "============================="
+      echo ""
+    } >"$report_file"
+  }
+
+  _append() { printf "%s\n" "$*" >>"$report_file"; }
+
+  _stack_report() {
+    _append "---- stack report (selected imports/versions) ----"
+    "$py" - <<'PY' >>"$report_file" 2>&1 || true
+import importlib, sys
+pkgs = ["numpy","scipy","torch","torchvision","torchaudio","cv2","PIL","einops","kornia","huggingface_hub","safetensors"]
+def v(modname, importname=None):
+    try:
+        m = importlib.import_module(importname or modname)
+        return getattr(m, "__version__", "<no __version__>")
+    except Exception as e:
+        return f"<IMPORT FAILED: {type(e).__name__}: {e}>"
+
+print("sys.executable:", sys.executable)
+print("sys.path[0:8]:", sys.path[:8])
+print("")
+print("versions:")
+print("  numpy         :", v("numpy"))
+print("  scipy         :", v("scipy"))
+print("  torch         :", v("torch"))
+print("  torchvision   :", v("torchvision"))
+print("  torchaudio    :", v("torchaudio"))
+print("  cv2           :", v("cv2","cv2"))
+print("  Pillow        :", v("PIL","PIL"))
+print("  einops        :", v("einops"))
+print("  kornia        :", v("kornia"))
+print("  huggingface_hub:", v("huggingface_hub","huggingface_hub"))
+print("  safetensors   :", v("safetensors"))
+PY
+    _append ""
+    _append "---- pip freeze (core subset) ----"
+    "$pip" freeze 2>/dev/null | egrep -i '^(torch==|torchvision==|torchaudio==|numpy==|scipy==|opencv-python-headless==|pillow==|einops==|kornia==|huggingface-hub==|safetensors==|torchsde==|trampoline==)' >>"$report_file" 2>&1 || true
+    _append ""
+  }
+
+  _pip_metadata_sanity() {
+    _append "---- pip metadata sanity (detect broken dist-info) ----"
+    "$py" - <<'PY' >>"$report_file" 2>&1
+from importlib import metadata
+import re, sys
+
+def check_one(dist_name):
+    d = metadata.distribution(dist_name)
+    name = d.metadata.get("Name", dist_name)
+    mv = d.metadata.get("Metadata-Version", "")
+    # pip show blows up if mv is "" or non-numeric segments
+    parts = (mv or "").split(".")
+    try:
+        _ = tuple(int(p) for p in parts)
+    except Exception as e:
+        return (name, mv, f"BAD Metadata-Version parse: {e}", str(getattr(d, "_path", "")))
+
+    # RECORD should exist for uninstall safety
+    path = getattr(d, "_path", None)
+    rec_ok = True
+    if path:
+        # dist._path is like .../pkg-x.dist-info
+        # RECORD is inside dist-info directory
+        import pathlib
+        p = pathlib.Path(str(path)) / "RECORD"
+        rec_ok = p.exists()
+
+    if not rec_ok:
+        return (name, mv, "MISSING RECORD (uninstall-no-record-file risk)", str(path))
+    return None
+
+targets = [
+  "numpy","scipy","torch","torchvision","torchaudio",
+  "opencv-python-headless","Pillow","einops","kornia",
+  "huggingface-hub","safetensors","torchsde","trampoline",
+]
+
+bad=[]
+for t in targets:
+    try:
+        r = check_one(t)
+        if r: bad.append(r)
+    except metadata.PackageNotFoundError:
+        bad.append((t, "", "NOT INSTALLED", ""))
+
+if bad:
+    print("BAD_DIST_INFO:")
+    for name, mv, why, path in bad:
+        print(f" - {name} | Metadata-Version={mv!r} | {why} | path={path}")
+    raise SystemExit(2)
+else:
+    print("OK: dist-info metadata looks sane for core targets.")
+PY
+  }
+
+  _pin_match_check() {
+    [[ -f "$constraints" ]] || { _append "constraints missing: skipping pin match"; return 0; }
+    _append "---- pin match vs constraints.txt (pinned subset) ----"
+    "$py" - "$constraints" <<'PY' >>"$report_file" 2>&1
+import re, sys
+from importlib import metadata
+
+constraints = sys.argv[1]
+want = {}
+for line in open(constraints, "r", encoding="utf-8", errors="ignore"):
+    s=line.strip()
+    if not s or s.startswith("#") or s.startswith("--"):
+        continue
+    m=re.match(r"^([A-Za-z0-9_.-]+)==(.+)$", s)
+    if m:
+        want[m.group(1).lower().replace("_","-")] = m.group(2).strip()
+
+dist_map = {
+  "opencv-python-headless": "opencv-python-headless",
+  "pillow": "Pillow",
+  "huggingface-hub": "huggingface-hub",
+  "torchsde": "torchsde",
+  "trampoline": "trampoline",
+  "torch": "torch",
+  "torchvision": "torchvision",
+  "torchaudio": "torchaudio",
+  "numpy": "numpy",
+  "scipy": "scipy",
+  "einops": "einops",
+  "kornia": "kornia",
+  "safetensors": "safetensors",
+}
+
+bad=[]
+for key, dist in dist_map.items():
+    if key in want:
+        try:
+            got = metadata.version(dist)
+        except Exception:
+            got = None
+        if got != want[key]:
+            bad.append((dist, want[key], got))
+
+if bad:
+    print("MISMATCHES:")
+    for dist, w, g in bad:
+        print(f" - {dist}: want {w} got {g}")
+    raise SystemExit(2)
+print("OK: installed versions match pinned constraints (for core subset).")
+PY
+  }
+
+  _torch_cuda_sanity() {
+    _append "---- torch cuda sanity ----"
+    "$py" - <<'PY' >>"$report_file" 2>&1
+import torch, os
+print("torch:", torch.__version__)
+print("cuda available:", torch.cuda.is_available())
+print("torch cuda:", torch.version.cuda)
+if torch.cuda.is_available():
+    print("device:", torch.cuda.get_device_name(0))
+    print("capability:", torch.cuda.get_device_capability(0))
+PY
+  }
+
+  _numeric_sanity() {
+    "$py" - <<'PY' >/dev/null 2>&1
+import numpy, scipy
+from scipy import integrate
+integrate.quad(lambda x: x, 0, 1)
+PY
+  }
+
+  _torch_import_sanity() {
+    "$py" - <<'PY' >/dev/null 2>&1
+import torch
+import torchvision, torchaudio
+_ = torch.cuda.is_available()
+PY
+  }
+
+  _mark_ok() {
+    rm -f "$bad_file" || true
+    echo "OK $(date -Is)" >"$ok_file"
+  }
+
+  _mark_bad() {
+    rm -f "$ok_file" || true
+    echo "BROKEN $(date -Is)" >"$bad_file"
+  }
+
+  _fail() {
+    local why="${1:-unknown failure}"
+    _append ""
+    _append "!!! FAILURE: ${why}"
+    _append ""
+    _stack_report || true
+    _torch_cuda_sanity || true
+    _mark_bad
+
+    # Telegram: include short pointer + where report is
+    _tg_send "❌ ${tg_name}: stack BROKEN\nReason: ${why}\nReport: ${report_file}"
+
+    if [[ "$mode" == "exit" ]]; then
+      echo "❌ Stack unhealthy: ${why}"
+      echo "   Report: ${report_file}"
+      return 1
+    else
+      echo "⚠️ Stack unhealthy (pod kept alive): ${why}"
+      echo "   Report: ${report_file}"
+      return 0
+    fi
+  }
+
+  _ok() {
+    _append ""
+    _append "✅ ALL CHECKS PASSED"
+    _mark_ok
+    if [[ "$tg_on_ok" == "1" ]]; then
+      _tg_send "✅ ${tg_name}: stack OK\nReport: ${report_file}"
+    fi
+    echo "✅ Stack health confirmed."
+    return 0
+  }
+
+  # ------------------- run checks -------------------
+  _write_report_header
+
+  _append "Check 1/5: numeric sanity (numpy/scipy)"
+  if ! _numeric_sanity; then
+    return $(_fail "Numeric sanity failed (numpy/scipy integrate)")
+  fi
+
+  _append "Check 2/5: torch import sanity (torch/vision/audio)"
+  if ! _torch_import_sanity; then
+    return $(_fail "Torch import sanity failed (torch/torchvision/torchaudio)")
+  fi
+
+  _append "Check 3/5: dist-info sanity (pip show / RECORD / Metadata-Version)"
+  if ! _pip_metadata_sanity; then
+    return $(_fail "dist-info metadata/RECORD sanity failed (pip/show/uninstall risk)")
+  fi
+
+  _append "Check 4/5: pinned version match vs constraints (core subset)"
+  if ! _pin_match_check; then
+    return $(_fail "Installed versions mismatch constraints pins")
+  fi
+
+  _append "Check 5/5: torch cuda info (report only)"
+  _torch_cuda_sanity || true
+
+  return $(_ok)
+}
+
