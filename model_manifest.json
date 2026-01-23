@@ -566,6 +566,14 @@
         "path": "{TEXT_ENCODERS_DIR}/umt5-xxl-enc-bf16.safetensors"
       },
       {
+        "url": "https://huggingface.co/NSFW-API/NSFW-Wan-UMT5-XXL/resolve/main/nsfw_wan_umt5-xxl_bf16.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/nsfw_wan_umt5-xxl_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/NSFW-API/NSFW-Wan-UMT5-XXL/resolve/main/nsfw_wan_umt5-xxl_fp8_scaled.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/nsfw_wan_umt5-xxl_fp8_scaled.safetensors"
+      },
+      {
         "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors",
         "path": "{CLIP_VISION_DIR}/clip_vision_h.safetensors"
       },
@@ -578,22 +586,30 @@
         "path": "{VAE_DIR}/Wan2_1_VAE_bf16.safetensors"
       },
       {
-        "url": "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/LoRAs/Stable-Video-Infinity/v2.0/SVI_v2_PRO_Wan2.2-I2V-A14B_HIGH_lora_rank_128_fp16.safetensors",
-        "path": "{LORAS_DIR}/SVI_v2_PRO_Wan2.2-I2V-A14B_HIGH_lora_rank_128_fp16.safetensors"
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Stable-Video-Infinity/v2.0/SVI_v2_PRO_Wan2.2-I2V-A14B_HIGH_lora_rank_128_fp16.safetensors",
+        "path": "{LORAS_DIR}/LoRAs/Stable-Video-Infinity/v2.0/SVI_v2_PRO_Wan2.2-I2V-A14B_HIGH_lora_rank_128_fp16.safetensors"
       },
       {
-        "url": "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/LoRAs/Stable-Video-Infinity/v2.0/SVI_v2_PRO_Wan2.2-I2V-A14B_LOW_lora_rank_128_fp16.safetensors",
-        "path": "{LORAS_DIR}/SVI_v2_PRO_Wan2.2-I2V-A14B_LOW_lora_rank_128_fp16.safetensors"
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Stable-Video-Infinity/v2.0/SVI_v2_PRO_Wan2.2-I2V-A14B_LOW_lora_rank_128_fp16.safetensors",
+        "path": "{LORAS_DIR}/LoRAs/Stable-Video-Infinity/v2.0/SVI_v2_PRO_Wan2.2-I2V-A14B_LOW_lora_rank_128_fp16.safetensors"
       },
       {
-        "url": "https://huggingface.co/Kijai/WanVideo_comfy/blob/main/LoRAs/Stable-Video-Infinity/v2.0/SVI_Wan2.1-I2V-14B_lora_v2.0_rank_128_fp16.safetensors",
-        "path": "{LORAS_DIR}/SVI_Wan2.1-I2V-14B_lora_v2.0_rank_128_fp16.safetensors"
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Stable-Video-Infinity/v2.0/SVI_Wan2.1-I2V-14B_lora_v2.0_rank_128_fp16.safetensors",
+        "path": "{LORAS_DIR}/LoRAs/Stable-Video-Infinity/v2.0/SVI_Wan2.1-I2V-14B_lora_v2.0_rank_128_fp16.safetensors"
       }
     ],
     "download_upscale": [
       {
         "url": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/blob/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
-        "path": "{DIFFUSION_MODELS_DIR}/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+        "path": "{CHECKPOINTS_DIR}/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/AiWise/Juggernaut-XL-V9-GE-RDPhoto2-Lightning_4S/resolve/main/juggernautXL_v9Rdphoto2Lightning.safetensors",
+        "path": "{CHECKPOINTS_DIR}/juggernautXL_v9Rdphoto2Lightning.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/lllyasviel/flux1_dev/resolve/main/flux1-dev-fp8.safetensors",
+        "path": "{CHECKPOINTS_DIR}/flux1-dev-fp8.safetensors"
       },
       {
         "url": "https://huggingface.co/ByteDance/SDXL-Lightning/resolve/main/sdxl_lightning_8step_lora.safetensors",
@@ -602,6 +618,16 @@
       {
         "url": "https://huggingface.co/f5aiteam/Controlnet/resolve/main/controlnet-tile-sdxl-1.0.safetensors",
         "path": "{LORAS_DIR}/controlnet-tile-sdxl-1.0.safetensors"
+      }
+    ],
+    "download_smoothmix": [
+      {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/709844db75d2e15582cf204e9a0b5e12b23a35dd/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank128_bf16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/lightx2v_I2V_14B_480p_cfg_step_distill_rank128_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/709844db75d2e15582cf204e9a0b5e12b23a35dd/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank256_bf16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/lightx2v_I2V_14B_480p_cfg_step_distill_rank256_bf16.safetensors"
       }
     ]
   }
