@@ -600,7 +600,7 @@
     ],
     "download_upscale": [
       {
-        "url": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/blob/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+        "url": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
         "path": "{CHECKPOINTS_DIR}/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
       },
       {
@@ -618,6 +618,20 @@
       {
         "url": "https://huggingface.co/f5aiteam/Controlnet/resolve/main/controlnet-tile-sdxl-1.0.safetensors",
         "path": "{LORAS_DIR}/controlnet-tile-sdxl-1.0.safetensors"
+      }
+    ],
+    "download_lbm_relight": [
+      {
+        "url": "https://huggingface.co/liamhvn/epiCPhotoGasm-ultimate-fidelity/resolve/main/epicphotogasm_ultimateFidelity.safetensors",
+        "path": "{CHECKPOINTS_DIR}/iclight/epicphotogasm_ultimateFidelity.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/jasperai/LBM_relighting/resolve/main/model.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/iclight/LMB_relighting.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/lllyasviel/ic-light/resolve/main/iclight_sd15_fc.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/iclight/iclight_sd15_fc.safetensors"
       }
     ],
     "download_smoothmix": [
