@@ -119,6 +119,9 @@ case ":$PATH:" in
   *) export PATH="/workspace:$repo_root:$repo_root/scripts:$PATH" ;;
 esac
 
+export HF_HUB_ENABLE_HF_TRANSFER=1
+export HUGGINGFACE_HUB_TOKEN=$HF_TOKEN
+
 # Try to align this interactive shell with the bootstrap/autorun environment
 if type -t load_runtime_env >/dev/null 2>&1; then
   load_runtime_env 2>/dev/null || true
