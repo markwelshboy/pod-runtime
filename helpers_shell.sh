@@ -716,3 +716,231 @@ EOF
   rm -rf "$tmp"
   echo "[gdown] done"
 }
+
+manifest_init() {
+  # usage: manifest_init <workflow_slug> [manifest_dir]
+  local wf="${1:-}"
+  local dir="${2:-/workspace/manifests}"
+  [[ -n "$wf" ]] || { echo "usage: manifest_init <workflow_slug> [manifest_dir]" >&2; return 2; }
+
+  mkdir -p "$dir" 2>/dev/null || true
+  export WF_SLUG="$wf"
+  export WF_MANIFEST="$dir/${wf}_downloads.jsonl"
+  echo "[manifest] WF_SLUG=$WF_SLUG"
+  echo "[manifest] WF_MANIFEST=$WF_MANIFEST"
+}
+
+manifest_log_path() {
+  # usage: manifest_log_path <kind:file|dir> <path> <source> <ref> [extra_json]
+  local kind="$1"
+  local path="$2"
+  local source="$3"   # hf|civitai|gdrive|manual
+  local ref="$4"      # repo_id+path, model_id, url, etc
+  local extra="${5:-{}}"
+
+  [[ -n "${WF_MANIFEST:-}" ]] || { echo "ERROR: WF_MANIFEST not set (run manifest_init)" >&2; return 2; }
+
+  local size=0
+  if [[ "$kind" == "file" && -f "$path" ]]; then
+    size="$(stat -c '%s' "$path" 2>/dev/null || echo 0)"
+  elif [[ "$kind" == "dir" && -d "$path" ]]; then
+    size="$(du -sb "$path" 2>/dev/null | awk '{print $1}' || echo 0)"
+  fi
+
+  # optional hash for files (expensive on multi-GB; toggle with MANIFEST_SHA=1)
+  local sha="null"
+  if [[ "${MANIFEST_SHA:-0}" == "1" && "$kind" == "file" && -f "$path" && -x "$(command -v sha256sum)" ]]; then
+    sha="\"$(sha256sum "$path" | awk '{print $1}')\""
+  fi
+
+  printf '{"ts":"%s","workflow":"%s","kind":"%s","source":"%s","ref":"%s","path":"%s","bytes":%s,"sha256":%s,"extra":%s}\n' \
+    "$(date -Is)" \
+    "${WF_SLUG:-unknown}" \
+    "$kind" \
+    "$source" \
+    "$(printf '%s' "$ref" | sed 's/"/\\"/g')" \
+    "$(printf '%s' "$path" | sed 's/"/\\"/g')" \
+    "$size" \
+    "$sha" \
+    "$extra" >>"$WF_MANIFEST"
+}
+
+manifest_add_file() {
+  local path="$1"
+  local source="${2:-unknown}"   # hf|civitai|gdrive|manual
+  local ref="${3:-}"             # repo/path or url or model id
+  [[ -n "${WF_MANIFEST:-}" ]] || { echo "ERROR: WF_MANIFEST not set (run manifest_init)"; return 2; }
+
+  [[ -f "$path" ]] || { echo "WARN: manifest_add_file: not a file: $path" >&2; return 1; }
+  local bytes; bytes="$(stat -c '%s' "$path" 2>/dev/null || echo 0)"
+
+  printf '{"ts":"%s","workflow":"%s","kind":"file","source":"%s","ref":"%s","path":"%s","bytes":%s}\n' \
+    "$(date -Is)" "${WF_SLUG:-unknown}" "$source" \
+    "$(printf '%s' "$ref" | sed 's/"/\\"/g')" \
+    "$(printf '%s' "$path" | sed 's/"/\\"/g')" \
+    "$bytes" >>"$WF_MANIFEST"
+}
+
+manifest_add_dir() {
+  local path="$1"
+  local source="${2:-unknown}"
+  local ref="${3:-}"
+  [[ -n "${WF_MANIFEST:-}" ]] || { echo "ERROR: WF_MANIFEST not set (run manifest_init)"; return 2; }
+
+  [[ -d "$path" ]] || { echo "WARN: manifest_add_dir: not a dir: $path" >&2; return 1; }
+  local bytes; bytes="$(du -sb "$path" 2>/dev/null | awk '{print $1}' || echo 0)"
+
+  printf '{"ts":"%s","workflow":"%s","kind":"dir","source":"%s","ref":"%s","path":"%s","bytes":%s}\n' \
+    "$(date -Is)" "${WF_SLUG:-unknown}" "$source" \
+    "$(printf '%s' "$ref" | sed 's/"/\\"/g')" \
+    "$(printf '%s' "$path" | sed 's/"/\\"/g')" \
+    "$bytes" >>"$WF_MANIFEST"
+}
+
+manifest_prune() {
+  # usage: manifest_prune <manifest_file>
+  local mf="$1"
+  [[ -f "$mf" ]] || { echo "ERROR: manifest not found: $mf" >&2; return 2; }
+
+  echo "[prune] reading: $mf"
+  # delete files first, then dirs (reverse-sorted by path length)
+  jq -r 'select(.kind=="file") | .path' "$mf" | while read -r p; do
+    [[ -n "$p" ]] || continue
+    if [[ -f "$p" ]]; then
+      echo "[rm] $p"
+      rm -f "$p"
+    fi
+  done
+
+  jq -r 'select(.kind=="dir") | .path' "$mf" \
+    | awk '{ print length($0) "\t" $0 }' | sort -rn | cut -f2- \
+    | while read -r d; do
+      [[ -n "$d" ]] || continue
+      if [[ -d "$d" ]]; then
+        echo "[rm -rf] $d"
+        rm -rf "$d"
+      fi
+    done
+
+  echo "[prune] done"
+}
+
+log_if_exists() {
+  local path="$1"
+  local source="${2:-unknown}"
+  local ref="${3:-}"
+  if [[ -f "$path" ]]; then manifest_add_file "$path" "$source" "$ref"; fi
+  if [[ -d "$path" ]]; then manifest_add_dir  "$path" "$source" "$ref"; fi
+}
+
+rm_logged() {
+  # usage: rm_logged <path>...
+  for p in "$@"; do
+    [[ -e "$p" ]] || continue
+    echo "[rm] $p"
+    rm -rf "$p"
+  done
+}
+
+mv_logged() {
+  # usage: mv_logged <src> <dst> [--source hf] [--ref "repo:path"]
+  local src="$1"
+  local dst="$2"
+  shift 2
+
+  local source="unknown"
+  local ref=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --source) source="$2"; shift 2 ;;
+      --ref) ref="$2"; shift 2 ;;
+      *) break ;;
+    esac
+  done
+
+  mv -f "$src" "$dst" || return $?
+
+  # Log destination if it exists
+  if [[ -f "$dst" ]]; then
+    manifest_add_file "$dst" "$source" "$ref"
+  elif [[ -d "$dst" ]]; then
+    manifest_add_dir "$dst" "$source" "$ref"
+  fi
+}
+
+hf_download_logged() {
+  # usage: hf_download_logged <repo_id> [hf args...]
+  local repo="$1"; shift
+  local out
+  out="$(hf download "$repo" "$@" 2>&1)"
+  local rc=$?
+  echo "$out"
+  [[ $rc -eq 0 ]] || return $rc
+
+  # log any absolute paths printed by hf
+  # (hf usually prints one path per line, often absolute)
+  while IFS= read -r line; do
+    if [[ "$line" == /* && ( -f "$line" || -d "$line" ) ]]; then
+      if [[ -f "$line" ]]; then
+        manifest_log_path file "$line" hf "$repo" "{}"
+      else
+        manifest_log_path dir "$line" hf "$repo" "{}"
+      fi
+    fi
+  done <<<"$out"
+
+  return 0
+}
+
+gdrive_folder_logged() {
+  # usage: gdrive_folder_logged <url> <target_parent_dir>
+  local url="$1"
+  local target="$2"
+  local before
+  before="$(find "$target" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort)"
+
+  download_gdrive_folder "$url" "$target" || return $?
+
+  local after new
+  after="$(find "$target" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort)"
+  new="$(comm -13 <(printf "%s\n" "$before") <(printf "%s\n" "$after") | head -n1)"
+
+  if [[ -n "$new" && -d "$target/$new" ]]; then
+    manifest_log_path dir "$target/$new" gdrive "$url" "{}"
+  else
+    # fallback: log target itself if we can't detect
+    manifest_log_path dir "$target" gdrive "$url" "{\"note\":\"could_not_detect_new_dir\"}"
+  fi
+}
+
+civitai_logged() {
+  # usage: civitai_logged <model_id> --out DIR [other civitai args...]
+  local model_id="$1"; shift
+
+  # extract --out DIR from args (so we can scan it)
+  local outdir="."
+  local args=("$@")
+  for ((i=0; i<${#args[@]}; i++)); do
+    if [[ "${args[$i]}" == "--out" && $((i+1)) -lt ${#args[@]} ]]; then
+      outdir="${args[$((i+1))]}"
+      break
+    fi
+  done
+
+  mkdir -p "$outdir" 2>/dev/null || true
+  local before
+  before="$(find "$outdir" -maxdepth 1 -type f -name '*.safetensors' -printf '%f\n' 2>/dev/null | sort)"
+
+  civitai "$model_id" "$@" || return $?
+
+  local after
+  after="$(find "$outdir" -maxdepth 1 -type f -name '*.safetensors' -printf '%f\n' 2>/dev/null | sort)"
+
+  # diff to find new files
+  comm -13 <(printf "%s\n" "$before") <(printf "%s\n" "$after") | while read -r fn; do
+    [[ -n "$fn" ]] || continue
+    manifest_log_path file "$outdir/$fn" civitai "model:${model_id}" "{}"
+  done
+}
+
+
