@@ -943,4 +943,53 @@ civitai_logged() {
   done
 }
 
+install_gdrive_folder_as() {
+  # usage: install_gdrive_folder_as <gdrive_folder_url> <dest_parent_dir> <name>
+  # result: <dest_parent_dir>/<name>/...
+  local url="$1"
+  local parent="$2"
+  local name="$3"
+
+  [[ -n "$url" && -n "$parent" && -n "$name" ]] || {
+    echo "usage: install_gdrive_folder_as <url> <dest_parent_dir> <name>" >&2
+    return 2
+  }
+
+  need_apt gdown gdown || return 127
+
+  local tmp; tmp="$(mktemp -d)"
+  echo "[gdown] downloading into temp: $tmp"
+  gdown --folder "$url" -O "$tmp" || { rm -rf "$tmp"; return 1; }
+
+  mkdir -p "$parent" || { rm -rf "$tmp"; return 1; }
+
+  # What did we get at top level?
+  mapfile -t top_items < <(find "$tmp" -mindepth 1 -maxdepth 1)
+
+  if [[ "${#top_items[@]}" -eq 0 ]]; then
+    echo "ERROR: nothing downloaded?" >&2
+    rm -rf "$tmp"
+    return 1
+  fi
+
+  local dest="$parent/$name"
+  rm -rf "$dest" 2>/dev/null || true
+  mkdir -p "$dest"
+
+  if [[ "${#top_items[@]}" -eq 1 && -d "${top_items[0]}" ]]; then
+    # single folder: move its contents into dest (avoids double nesting)
+    echo "[gdown] single folder detected; installing contents into: $dest"
+    mv "${top_items[0]}"/* "$dest"/ 2>/dev/null || true
+  else
+    # many items: move them all under dest
+    echo "[gdown] multiple top-level items; installing into: $dest"
+    mv "$tmp"/* "$dest"/
+  fi
+
+  rm -rf "$tmp"
+  echo "[gdown] done -> $dest"
+
+  # Print the final path (useful for logging)
+  printf '%s\n' "$dest"
+}
 
