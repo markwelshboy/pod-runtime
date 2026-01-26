@@ -632,29 +632,56 @@ EOF
   return 0
 }
 
+# ---------------------------
+# Google Drive folder downloader
+# ---------------------------
+_extract_gdrive_folder_id() {
+  # pulls the folder id out of typical URLs:
+  # https://drive.google.com/drive/folders/<ID>?usp=...
+  local url="$1"
+  local id=""
+  id="$(sed -nE 's#.*drive\.google\.com/drive/folders/([^?/]+).*#\1#p' <<<"$url")"
+  [[ -n "$id" ]] || id="$(sed -nE 's#.*folders/([^?/]+).*#\1#p' <<<"$url")"
+  printf "%s" "$id"
+}
+
 download_gdrive_folder() {
-  local mode="keep-top"   # keep-top | flatten
+  # NEW DEFAULT: keep everything inside ONE wrapper folder in target
+  # so downloads never “flatten” into /models unless you request --flatten.
+  #
+  # usage:
+  #   download_gdrive_folder <url> <target_parent_dir>              # creates target_parent_dir/gdrive_<id>/
+  #   download_gdrive_folder --top-name BiRefNet <url> <target_parent_dir>  # creates .../BiRefNet/
+  #   download_gdrive_folder --flatten <url> <target_dir>            # moves items directly into target_dir
+
+  local mode="wrap"     # wrap | flatten
   local url=""
   local target=""
+  local top_name=""
 
-  # parse args
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --flatten)
         mode="flatten"
         shift
         ;;
+      --top-name)
+        top_name="$2"
+        shift 2
+        ;;
       --help|-h)
         cat <<'EOF'
 usage:
   download_gdrive_folder <url> <target_parent_dir>
+  download_gdrive_folder --top-name NAME <url> <target_parent_dir>
   download_gdrive_folder --flatten <url> <target_dir>
 
 default:
-  Keeps the downloaded top-level folder (recommended).
+  Creates a single wrapper folder inside <target_parent_dir> and moves everything into it.
+  This prevents “flattening” into ComfyUI/models by accident.
 
 --flatten:
-  Moves contents directly into target (use only when explicitly required).
+  Moves contents directly into target (only when explicitly required).
 EOF
         return 0
         ;;
@@ -696,27 +723,55 @@ EOF
     return 1
   }
 
-  # What did we actually get?
-  mapfile -t top_items < <(find "$tmp" -mindepth 1 -maxdepth 1)
-
-  if [[ "${#top_items[@]}" -eq 0 ]]; then
-    echo "ERROR: nothing downloaded?" >&2
-    rm -rf "$tmp"
-    return 1
-  fi
-
   if [[ "$mode" == "flatten" ]]; then
     echo "[gdown] flattening into: $target"
+    # Move everything downloaded into target dir
+    shopt -s dotglob nullglob
     mv "$tmp"/* "$target"/
-  else
-    echo "[gdown] keeping top-level folder(s) in: $target"
-    mv "${top_items[@]}" "$target"/
+    shopt -u dotglob nullglob
+    rm -rf "$tmp"
+    echo "[gdown] done"
+    return 0
   fi
 
+  # WRAP mode: create deterministic wrapper folder
+  if [[ -z "$top_name" ]]; then
+    local fid
+    fid="$(_extract_gdrive_folder_id "$url")"
+    if [[ -n "$fid" ]]; then
+      top_name="gdrive_${fid}"
+    else
+      top_name="gdrive_$(date +%Y%m%d_%H%M%S)"
+    fi
+  fi
+
+  local outdir="${target%/}/${top_name}"
+  mkdir -p "$outdir" || {
+    echo "ERROR: cannot create outdir: $outdir" >&2
+    rm -rf "$tmp"
+    return 1
+  }
+
+  echo "[gdown] wrapping into: $outdir"
+  shopt -s dotglob nullglob
+  mv "$tmp"/* "$outdir"/
+  shopt -u dotglob nullglob
   rm -rf "$tmp"
-  echo "[gdown] done"
+  echo "[gdown] done (wrapped)"
 }
 
+
+log_if_exists() {
+  local path="$1"
+  local source="${2:-unknown}"
+  local ref="${3:-}"
+  if [[ -f "$path" ]]; then manifest_add_file "$path" "$source" "$ref"; fi
+  if [[ -d "$path" ]]; then manifest_add_dir  "$path" "$source" "$ref"; fi
+}
+
+# ---------------------------
+# Manifest logging
+# ---------------------------
 manifest_init() {
   # usage: manifest_init <workflow_slug> [manifest_dir]
   local wf="${1:-}"
@@ -768,7 +823,7 @@ manifest_log_path() {
 manifest_add_file() {
   local path="$1"
   local source="${2:-unknown}"   # hf|civitai|gdrive|manual
-  local ref="${3:-}"             # repo/path or url or model id
+  local ref="${3:-}"
   [[ -n "${WF_MANIFEST:-}" ]] || { echo "ERROR: WF_MANIFEST not set (run manifest_init)"; return 2; }
 
   [[ -f "$path" ]] || { echo "WARN: manifest_add_file: not a file: $path" >&2; return 1; }
@@ -803,7 +858,6 @@ manifest_prune() {
   [[ -f "$mf" ]] || { echo "ERROR: manifest not found: $mf" >&2; return 2; }
 
   echo "[prune] reading: $mf"
-  # delete files first, then dirs (reverse-sorted by path length)
   jq -r 'select(.kind=="file") | .path' "$mf" | while read -r p; do
     [[ -n "$p" ]] || continue
     if [[ -f "$p" ]]; then
@@ -823,14 +877,6 @@ manifest_prune() {
     done
 
   echo "[prune] done"
-}
-
-log_if_exists() {
-  local path="$1"
-  local source="${2:-unknown}"
-  local ref="${3:-}"
-  if [[ -f "$path" ]]; then manifest_add_file "$path" "$source" "$ref"; fi
-  if [[ -d "$path" ]]; then manifest_add_dir  "$path" "$source" "$ref"; fi
 }
 
 rm_logged() {
@@ -860,11 +906,49 @@ mv_logged() {
 
   mv -f "$src" "$dst" || return $?
 
-  # Log destination if it exists
   if [[ -f "$dst" ]]; then
     manifest_add_file "$dst" "$source" "$ref"
   elif [[ -d "$dst" ]]; then
     manifest_add_dir "$dst" "$source" "$ref"
+  fi
+}
+
+# Logged wrapper: create wrapper folder then log it (robust, no guessing)
+gdrive_folder_logged() {
+  # usage:
+  #   gdrive_folder_logged <url> <target_parent_dir> [--top-name NAME]
+  local url="$1"
+  local target="$2"
+  shift 2 || true
+
+  local top_name=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --top-name) top_name="$2"; shift 2 ;;
+      *) break ;;
+    esac
+  done
+
+  download_gdrive_folder ${top_name:+--top-name "$top_name"} "$url" "$target" || return $?
+
+  # Determine the folder we created (same logic as download_gdrive_folder)
+  if [[ -z "$top_name" ]]; then
+    local fid
+    fid="$(_extract_gdrive_folder_id "$url")"
+    if [[ -n "$fid" ]]; then
+      top_name="gdrive_${fid}"
+    else
+      # fallback: can't reliably detect; log target itself
+      manifest_log_path dir "$target" gdrive "$url" "{\"note\":\"wrapped_but_name_unknown\"}"
+      return 0
+    fi
+  fi
+
+  local outdir="${target%/}/${top_name}"
+  if [[ -d "$outdir" ]]; then
+    manifest_log_path dir "$outdir" gdrive "$url" "{}"
+  else
+    manifest_log_path dir "$target" gdrive "$url" "{\"note\":\"expected_wrapper_missing\",\"expected\":\"$outdir\"}"
   fi
 }
 
@@ -892,24 +976,42 @@ hf_download_logged() {
   return 0
 }
 
+# Logged wrapper: create wrapper folder then log it (robust, no guessing)
 gdrive_folder_logged() {
-  # usage: gdrive_folder_logged <url> <target_parent_dir>
+  # usage:
+  #   gdrive_folder_logged <url> <target_parent_dir> [--top-name NAME]
   local url="$1"
   local target="$2"
-  local before
-  before="$(find "$target" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort)"
+  shift 2 || true
 
-  download_gdrive_folder "$url" "$target" || return $?
+  local top_name=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --top-name) top_name="$2"; shift 2 ;;
+      *) break ;;
+    esac
+  done
 
-  local after new
-  after="$(find "$target" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort)"
-  new="$(comm -13 <(printf "%s\n" "$before") <(printf "%s\n" "$after") | head -n1)"
+  download_gdrive_folder ${top_name:+--top-name "$top_name"} "$url" "$target" || return $?
 
-  if [[ -n "$new" && -d "$target/$new" ]]; then
-    manifest_log_path dir "$target/$new" gdrive "$url" "{}"
+  # Determine the folder we created (same logic as download_gdrive_folder)
+  if [[ -z "$top_name" ]]; then
+    local fid
+    fid="$(_extract_gdrive_folder_id "$url")"
+    if [[ -n "$fid" ]]; then
+      top_name="gdrive_${fid}"
+    else
+      # fallback: can't reliably detect; log target itself
+      manifest_log_path dir "$target" gdrive "$url" "{\"note\":\"wrapped_but_name_unknown\"}"
+      return 0
+    fi
+  fi
+
+  local outdir="${target%/}/${top_name}"
+  if [[ -d "$outdir" ]]; then
+    manifest_log_path dir "$outdir" gdrive "$url" "{}"
   else
-    # fallback: log target itself if we can't detect
-    manifest_log_path dir "$target" gdrive "$url" "{\"note\":\"could_not_detect_new_dir\"}"
+    manifest_log_path dir "$target" gdrive "$url" "{\"note\":\"expected_wrapper_missing\",\"expected\":\"$outdir\"}"
   fi
 }
 
