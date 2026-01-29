@@ -5615,8 +5615,7 @@ init_repo() {
         --repo-type "$repo_type" \
         "${rev_args[@]}" \
         "${inc[@]}" \
-        --local-dir "$LOCAL_DIR" \
-        --local-dir-use-symlinks False || {
+        --local-dir "$LOCAL_DIR" || {
           _sync_err "init_repo --hf: download failed for $REPO_ID"
           return 1
         }
@@ -5680,6 +5679,19 @@ init_repo() {
       return 0
       ;;
   esac
+}
+
+hf_repo_looks_good() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 1
+
+  # non-empty (guards against "created dir but download failed")
+  find "$dir" -mindepth 1 -maxdepth 1 -print -quit | grep -q . || return 1
+
+  # must have at least one safetensors file somewhere
+  find "$dir" -type f -name '*.safetensors' -print -quit | grep -q . || return 1
+
+  return 0
 }
 
 # sync_to_repo [--hf|--git] <local-dir> <branch> [force]

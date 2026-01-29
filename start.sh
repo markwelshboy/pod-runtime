@@ -263,8 +263,15 @@ section 8 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
 #----------------------------------------------
 # Synchronize 'MyLoras' from HF to local cache repo (and symlink into ComfyUI)
 
-init_repo --hf "$HF_MYLORA_REPO_ID" "$HF_MYLORA_REPO_LOCAL" '*.safetensors' || true
-rsync_or_symlink_source_to_destination symlink "$HF_MYLORA_REPO_LOCAL" "$LORAS_DIR"
+HF_REPO_TYPE="model" init_repo --hf "$HF_MYLORA_REPO_ID" "$HF_MYLORA_REPO_LOCAL" '*.safetensors' || true
+
+if hf_repo_looks_good "$HF_MYLORA_REPO_LOCAL"; then
+  rsync_or_symlink_source_to_destination symlink "$HF_MYLORA_REPO_LOCAL" "$LORAS_DIR"
+  # Create symlinks from MyLoras into main loras dir for easy access
+  ln -sfn $COMFY/models/loras/MyLoras/loras/* $COMFY/models/loras/
+else
+  _sync_warn "MyLoras repo not healthy at '$HF_MYLORA_REPO_LOCAL' (skipping symlinks)."
+fi
 
 #----------------------------------------------
 # Synchronize Hearmeman WAN git repo (and copy workflows into ComfyUI - merge with existing 'workflows' dir)
@@ -318,7 +325,7 @@ section 11 "ComfyUI"
 snapshot_custom_nodes_state --summary "before-comfy-launch" || true
 
 #----------------------------------------------
-# Check health/status before 
+# Check health/status before launching ComfyUI
 #----------------------------------------------
 
 section 11.1 "Pre-ComfyUI Launch: Confirming Stack Health"
