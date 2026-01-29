@@ -406,11 +406,14 @@ download_civitai() {
 civitai() {
   # civitai - Civitai downloader/listing helper (GNU-style)
   #
-  # Examples:
+  # New:
+  #   civitai --id urn:air:sdxl:checkpoint:civitai:1837476@2607296
+  #   civitai urn:air:sdxl:checkpoint:civitai:1837476@2607296
+  #
+  # Existing:
   #   civitai --list 139562
-  #   civitai 139562 --list
   #   civitai 139562 --out "$COMFY/models/checkpoints"
-  #   civitai 139562 --out "$COMFY/models/checkpoints" --version 798204 --file realvisxlV50_v50LightningBakedvae.safetensors
+  #   civitai 139562 --out "$COMFY/models/checkpoints" --version 798204 --file foo.safetensors
 
   local model_id=""
   local outdir="."
@@ -419,15 +422,19 @@ civitai() {
   local mode="download"
   local sanitize="${CIVITAI_SANITIZE:-0}"
   local quiet=0
+  local urn_id=""
 
   _usage() {
     cat <<'EOF'
 usage:
   civitai --list <model_id>
   civitai <model_id> [--out DIR] [--version ID] [--file NAME] [--sanitize] [--quiet]
+  civitai --id <civitai_urn> [--out DIR] [--file NAME] [--sanitize] [--quiet]
+  civitai <civitai_urn> [--out DIR] [--file NAME] [--sanitize] [--quiet]
 
 options:
   --list               List available .safetensors grouped by version
+  --id, -id URN         CivitAI URN (e.g. urn:air:sdxl:checkpoint:civitai:1837476@2607296)
   --out DIR            Output directory (default: .)
   --version ID         Force modelVersionId
   --file NAME          Download only this exact filename
@@ -443,8 +450,55 @@ examples:
   civitai 139562 --out "$COMFY/models/checkpoints"
   civitai 139562 --out "$COMFY/models/checkpoints" --version 798204 \
          --file realvisxlV50_v50LightningBakedvae.safetensors
+
+  civitai --id urn:air:sdxl:checkpoint:civitai:1837476@2607296 --out "$COMFY/models/checkpoints"
+  civitai urn:air:sdxl:checkpoint:civitai:1837476@2607296 --out "$COMFY/models/checkpoints"
 EOF
   }
+
+  _parse_urn() {
+    # Extract model_id + version_id from a civitai URN.
+    # Accepts:
+    #   urn:air:...:civitai:<MODEL>@<VERSION>
+    #   urn:air:...:civitai:<MODEL>          (no @version)
+    local urn="$1"
+    local mid vid rest
+
+    # must contain ":civitai:" then digits
+    rest="${urn##*:civitai:}"               # everything after last ":civitai:"
+    if [[ "$rest" == "$urn" ]]; then
+      return 1
+    fi
+
+    mid="${rest%@*}"
+    if [[ "$rest" == *"@"* ]]; then
+      vid="${rest##*@}"
+    else
+      vid=""
+    fi
+
+    [[ "$mid" =~ ^[0-9]+$ ]] || return 1
+    if [[ -n "$vid" ]]; then
+      [[ "$vid" =~ ^[0-9]+$ ]] || return 1
+    fi
+
+    model_id="$mid"
+    # Only set version_id from URN if user didn't explicitly provide --version
+    if [[ -z "$version_id" && -n "$vid" ]]; then
+      version_id="$vid"
+    fi
+    return 0
+  }
+
+  # ---------- pre-scan: allow URN as first arg (positional) ----------
+  if [[ $# -gt 0 ]]; then
+    case "$1" in
+      urn:air:*|*":civitai:"*)
+        urn_id="$1"
+        shift
+        ;;
+    esac
+  fi
 
   # ---------- parse args (order independent) ----------
   while [[ $# -gt 0 ]]; do
@@ -452,6 +506,10 @@ EOF
       --list)
         mode="list"
         shift
+        ;;
+      --id|-id)
+        urn_id="$2"
+        shift 2
         ;;
       --out)
         outdir="$2"
@@ -483,9 +541,13 @@ EOF
         return 2
         ;;
       *)
-        # First non-flag = model_id
+        # First non-flag = model_id (unless already set / unless it's a URN)
         if [[ -z "$model_id" ]]; then
-          model_id="$1"
+          if [[ "$1" == urn:air:* || "$1" == *":civitai:"* ]]; then
+            urn_id="$1"
+          else
+            model_id="$1"
+          fi
         else
           echo "ERROR: unexpected argument: $1" >&2
           _usage
@@ -495,6 +557,15 @@ EOF
         ;;
     esac
   done
+
+  # ---------- if URN provided, extract model/version ----------
+  if [[ -n "$urn_id" ]]; then
+    if ! _parse_urn "$urn_id"; then
+      echo "ERROR: invalid civitai URN: $urn_id" >&2
+      _usage
+      return 2
+    fi
+  fi
 
   if [[ -z "$model_id" ]]; then
     echo "ERROR: missing model_id" >&2
@@ -574,6 +645,7 @@ EOF
 
   [[ "$quiet" != 1 ]] && {
     echo "[civitai] model_id=${model_id} modelVersionId=${chosen_vid}"
+    [[ -n "$urn_id" ]] && echo "[civitai] urn=${urn_id}"
     echo "[civitai] outdir=${outdir}"
   }
 
