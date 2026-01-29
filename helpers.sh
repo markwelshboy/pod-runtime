@@ -6253,7 +6253,7 @@ PY
     _torch_cuda_sanity || true
     _mark_bad
 
-    _tg_send "❌ ${tg_name}: stack BROKEN\nReason: ${why}\nReport: ${report_file}"
+    _tg_send "❌ ${tg_name}: stack BROKEN. Reason: ${why}."
 
     if [[ "$mode" == "exit" ]]; then
       echo "❌ Stack unhealthy: ${why}"
@@ -6271,7 +6271,7 @@ PY
     _append "✅ ALL CHECKS PASSED"
     _mark_ok
     if [[ "$tg_on_ok" == "1" ]]; then
-      _tg_send "✅ ${tg_name}: stack OK\nReport: ${report_file}"
+      _tg_send "✅ ${tg_name}: GPU POD PIP stack OK."
     fi
     echo "✅ Stack health confirmed."
     return 0
