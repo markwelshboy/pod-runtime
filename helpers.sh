@@ -279,6 +279,129 @@ tg() {
   fi
 }
 
+telegram_send() {
+  # usage: telegram_send "message"
+  local msg="$1"
+
+  # Require both to send; otherwise no-op
+  [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]] || return 0
+
+  command -v curl >/dev/null 2>&1 || return 0
+
+  # Best effort; never fail caller
+  curl -sS --max-time 10 \
+    -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+    -d "chat_id=${TELEGRAM_CHAT_ID}" \
+    --data-urlencode "text=${msg}" \
+    -d "disable_web_page_preview=true" \
+    >/dev/null 2>&1 || true
+}
+
+disk_watch_start() {
+  # usage: disk_watch_start [--path /] [--warn 85] [--crit 92] [--interval 20] [--log /workspace/logs/disk_watch.log]
+  local path="/"
+  local warn="${POD_DISK_WARN:-85}"
+  local crit="${POD_DISK_CRIT:-92}"
+  local interval="${POD_DISK_INTERVAL:-10}"
+  local log=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --path) path="$2"; shift 2 ;;
+      --warn) warn="$2"; shift 2 ;;
+      --crit) crit="$2"; shift 2 ;;
+      --interval) interval="$2"; shift 2 ;;
+      --log) log="$2"; shift 2 ;;
+      --help|-h)
+        cat <<EOF
+disk_watch_start [--path /] [--warn 85] [--crit 92] [--interval 20] [--log FILE]
+
+Defaults can be set via env:
+  POD_DISK_WARN, POD_DISK_CRIT, POD_DISK_INTERVAL
+Telegram env (optional):
+  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+EOF
+        return 0
+        ;;
+      *) echo "disk_watch_start: unknown option: $1" >&2; return 2 ;;
+    esac
+  done
+
+  # decide output sink
+  local sink="/dev/stdout"
+  if [[ -n "$log" ]]; then
+    mkdir -p "$(dirname "$log")" 2>/dev/null || true
+    sink="$log"
+  fi
+
+  # background loop; no set -e/-u so it won't kill your shell
+  (
+    local last_level="ok"
+
+    # Optional: announce start via telegram
+    telegram_send "📦 disk_watch started on $(hostname) (path: $path, warn: ${warn}%, crit: ${crit}%, interval: ${interval}s)"
+
+    while true; do
+      # df output: Use% Mounted on
+      local use avail mounted
+      use="$(df -P "$path" 2>/dev/null | awk 'NR==2{gsub("%","",$5); print $5}')"
+      avail="$(df -hP "$path" 2>/dev/null | awk 'NR==2{print $4}')"
+      mounted="$(df -P "$path" 2>/dev/null | awk 'NR==2{print $6}')"
+
+      # If df failed (e.g. path missing), just sleep and retry
+      if [[ -z "${use:-}" ]]; then
+        printf "[%s] disk_watch WARN: df failed for path=%s\n" "$(date -Is)" "$path" >>"$sink"
+        sleep "$interval"
+        continue
+      fi
+
+      local level="ok"
+      if [[ "$use" -ge "$crit" ]]; then level="CRIT"
+      elif [[ "$use" -ge "$warn" ]]; then level="WARN"
+      fi
+
+      if [[ "$level" != "$last_level" ]]; then
+        local line
+        line=$(printf "[%s] disk_watch %s: %s%% used (avail %s) on %s (mount %s)\n" \
+          "$(date -Is)" "$level" "$use" "$avail" "$path" "${mounted:-?}")
+
+        # Log transitions (including back to OK)
+        printf "%s" "$line" >>"$sink"
+
+        # Telegram notify on transitions
+        if [[ "$level" == "WARN" ]]; then
+          telegram_send "⚠️ Disk warning on $(hostname): ${use}% used (avail ${avail}) path=${path} mount=${mounted}"
+        elif [[ "$level" == "CRIT" ]]; then
+          telegram_send "🛑 Disk CRITICAL on $(hostname): ${use}% used (avail ${avail}) path=${path} mount=${mounted}"
+        elif [[ "$level" == "ok" ]]; then
+          telegram_send "✅ Disk back to OK on $(hostname): ${use}% used (avail ${avail}) path=${path} mount=${mounted}"
+        fi
+
+        last_level="$level"
+      fi
+
+      sleep "$interval"
+    done
+  ) &
+
+  local pid=$!
+  echo "$pid" > /tmp/disk_watch.pid
+  echo "[disk_watch] started (pid=$pid) path=$path warn=$warn crit=$crit interval=${interval}s log=${log:-stdout}"
+}
+
+disk_watch_stop() {
+  local pid=""
+  if [[ -f /tmp/disk_watch.pid ]]; then pid="$(cat /tmp/disk_watch.pid)"; fi
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    rm -f /tmp/disk_watch.pid
+    echo "[disk_watch] stopped (pid=$pid)"
+    telegram_send "🧹 disk_watch stopped on $(hostname) (pid=$pid)"
+  else
+    echo "[disk_watch] not running"
+  fi
+}
+
 # ======================================================================
 # ComfyUI core management
 # ======================================================================

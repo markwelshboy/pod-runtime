@@ -363,6 +363,15 @@ aria2_monitor_progress || true
 aria2_clear_results >/dev/null 2>&1 || true
 
 
+#------------------------------------------------------------------------
+section 13 "Disk Watcher"
+#----------------------------------------------
+# Start disk watcher to monitor disk usage
+# Defaults to checking every 10 minutes, warning at 85%,
+#   critical at 92%
+#----------------------------------------------
+disk_watch_start --path / --log /workspace/logs/disk_watch.log || true
+
 echo ""
 echo "Bootstrap complete. Bootstrap log: ${COMFY_LOGS}/startup.log"
 echo "General logs: ${COMFY_LOGS}"
