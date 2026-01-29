@@ -118,7 +118,7 @@ install_user_hff() {
 
 # -------- main wrapper --------
 hff() {
-  set -euo pipefail
+  set -uo pipefail
 
   local venv="${HFF_VENV}"
   local hff_py="${HFF_PY}"
@@ -143,7 +143,7 @@ hff() {
     ls|mkdir|mv|rm|put|get)
       [[ -x "$venv/bin/python" && -x "$hff_py" ]] || install_user_hff
       "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" "$cmd" "$@"
-      ;;
+      ;;   
     help|-h|--help|"")
       cat <<EOF
 hff — portable HF helper (user-mode)
