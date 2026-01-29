@@ -2,8 +2,8 @@
 # Intended to be sourced from ~/.bash_functions OR from helpers.sh on pods.
 
 # Avoid double-loading
-[[ -n "${__HELPERS_SHELL_LOADED:-}" ]] && return 0
-__HELPERS_SHELL_LOADED=1
+#[[ -n "${__HELPERS_SHELL_LOADED:-}" ]] && return 0
+#__HELPERS_SHELL_LOADED=1
 
 # ---- defaults for non-root machines ----
 # Put ~/.local/bin on PATH (safe to do repeatedly)
@@ -410,10 +410,14 @@ civitai() {
   #   civitai --id urn:air:sdxl:checkpoint:civitai:1837476@2607296
   #   civitai urn:air:sdxl:checkpoint:civitai:1837476@2607296
   #
-  # Existing:
-  #   civitai --list 139562
-  #   civitai 139562 --out "$COMFY/models/checkpoints"
-  #   civitai 139562 --out "$COMFY/models/checkpoints" --version 798204 --file foo.safetensors
+  # Behavior:
+  #   - Default download: .safetensors only
+  #   - If an explicit version is provided (URN with @, or --version): download ALL files in that version
+  #     unless you narrow with --download-files or --file.
+  #
+  # List:
+  #   - --list defaults to .safetensors
+  #   - --list --list-files "zip json" shows .safetensors + .zip + .json (etc)
 
   local model_id=""
   local outdir="."
@@ -424,70 +428,113 @@ civitai() {
   local quiet=0
   local urn_id=""
 
+  local list_files=""           # e.g. "zip json"
+  local download_files=""       # e.g. "zip json safetensors"
+  local explicit_version=0      # set when URN had @ or user passed --version
+  local strict=0
+  local interactive=0
+  [[ $- == *i* ]] && interactive=1
+
   _usage() {
     cat <<'EOF'
 usage:
-  civitai --list <model_id>
-  civitai <model_id> [--out DIR] [--version ID] [--file NAME] [--sanitize] [--quiet]
-  civitai --id <civitai_urn> [--out DIR] [--file NAME] [--sanitize] [--quiet]
-  civitai <civitai_urn> [--out DIR] [--file NAME] [--sanitize] [--quiet]
+  civitai --list <model_id> [--list-files "zip json"] [--quiet]
+  civitai <model_id> [--out DIR] [--version ID] [--file NAME] [--download-files "zip json"] [--sanitize] [--quiet]
+  civitai --id <civitai_urn> [--out DIR] [--file NAME] [--download-files "zip json"] [--sanitize] [--quiet]
+  civitai <civitai_urn> [--out DIR] [--file NAME] [--download-files "zip json"] [--sanitize] [--quiet]
 
 options:
-  --list               List available .safetensors grouped by version
-  --id, -id URN         CivitAI URN (e.g. urn:air:sdxl:checkpoint:civitai:1837476@2607296)
-  --out DIR            Output directory (default: .)
-  --version ID         Force modelVersionId
-  --file NAME          Download only this exact filename
-  --sanitize           Replace spaces with underscores
-  --quiet              Less output
-  --help               Show this help
+  --list                  List available files grouped by version (defaults: .safetensors)
+  --list-files "exts"     Extra extensions to include in --list (space-separated, no dots)
+                          Example: --list-files "zip json"
+
+  --id, -id URN           CivitAI URN (e.g. urn:air:sdxl:checkpoint:civitai:1837476@2607296)
+  --out DIR               Output directory (default: .)
+  --version ID            Force modelVersionId (also makes download default to ALL files in that version)
+  --file NAME             Download only this exact filename (overrides extension filtering)
+
+  --download-files "exts" Extra extensions to include in download when not explicitly version-pinned.
+                          Example: --download-files "zip json"
+                          Note: if you explicitly pin a version (URN @ or --version), default is ALL files anyway.
+
+  --sanitize              Replace spaces with underscores
+  --quiet                 Less output
+  --strict                In interactive shells, return non-zero on errors (otherwise errors return 0 to avoid killing SSH)
+  --help                  Show this help
 
 env:
-  CIVITAI_TOKEN        Required for downloads (not for --list)
+  CIVITAI_TOKEN           Required for downloads (not for --list)
 
 examples:
   civitai --list 139562
+  civitai --list 139562 --list-files "zip json"
+
   civitai 139562 --out "$COMFY/models/checkpoints"
-  civitai 139562 --out "$COMFY/models/checkpoints" --version 798204 \
-         --file realvisxlV50_v50LightningBakedvae.safetensors
+  civitai 139562 --out "$COMFY/models/checkpoints" --version 798204  # downloads ALL files in that version
+  civitai 139562 --out "$COMFY/models/checkpoints" --download-files "zip json"
+  civitai 139562 --out "$COMFY/models/checkpoints" --version 798204 --file some_bundle.zip
 
   civitai --id urn:air:sdxl:checkpoint:civitai:1837476@2607296 --out "$COMFY/models/checkpoints"
-  civitai urn:air:sdxl:checkpoint:civitai:1837476@2607296 --out "$COMFY/models/checkpoints"
 EOF
   }
 
+  _fail() {
+    local rc="$1"; shift
+    echo "ERROR: $*" >&2
+    # In interactive shells, avoid killing session if user has `set -e`, unless --strict.
+    if [[ "$interactive" == 1 && "$strict" == 0 ]]; then
+      return 0
+    fi
+    return "$rc"
+  }
+
   _parse_urn() {
-    # Extract model_id + version_id from a civitai URN.
-    # Accepts:
-    #   urn:air:...:civitai:<MODEL>@<VERSION>
-    #   urn:air:...:civitai:<MODEL>          (no @version)
+    # Extract model_id + (optional) version_id from a civitai URN.
+    # Accepts @ or %40 for version separator.
     local urn="$1"
-    local mid vid rest
 
-    # must contain ":civitai:" then digits
-    rest="${urn##*:civitai:}"               # everything after last ":civitai:"
-    if [[ "$rest" == "$urn" ]]; then
-      return 1
+    # Trim whitespace + CR (copy/paste)
+    urn="${urn//$'\r'/}"
+    urn="${urn#"${urn%%[![:space:]]*}"}"
+    urn="${urn%"${urn##*[![:space:]]}"}"
+
+    if [[ "$urn" =~ civitai:([0-9]+)((@|%40)([0-9]+))? ]]; then
+      model_id="${BASH_REMATCH[1]}"
+      local vid="${BASH_REMATCH[4]}"
+
+      if [[ -n "$vid" ]]; then
+        explicit_version=1
+        # Only set version_id from URN if user didn't explicitly provide --version
+        if [[ -z "$version_id" ]]; then
+          version_id="$vid"
+        fi
+      fi
+      return 0
     fi
 
-    mid="${rest%@*}"
-    if [[ "$rest" == *"@"* ]]; then
-      vid="${rest##*@}"
-    else
-      vid=""
-    fi
+    return 1
+  }
 
-    [[ "$mid" =~ ^[0-9]+$ ]] || return 1
-    if [[ -n "$vid" ]]; then
-      [[ "$vid" =~ ^[0-9]+$ ]] || return 1
-    fi
+  _ext_regex_from_list() {
+    # Build a regex for file extensions from:
+    #  - always includes safetensors
+    #  - plus extra exts provided as space-separated tokens, no dots
+    # Output example: \.(safetensors|zip|json)$
+    local extra="$1"
+    local tok
+    local exts="safetensors"
 
-    model_id="$mid"
-    # Only set version_id from URN if user didn't explicitly provide --version
-    if [[ -z "$version_id" && -n "$vid" ]]; then
-      version_id="$vid"
-    fi
-    return 0
+    for tok in $extra; do
+      tok="${tok#.}"
+      tok="${tok,,}"
+      [[ -z "$tok" ]] && continue
+      # basic validation: letters/numbers only
+      if [[ "$tok" =~ ^[a-z0-9]+$ ]]; then
+        exts="$exts|$tok"
+      fi
+    done
+
+    printf '\\.(%s)$' "$exts"
   }
 
   # ---------- pre-scan: allow URN as first arg (positional) ----------
@@ -507,6 +554,14 @@ EOF
         mode="list"
         shift
         ;;
+      --list-files)
+        list_files="$2"
+        shift 2
+        ;;
+      --download-files)
+        download_files="$2"
+        shift 2
+        ;;
       --id|-id)
         urn_id="$2"
         shift 2
@@ -517,6 +572,7 @@ EOF
         ;;
       --version)
         version_id="$2"
+        explicit_version=1
         shift 2
         ;;
       --file)
@@ -531,6 +587,10 @@ EOF
         quiet=1
         shift
         ;;
+      --strict)
+        strict=1
+        shift
+        ;;
       --help)
         _usage
         return 0
@@ -541,7 +601,6 @@ EOF
         return 2
         ;;
       *)
-        # First non-flag = model_id (unless already set / unless it's a URN)
         if [[ -z "$model_id" ]]; then
           if [[ "$1" == urn:air:* || "$1" == *":civitai:"* ]]; then
             urn_id="$1"
@@ -560,11 +619,7 @@ EOF
 
   # ---------- if URN provided, extract model/version ----------
   if [[ -n "$urn_id" ]]; then
-    if ! _parse_urn "$urn_id"; then
-      echo "ERROR: invalid civitai URN: $urn_id" >&2
-      _usage
-      return 2
-    fi
+    _parse_urn "$urn_id" || { _fail 2 "invalid civitai URN: $urn_id"; return $?; }
   fi
 
   if [[ -z "$model_id" ]]; then
@@ -574,26 +629,22 @@ EOF
   fi
 
   # ---------- deps ----------
-  need_apt curl || {
-    echo "ERROR: curl is required but could not be installed"
-    return 127
-  }
-  need_apt jq || {
-    echo "ERROR: jq is required but could not be installed"
-    return 127
-  }
+  need_apt curl || { _fail 127 "curl is required but could not be installed"; return $?; }
+  need_apt jq   || { _fail 127 "jq is required but could not be installed"; return $?; }
 
   # ---------- fetch metadata once ----------
   local json
-  json="$(curl -fsSL "https://civitai.com/api/v1/models/${model_id}")"
-  if [[ $? -ne 0 || -z "$json" ]]; then
-    echo "ERROR: failed to fetch model metadata for id=${model_id}" >&2
-    return 1
-  fi
+  json="$(curl -fsSL "https://civitai.com/api/v1/models/${model_id}")" \
+    || { _fail 1 "failed to fetch model metadata for id=${model_id}"; return $?; }
+  [[ -z "$json" ]] && { _fail 1 "empty response fetching model metadata for id=${model_id}"; return $?; }
 
   # ---------- LIST MODE ----------
   if [[ "$mode" == "list" ]]; then
-    jq -r '
+    local rx
+    rx="$(_ext_regex_from_list "$list_files")"
+
+    # Show versions newest-first, and only matching files by extension.
+    jq -r --arg rx "$rx" '
       .modelVersions
       | map(. + { _sort: (.publishedAt // .createdAt // "1970-01-01T00:00:00.000Z") })
       | sort_by(._sort) | reverse
@@ -601,10 +652,10 @@ EOF
       | "Version: \(.id)  |  \(.name)  |  \(.publishedAt // .createdAt // "unknown")",
         (
           .files
-          | map(select(.name | test("\\.safetensors$"; "i")))
+          | map(select(.name | test($rx; "i")))
           | map(.name)
           | unique
-          | if length == 0 then "  (no .safetensors)"
+          | if length == 0 then "  (no matching files)"
             else .[] | "  - " + .
             end
         ),
@@ -615,14 +666,10 @@ EOF
 
   # ---------- DOWNLOAD MODE ----------
   if [[ -z "${CIVITAI_TOKEN:-}" ]]; then
-    echo "ERROR: CIVITAI_TOKEN is not set (required for downloads)" >&2
-    return 2
+    _fail 2 "CIVITAI_TOKEN is not set (required for downloads)"; return $?
   fi
 
-  mkdir -p "$outdir" 2>/dev/null || {
-    echo "ERROR: cannot create outdir: $outdir" >&2
-    return 1
-  }
+  mkdir -p "$outdir" 2>/dev/null || { _fail 1 "cannot create outdir: $outdir"; return $?; }
 
   # Choose modelVersionId
   local chosen_vid
@@ -639,8 +686,7 @@ EOF
   fi
 
   if [[ -z "$chosen_vid" || "$chosen_vid" == "null" ]]; then
-    echo "ERROR: could not determine modelVersionId" >&2
-    return 1
+    _fail 1 "could not determine modelVersionId"; return $?
   fi
 
   [[ "$quiet" != 1 ]] && {
@@ -649,41 +695,61 @@ EOF
     echo "[civitai] outdir=${outdir}"
   }
 
-  # Build manifest
-  local manifest
-  manifest="$(
-    jq -r --argjson vid "$chosen_vid" '
-      .modelVersions
-      | map(select(.id == $vid))
-      | .[0].files
-      | map(select(.name | test("\\.safetensors$"; "i")))
-      | map({name:.name, url:.downloadUrl})
-      | unique_by(.name + "\u0000" + .url)
-      | .[]
-      | "\(.name)\t\(.url)"
-    ' <<<"$json"
-  )"
-
-  if [[ -z "$manifest" ]]; then
-    echo "WARNING: no .safetensors files found" >&2
-    return 0
+  # Decide what to include by default:
+  # - If want_file is set: download exactly that file.
+  # - Else if explicit_version: download ALL files in that version.
+  # - Else: download .safetensors + any --download-files extras.
+  local rx=""
+  if [[ -z "$want_file" ]]; then
+    if [[ "$explicit_version" == 1 ]]; then
+      rx=".*"  # ALL files
+    else
+      rx="$(_ext_regex_from_list "$download_files")"
+    fi
   fi
 
-  # Validate requested file
+  # Build manifest: name + downloadUrl
+  local manifest
   if [[ -n "$want_file" ]]; then
-    if ! awk -F'\t' -v f="$want_file" '$1==f{found=1} END{exit(found?0:1)}' <<<"$manifest"; then
-      echo "WARNING: file not found: $want_file" >&2
-      echo "Available:" >&2
-      awk -F'\t' '{print "  - " $1}' <<<"$manifest" >&2
-      return 3
+    manifest="$(
+      jq -r --argjson vid "$chosen_vid" --arg want "$want_file" '
+        .modelVersions
+        | map(select(.id == $vid))
+        | .[0].files
+        | map(select(.name == $want))
+        | map({name:.name, url:.downloadUrl})
+        | unique_by(.name + "\u0000" + .url)
+        | .[]
+        | "\(.name)\t\(.url)"
+      ' <<<"$json"
+    )"
+  else
+    manifest="$(
+      jq -r --argjson vid "$chosen_vid" --arg rx "$rx" '
+        .modelVersions
+        | map(select(.id == $vid))
+        | .[0].files
+        | map(select(.name | test($rx; "i")))
+        | map({name:.name, url:.downloadUrl})
+        | unique_by(.name + "\u0000" + .url)
+        | .[]
+        | "\(.name)\t\(.url)"
+      ' <<<"$json"
+    )"
+  fi
+
+  if [[ -z "$manifest" ]]; then
+    if [[ -n "$want_file" ]]; then
+      _fail 3 "file not found in version ${chosen_vid}: $want_file"; return $?
     fi
+    echo "WARNING: no matching files found" >&2
+    return 0
   fi
 
   # Download loop
   local name url outname outpath
   while IFS=$'\t' read -r name url; do
     [[ -z "$name" || -z "$url" ]] && continue
-    [[ -n "$want_file" && "$name" != "$want_file" ]] && continue
 
     outname="$name"
     [[ "$sanitize" == 1 ]] && outname="${outname// /_}"
@@ -694,10 +760,7 @@ EOF
     curl -fL \
       -H "Authorization: Bearer ${CIVITAI_TOKEN}" \
       "$url" \
-      -o "$outpath" || {
-        echo "ERROR: download failed for $name" >&2
-        return 4
-      }
+      -o "$outpath" || { _fail 4 "download failed for $name"; return $?; }
   done <<<"$manifest"
 
   [[ "$quiet" != 1 ]] && echo "[civitai] done"
