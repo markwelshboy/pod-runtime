@@ -552,12 +552,20 @@
         "path": "{LORAS_DIR}/Qwen-Image-Lightning-8steps-V1.0.safetensors"
       },
       {
+        "url": "https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Lightning-4steps-V1.0.safetensors",
+        "path": "{LORAS_DIR}/Qwen-Image-Lightning-4steps-V1.0.safetensors"
+      },
+      {
         "url": "https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Lightning-8steps-V1.1.safetensors",
         "path": "{LORAS_DIR}/Qwen-Image-Lightning-8steps-V1.1.safetensors"
       },
       {
         "url": "https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Lightning-8steps-V2.0.safetensors",
         "path": "{LORAS_DIR}/Qwen-Image-Lightning-8steps-V2.0.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Lightning-4steps-V2.0.safetensors",
+        "path": "{LORAS_DIR}/Qwen-Image-Lightning-4steps-V2.0.safetensors"
       }
     ],
     "download_qwen": [
