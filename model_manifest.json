@@ -540,6 +540,10 @@
         "path": "{DIFFUSION_MODELS_DIR}/qwen_image_edit_2509_fp8_e4m3fn.safetensors"
       },
       {
+        "url": "https://huggingface.co/aidiffuser/Qwen-Image-Edit-2509/resolve/main/Qwen-Image-Edit-2509_bf16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/qwen_image_edit_2509_bf16.safetensors"
+      },
+      {
         "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
         "path": "{TEXT_ENCODERS_DIR}/qwen_2.5_vl_7b_fp8_scaled.safetensors"
       },
