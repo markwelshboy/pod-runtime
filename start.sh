@@ -23,25 +23,21 @@ umask 077
 
 # Vars to persist
 VARS=(
-  HF_TOKEN CIVITAI_TOKEN LORAS_IDS_TO_DOWNLOAD CHECKPOINT_IDS_TO_DOWNLOAD
-  HF_REPO_ID HF_REPO_TYPE HF_REMOTE_URL
-  HF_USERNAME HF_MY_REPO_NAME HF_MY_REPO_ID HF_MY_REPO_LOCAL
+  ENABLE_MODEL_MANIFEST_DOWNLOAD ENABLE_CIVITAI_DOWNLOAD ENABLE_SAGE INSTALL_CUSTOM_NODES LAUNCH_JUPYTER ENABLE_MY_REPO_DOWNLOAD 
+  HF_TOKEN CIVITAI_TOKEN LORAS_IDS_TO_DOWNLOAD CHECKPOINT_IDS_TO_DOWNLOAD 
+  HF_REPO_ID HF_REPO_TYPE HF_REMOTE_URL 
+  HF_USERNAME HF_MY_REPO_NAME HF_MY_REPO_ID HF_MY_REPO_LOCAL 
+  TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID TELEGRAM_NAME TELEGRAM_ENABLE TELEGRAM_NOTIFY_OK 
   MODEL_MANIFEST_URL CUSTOM_NODES_MANIFEST_URL
-  ENABLE_MODEL_MANIFEST_DOWNLOAD ENABLE_CIVITAI_DOWNLOAD ENABLE_SAGE 
-  INSTALL_CUSTOM_NODES LAUNCH_JUPYTER
   download_480p_native_models download_720p_native_models 
   download_wan22 download_wan22_lightning download_wan_animate 
   download_wan22_animate_god_mode_25 download_wan_fun_and_sdxl_helper 
-  download_wan22_svi
-  download_vae download_detection
-  download_optimization_loras
-  download_gguf
-  download_aio_mega
-  download_vace_artofficial
+  download_wan22_svi 
+  download_vae download_detection download_optimization_loras download_gguf 
+  download_aio_mega 
+  download_vace_artofficial 
   download_qwen download_qwen_image_edit_2511 download_qwen_image_edit_2509
   download_upscale
-  ENABLE_MYREPO_DOWNLOAD
-  TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID TELEGRAM_NAME TELEGRAM_ENABLE TELEGRAM_NOTIFY_OK
 )
 
 {
@@ -266,7 +262,7 @@ section 8 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
 #----------------------------------------------
 # Synchronize 'diffusionetc' from HF to local cache repo (and symlink into ComfyUI)
 
-if [[ "${ENABLE_MYREPO_DOWNLOAD:-false}" == "true" ]]; then
+if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
 
   HF_REPO_TYPE=${HF_MY_REPO_TYPE:-model} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" "--exclude *.tar" || true
 
