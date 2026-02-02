@@ -293,10 +293,15 @@ rsync_or_symlink_source_to_destination rsync "$GIT_HEARMEMAN_WAN_REPO_LOCAL/work
 #----------------------------------------------
 # Synchronize My WAN git repo (and copy workflows into ComfyUI - repo_name subdir under 'workflows')
 
-init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
-rsync_or_symlink_source_to_destination rsync "$GIT_MYWORKFLOWS_REPO_LOCAL/" \
-                                             "$COMFY_HOME/user/default/workflows/"
+if [[ "${ENABLE_MY_WORKFLOWS_DOWNLOAD:-false}" == "true" ]]; then
 
+  init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
+  rsync_or_symlink_source_to_destination rsync "$GIT_MYWORKFLOWS_REPO_LOCAL/" \
+                                              "$COMFY_HOME/user/default/workflows/"
+
+else
+  echo "ENABLE_MY_WORKFLOWS_DOWNLOAD=false → skipping MyWorkflows sync."
+fi
 
 aria2_show_download_snapshot || true
 

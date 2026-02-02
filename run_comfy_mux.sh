@@ -43,7 +43,7 @@ export PATH="/opt/venv/bin:${PATH}"
 
 BASE="${COMFY_HOME}"
 LOGS="${COMFY_LOGS}"
-START_TIMEOUT="${START_TIMEOUT:-60}"
+START_TIMEOUT="${START_TIMEOUT:-120}"
 GPU_PORT_BASE="${GPU_PORT_BASE:-8288}"
 MAX_GPU_SESSIONS="${MAX_GPU_SESSIONS:-4}"
 
@@ -106,7 +106,7 @@ PORTS=(8188 8288 8388 8488 8588)
 
 wait_http() {
   local port="$1"
-  local seconds="${2:-45}"
+  local seconds="${2:-120}"
   local i
   for ((i=0; i<seconds; i++)); do
     if curl -fsS "http://127.0.0.1:${port}" >/dev/null 2>&1; then

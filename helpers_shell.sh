@@ -1230,3 +1230,217 @@ install_gdrive_folder_as() {
   printf '%s\n' "$dest"
 }
 
+hf_download_from_manifest() {
+  _helpers_need curl; _helpers_need jq; _helpers_need awk
+  _helpers_need hf
+
+  # Optional arg: manifest source; if empty, fall back to MODEL_MANIFEST_URL.
+  # Source can be:
+  #   - local file path (JSON)
+  #   - URL (http/https)
+  local src="${1:-${MODEL_MANIFEST_URL:-}}"
+  if [[ -z "$src" ]]; then
+    echo "hf_download_from_manifest: no manifest source given and MODEL_MANIFEST_URL is not set." >&2
+    return 1
+  fi
+
+  local MAN tmp=""
+  if [[ -f "$src" ]]; then
+    MAN="$src"
+  else
+    MAN="$(mktemp)"
+    tmp="$MAN"
+    if ! curl -fsSL "$src" -o "$MAN"; then
+      echo "hf_download_from_manifest: failed to fetch manifest: $src" >&2
+      rm -f "$tmp"
+      return 1
+    fi
+  fi
+
+  # ---- (Optional but useful) export manifest vars/paths into env if not already set ----
+  # This makes {COMFY_HOME}, {DIFFUSION_MODELS_DIR}, etc resolvable even if caller didn't export them.
+  # Two-pass: vars first, then paths (paths may reference vars).
+  _hf_manifest_export_kv_block() {
+    local jq_expr="$1"
+    jq -r "$jq_expr" "$MAN" | while IFS=$'\t' read -r k v; do
+      [[ -z "$k" ]] && continue
+      [[ "$k" =~ ^[A-Z0-9_]+$ ]] || continue
+      # don't overwrite existing env
+      if [[ -z "${!k+x}" ]]; then
+        # resolve any {TOKENS} inside the value
+        local vv
+        vv="$(helpers_resolve_placeholders "$v")" || vv="$v"
+        export "$k=$vv"
+      fi
+    done
+  }
+
+  _hf_manifest_export_kv_block '.vars  // {} | to_entries[] | [.key, (.value|tostring)] | @tsv'
+  _hf_manifest_export_kv_block '.paths // {} | to_entries[] | [.key, (.value|tostring)] | @tsv'
+
+  # ---- find enabled sections (matches aria2_download_from_manifest logic) ----
+  local SECTIONS_ALL ENABLED sec dl_var
+  SECTIONS_ALL="$(jq -r '.sections | keys[]' "$MAN")"
+  ENABLED=()
+  while read -r sec; do
+    dl_var="download_${sec}"
+    if [[ "${!sec:-}" == "true" || "${!sec:-}" == "1" || \
+          "${!dl_var:-}" == "true" || "${!dl_var:-}" == "1" ]]; then
+      ENABLED+=("$sec")
+    fi
+  done <<<"$SECTIONS_ALL"
+
+  if ((${#ENABLED[@]} == 0)); then
+    echo "hf_download_from_manifest: no sections enabled in manifest '$src'." >&2
+    echo 0
+    [[ -n "$tmp" ]] && rm -f "$tmp"
+    return 0
+  fi
+  mapfile -t ENABLED < <(printf '%s\n' "${ENABLED[@]}" | awk '!seen[$0]++')
+
+  # ---- helper: parse HF URL into repo_id, revision, repo_file_path ----
+  _hf_parse_url() {
+    local url="$1"
+    local p org repo mode rev rest
+
+    p="${url#https://huggingface.co/}"
+    p="${p#http://huggingface.co/}"
+
+    IFS='/' read -r org repo mode rev rest <<<"$p"
+
+    if [[ -z "$org" || -z "$repo" || -z "$mode" || -z "$rev" || -z "$rest" ]]; then
+      return 1
+    fi
+
+    # mode usually: resolve|blob|raw
+    # rev: main|<commit_sha>|<tag>
+    # rest: path/to/file.ext
+    printf '%s\t%s\t%s\n' "${org}/${repo}" "$rev" "$rest"
+  }
+
+  # ---- helper: download ONE entry via hf download into temp dir then move to desired path ----
+  _hf_manifest_download_one() {
+    local url="$1" raw_path="$2"
+    local path dir out
+    local repo_id rev repo_file
+    local tmpdir srcfile
+
+    path="$(helpers_resolve_placeholders "$raw_path")" || return 1
+    dir="$(dirname -- "$path")"
+    out="$(basename -- "$path")"
+    mkdir -p -- "$dir"
+
+    if [[ -f "$path" ]]; then
+      echo " - ⏭️ SKIPPING: $out (file exists)" >&2
+      return 2   # special: skipped
+    fi
+
+    local parsed
+    if ! parsed="$(_hf_parse_url "$url")"; then
+      echo "ERROR: Could not parse HF URL: $url" >&2
+      return 1
+    fi
+    IFS=$'\t' read -r repo_id rev repo_file <<<"$parsed"
+
+    # Encourage hf_transfer if available
+    export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
+
+    # temp download dir (keeps your model dirs clean even when repo_file has subfolders)
+    tmpdir="$(mktemp -d -p "$dir" ".hf_tmp_${out}.XXXXXX")" || return 1
+
+    echo " - 📥 Download: $out" >&2
+    # NOTE: repo_file may contain slashes; hf download will create those dirs under tmpdir.
+    if ! hf download "$repo_id" "$repo_file" --revision "$rev" --local-dir "$tmpdir"; then
+      echo "ERROR: hf download failed for $repo_id@$rev:$repo_file" >&2
+      rm -rf -- "$tmpdir"
+      return 1
+    fi
+
+    srcfile="$tmpdir/$repo_file"
+    if [[ ! -f "$srcfile" ]]; then
+      # fallback: locate by basename if hf moved/linked unexpectedly
+      srcfile="$(find "$tmpdir" -type f -name "$out" -print -quit 2>/dev/null || true)"
+    fi
+    if [[ ! -f "$srcfile" ]]; then
+      echo "ERROR: Download succeeded but could not locate file under temp dir for: $out" >&2
+      rm -rf -- "$tmpdir"
+      return 1
+    fi
+
+    # Move into final flattened destination
+    mv -f -- "$srcfile" "$path"
+    rm -rf -- "$tmpdir"
+    return 0
+  }
+
+  # ---- parallel job control ----
+  local max_jobs="${HF_MANIFEST_JOBS:-2}"
+  [[ "$max_jobs" =~ ^[0-9]+$ ]] || max_jobs=2
+  (( max_jobs < 1 )) && max_jobs=1
+
+  local any=0
+  local failures=0
+
+  for sec in "${ENABLED[@]}"; do
+    echo ">>> Download section: $sec" >&2
+
+    local tsv
+    tsv="$(
+      jq -r --arg sec "$sec" '
+        def as_obj:
+          if   type=="object" then {url:(.url//""), path:(.path // ((.dir // "") + (if .out then "/" + .out else "" end)))}
+          elif type=="array"  then {url:(.[0]//""), path:(.[1]//"")}
+          elif type=="string" then {url:., path:""}
+          else {url:"", path:""} end;
+        (.sections[$sec] // [])[] | as_obj | select(.url|length>0)
+        | [.url, (if (.path|length)>0 then .path else (.url|sub("^.*/";"")) end)] | @tsv
+      ' "$MAN"
+    )"
+
+    [[ -z "$tsv" ]] && continue
+
+    while IFS=$'\t' read -r url raw_path; do
+      # throttle
+      while (( $(jobs -rp | wc -l) >= max_jobs )); do
+        sleep 0.2
+      done
+
+      (
+        _hf_manifest_download_one "$url" "$raw_path"
+        rc=$?
+        # 0 = downloaded, 2 = skipped, else = failure
+        exit "$rc"
+      ) &
+
+      any=1
+    done <<<"$tsv"
+  done
+
+  # wait for all jobs, count failures (ignore skips=2)
+  local pid rc
+  for pid in $(jobs -rp); do
+    if wait "$pid"; then
+      :
+    else
+      rc=$?
+      if [[ "$rc" -ne 2 ]]; then
+        failures=$((failures+1))
+      fi
+    fi
+  done
+
+  [[ -n "$tmp" ]] && rm -f "$tmp"
+
+  if [[ "$any" == "0" ]]; then
+    echo "hf_download_from_manifest: nothing new to download from '$src'." >&2
+  fi
+
+  if (( failures > 0 )); then
+    echo "hf_download_from_manifest: completed with $failures failure(s)." >&2
+    printf '%s\n' "$any"
+    return 1
+  fi
+
+  printf '%s\n' "$any"
+  return 0
+}
