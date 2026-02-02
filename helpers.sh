@@ -190,7 +190,7 @@ ensure_comfy_dirs() {
 
   #-- Model directories
   mkdir -p \
-    "${MODELS_DIR:-${COMFY_HOME}/models}" \
+    "${MODELS_DIR:?}" \
     "${CHECKPOINTS_DIR:?}" \
     "${DIFFUSION_MODELS_DIR:?}" \
     "${TEXT_ENCODERS_DIR:?}" \
@@ -198,7 +198,9 @@ ensure_comfy_dirs() {
     "${VAE_DIR:?}" \
     "${LORAS_DIR:?}" \
     "${DETECTION_DIR:?}" \
-    "${CTRL_DIR:?}" \
+    "${CTRLNET_DIR:?}" \
+    "${CTRLNET_UNION_DIR:?}" \
+    "${ULTRALYTICS_DIR:?}" \
     "${UPSCALE_DIR:?}"
 
   #-- Extras
@@ -3680,7 +3682,7 @@ aria2_enqueue_and_wait_from_civitai() {
 show_env () {
   # ----- Convenience environment echo -----
   echo "========================================================================"
-  echo "🧠 Environment Summary — $(date -Is)"
+  echo "🧠 ComfyUI Environment Summary — $(date -Is)"
   echo "========================================================================"
   echo ""
   echo " COMFY_HOME:            $COMFY_HOME"
@@ -3695,14 +3697,17 @@ show_env () {
   echo " Workflow dir:          $WORKFLOW_DIR"
   echo " Model manifest URL:    $MODEL_MANIFEST_URL"
   echo ""
+  echo " MODELS_DIR:            $MODELS_DIR"
   echo " DIFFUSION_MODELS_DIR:  $DIFFUSION_MODELS_DIR"
   echo " TEXT_ENCODERS_DIR:     $TEXT_ENCODERS_DIR"
   echo " CLIP_VISION_DIR:       $CLIP_VISION_DIR"
   echo " VAE_DIR:               $VAE_DIR"
   echo " LORAS_DIR:             $LORAS_DIR"
   echo " DETECTION_DIR:         $DETECTION_DIR"
-  echo " CTRL_DIR:              $CTRL_DIR"
+  echo " CTRLNET_DIR:           $CTRLNET_DIR"
+  echo " CTRLNET_UNION_DIR:     $CTRLNET_UNION_DIR"
   echo " UPSCALE_DIR:           $UPSCALE_DIR"
+  echo " ULTRALYTICS_DIR:       $ULTRALYTICS_DIR"
   echo ""
   echo " HF_TOKEN:              $(hf_token_status)"
   echo " CIVITAI_TOKEN:         $(civitai_token_status)"
@@ -3710,6 +3715,8 @@ show_env () {
   echo " LORAS_IDS:             ${LORAS_IDS_TO_DOWNLOAD:-Empty}"
   echo ""
   echo "======================================="
+  echo ""
+  echo ""
 
 }
 
