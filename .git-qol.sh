@@ -121,7 +121,8 @@ _confirm() {
 #   gup more     # pulls + then shows short “what changed” summary
 gup() {
   local show_more=0
-  [[ "$1" == "more" ]] && show_more=1
+  local arg1="${1-}"          # <-- safe under set -u
+  [[ "$arg1" == "more" ]] && show_more=1
 
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "❌ Not a git repo."; return 1; }
 
@@ -130,9 +131,9 @@ gup() {
 
   # Snapshot state
   local LOCAL REMOTE BASE
-  LOCAL=$(git rev-parse @ 2>/dev/null) || return 1
-  REMOTE=$(git rev-parse @{u} 2>/dev/null || echo "")
-  BASE=$(git merge-base @ @{u} 2>/dev/null || echo "")
+  LOCAL="$(git rev-parse @ 2>/dev/null)" || return 1
+  REMOTE="$(git rev-parse @{u} 2>/dev/null || echo "")"
+  BASE="$(git merge-base @ @{u} 2>/dev/null || echo "")"
 
   if [[ -z "$REMOTE" ]]; then
     echo "⚠️  No upstream set. First time push:"
@@ -155,7 +156,6 @@ gup() {
     return 0
   elif [[ "$LOCAL" == "$BASE" ]]; then
     echo "⬇️  Remote has new commits (fast-forward)."
-    # Safe; optional confirm only if local edits present
     if (( has_local_edits )); then
       _confirm "Proceed with pull (your uncommitted changes will be autostashed)?" || { echo "Canceled."; return 1; }
     fi
@@ -173,14 +173,14 @@ gup() {
 
   # Do the pull (rebase + autostash)
   local BEFORE AFTER
-  BEFORE=$(git rev-parse HEAD)
+  BEFORE="$(git rev-parse HEAD)"
   echo "⬇️  Pulling (rebase + autostash)…"
   if ! git pull --rebase --autostash; then
     echo "❌ Pull/rebase failed. Resolve conflicts, then:  git rebase --continue"
     echo "   Or abort with:                               git rebase --abort"
     return 1
   fi
-  AFTER=$(git rev-parse HEAD)
+  AFTER="$(git rev-parse HEAD)"
 
   # Optional “more” report
   if (( show_more )); then
