@@ -53,8 +53,8 @@ https://github.com/wallen0322/ComfyUI-Wan22FMLF ComfyUI-Wan22FMLF
 #https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved ComfyUI-AnimateDiff-Evolved
 https://github.com/ltdrdata/ComfyUI-Manager comfyui-manager
 https://github.com/abdullahceylan/ac-comfyui-queue-manager comfyui-queue-manager
-https://github.com/hayden-fr/ComfyUI-Model-Manager ComfyUI-Model-Manager
-https://github.com/willmiao/ComfyUI-Lora-Manager ComfyUI-Lora-Manager
+#https://github.com/hayden-fr/ComfyUI-Model-Manager ComfyUI-Model-Manager
+#https://github.com/willmiao/ComfyUI-Lora-Manager ComfyUI-Lora-Manager
 # LBM Relighting
 https://github.com/shadowcz007/comfyui-mixlab-nodes comfyui-mixlab-nodes
 https://github.com/kijai/ComfyUI-Florence2 ComfyUI-Florence2
@@ -84,4 +84,11 @@ https://github.com/ltdrdata/ComfyUI-Inspire-Pack ComfyUI-Inspire-Pack
 # QWEN Compositor
 https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch ComfyUI-Inpaint-CropAndStitch
 https://github.com/erosDiffusion/ComfyUI-enricos-nodes ComfyUI-enricos-nodes
-
+# SDXL HD Photos (Graam)
+https://github.com/stavsap/comfyui-ollama comfyui-ollama
+https://github.com/TinyTerra/ComfyUI_tinyterraNodes ComfyUI_tinyterraNodes
+https://github.com/pamparamm/sd-perturbed-attention sd-perturbed-attention
+https://github.com/gseth/ControlAltAI-Nodes ControlAltAI-Nodes 
+https://github.com/vrgamegirl19/comfyui-vrgamedevgirl comfyui-vrgamedevgirl
+https://github.com/brucew4yn3rp/ComfyUI_VintageEffect ComfyUI_VintageEffect
+s

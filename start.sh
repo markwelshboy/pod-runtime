@@ -25,6 +25,7 @@ umask 077
 VARS=(
   HF_TOKEN CIVITAI_TOKEN LORAS_IDS_TO_DOWNLOAD CHECKPOINT_IDS_TO_DOWNLOAD
   HF_REPO_ID HF_REPO_TYPE HF_REMOTE_URL
+  HF_USERNAME HF_MY_REPO_NAME HF_MY_REPO_ID HF_MY_REPO_LOCAL
   MODEL_MANIFEST_URL CUSTOM_NODES_MANIFEST_URL
   ENABLE_MODEL_MANIFEST_DOWNLOAD ENABLE_CIVITAI_DOWNLOAD ENABLE_SAGE 
   INSTALL_CUSTOM_NODES LAUNCH_JUPYTER
@@ -37,8 +38,10 @@ VARS=(
   download_gguf
   download_aio_mega
   download_vace_artofficial
-  download_qwen download_qwen_image_edit
+  download_qwen download_qwen_image_edit_2511 download_qwen_image_edit_2509
   download_upscale
+  ENABLE_MYREPO_DOWNLOAD
+  TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID TELEGRAM_NAME TELEGRAM_ENABLE TELEGRAM_NOTIFY_OK
 )
 
 {
@@ -261,16 +264,27 @@ section 8 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
 #----------------------------------------------
 
 #----------------------------------------------
-# Synchronize 'MyLoras' from HF to local cache repo (and symlink into ComfyUI)
+# Synchronize 'diffusionetc' from HF to local cache repo (and symlink into ComfyUI)
 
-HF_REPO_TYPE="model" init_repo --hf "$HF_MYLORA_REPO_ID" "$HF_MYLORA_REPO_LOCAL" '*.safetensors' || true
+if [[ "${ENABLE_MYREPO_DOWNLOAD:-false}" == "true" ]]; then
 
-if hf_repo_looks_good "$HF_MYLORA_REPO_LOCAL"; then
-  rsync_or_symlink_source_to_destination symlink "$HF_MYLORA_REPO_LOCAL" "$LORAS_DIR"
-  # Create symlinks from MyLoras into main loras dir for easy access
-  ln -sfn $COMFY/models/loras/MyLoras/loras/* $COMFY/models/loras/
+  HF_REPO_TYPE=${HF_MY_REPO_TYPE:-model} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" "--exclude *.tar" || true
+
+  if hf_repo_looks_good "$HF_MY_REPO_LOCAL"; then
+    # Stash (symlink) the repo into /workspace for easy access/viewing
+    rsync_or_symlink_source_to_destination symlink "$HF_MY_REPO_LOCAL" "/workspace"
+    # Create additional symlinks into main COMFY dirs as needed
+    ln -sfn $HF_MY_REPO_LOCAL/loras/* "$LORAS_DIR/"
+    ln -sf  $HF_MY_REPO_LOCAL/ultralytics/* "$ULTRALYTICS_DIR/bbox/"
+    ln -sfn $HF_MY_REPO_LOCAL/models/* "$MODELS_DIR/"
+    ln -sf  $HF_MY_REPO_LOCAL/upscalers/* "$UPSCALE_DIR/"
+    ln -sfn $HF_MY_REPO_LOCAL/checkpoints/* "$CHECKPOINTS_DIR/"
+  else
+    _sync_warn "$HF_MY_REPO_ID repo not healthy at '$HF_MY_REPO_LOCAL' (skipping symlinks)."
+  fi
+
 else
-  _sync_warn "MyLoras repo not healthy at '$HF_MYLORA_REPO_LOCAL' (skipping symlinks)."
+  echo "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
 fi
 
 #----------------------------------------------
@@ -347,7 +361,7 @@ echo ""
 echo "▶️  Starting ComfyUI"
 echo ""
 
-if ${SCRIPT_DIR}/run_comfy_mux.sh; then
+if ${SCRIPT_DIR}/run_comfy_mux.sh start; then
   tg "🚀 ComfyUI is UP on 8188, 8288 (GPU0), 8388 (GPU1 if present)." || true
 else
   tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}." || true

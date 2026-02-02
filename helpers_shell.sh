@@ -17,8 +17,8 @@ fi
 : "${HFF_SRC_PY:=${POD_RUNTIME_DIR:-}/bin/hff.py}"
 
 # Repo defaults (override in your shell rc if needed)
-: "${HFF_REPO:=markwelshboyx/MyLoras}"
-: "${HFF_REPO_TYPE:=model}"
+: "${HFF_REPO:=${HF_MY_REPO_ID:-markwelshboyx/diffusionetc}}"
+: "${HFF_REPO_TYPE:=${HF_MY_REPO_TYPE:-model}}"
 : "${HFF_SNAPSHOT_DIR:=snapshot}"
 
 _hff_info() { echo "[hff] $*" >&2; }
