@@ -741,6 +741,36 @@
         "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/709844db75d2e15582cf204e9a0b5e12b23a35dd/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank256_bf16.safetensors",
         "path": "{DIFFUSION_MODELS_DIR}/lightx2v_I2V_14B_480p_cfg_step_distill_rank256_bf16.safetensors"
       }
+    ],
+    "download_seedvr2": [
+      {
+        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors",
+        "path": "{VAE_DIR}/ema_vae_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_3b_fp16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/seedvr2_ema_3b_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/seedvr2_ema_3b_fp8_e4m3fn.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_fp16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/seedvr2_ema_7b_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_fp8_e4m3fn.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/seedvr2_ema_7b_fp8_e4m3fn.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/seedvr2_ema_7b_sharp_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp8_e4m3fn.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/seedvr2_ema_7b_sharp_fp8_e4m3fn.safetensors"
+      }
     ]
   }
 }

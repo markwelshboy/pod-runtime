@@ -201,6 +201,7 @@ ensure_comfy_dirs() {
     "${CTRLNET_DIR:?}" \
     "${CTRLNET_UNION_DIR:?}" \
     "${ULTRALYTICS_DIR:?}" \
+    "${SEEDVR2_DIR:?}" \
     "${UPSCALE_DIR:?}"
 
   #-- Extras
@@ -5741,7 +5742,7 @@ init_repo() {
       [[ ${#inc[@]} -gt 0 ]] && _sync_info "Includes: ${SPECS[*]}"
 
       # "Clone" (download snapshot into LOCAL_DIR). Repeatable/idempotent.
-      huggingface-cli download "$REPO_ID" \
+      hf download "$REPO_ID" \
         --repo-type "$repo_type" \
         "${rev_args[@]}" \
         "${inc[@]}" \
