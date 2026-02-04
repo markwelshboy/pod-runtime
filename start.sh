@@ -263,7 +263,9 @@ section 8 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
 # Synchronize 'diffusionetc' from HF to local cache repo (and symlink into ComfyUI)
 
 if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
-
+  
+  export HF_EXCLUDE_GLOBS=${HF_MY_REPO_EXCLUDE_GLOBS:-"snapshot/**"}
+  export HF_INCLUDE_GLOBS=${HF_MY_REPO_INCLUDE_GLOBS:-""}
   HF_REPO_TYPE=${HF_MY_REPO_TYPE:-model} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" || true
 
   if hf_repo_looks_good "$HF_MY_REPO_LOCAL"; then

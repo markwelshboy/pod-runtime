@@ -5664,21 +5664,22 @@ hf_sync_repo() {
 }
 
 # init_repo [--hf|--git] <repo-id-or-url> <local-dir> [track-patterns...]
-#   --hf  : repo-id like "user/repo" (or full https://huggingface.co/... URL)
+#   --hf  : HF repo-id like "user/repo" (or full https://huggingface.co/... URL)
 #   --git : repo-id like "user/repo" or full https:// / git@ URL (GitHub, etc.)
 #   default mode is --git if neither is provided.
 #
-#   track-patterns: one or more patterns for git-lfs, e.g.:
+#   track-patterns (git mode): one or more patterns for git-lfs, e.g.:
 #     '*.safetensors' '*.pth'
 #   Or a single quoted list:
 #     '*.safetensors *.pth'
-# init_repo [--hf|--git] <repo-id-or-url> <local-dir> [track-patterns...]
-#   --hf  : HF repo-id like "user/repo" or "datasets/user/repo" or full https URL
-#   --git : plain git repo (GitHub etc), default if neither flag given
-#   track-patterns: optional patterns for git-lfs, e.g.:
-#       '*.safetensors' '*.pth'
-#     or a single quoted list:
-#       '*.safetensors *.pth'
+#
+# HF mode include/exclude (env vars):
+#   HF_INCLUDE_GLOBS="loras/** extras/**"
+#   HF_EXCLUDE_GLOBS="snapshot/** **/*.tar.gz **/*.manifest.json"
+# Notes:
+#   - HF mode args after <local-dir> are treated as include patterns (like before)
+#   - git clone doesn't support include/exclude; sparse checkout is separate.
+
 init_repo() {
   local MODE="git"
 
@@ -5701,7 +5702,7 @@ init_repo() {
   _sync_info "init_repo (mode=$MODE) for repo: $REPO_ID at local dir: $LOCAL_DIR"
   echo ""
 
-  # Collect patterns (may be one arg with spaces)
+  # Collect trailing patterns (may be one arg with spaces)
   local -a SPECS=("$@")
   if [[ ${#SPECS[@]} -eq 1 && "${SPECS[0]}" == *" "* ]]; then
     read -r -a SPECS <<<"${SPECS[0]}"
@@ -5713,39 +5714,80 @@ init_repo() {
     hf)
       # ------------------------------------------------------------
       # HF mode = snapshot-style sync (NOT git). Think: "hf clone".
+      # Adds support for includes/excludes via env vars:
+      #   HF_INCLUDE_GLOBS, HF_EXCLUDE_GLOBS
       # ------------------------------------------------------------
-      if ! command -v huggingface-cli >/dev/null 2>&1; then
-        _sync_err "init_repo --hf: huggingface-cli not found. Install huggingface-hub in a venv (or pip) to get it."
+      if ! command -v huggingface-cli >/dev/null 2>&1 && ! command -v hf >/dev/null 2>&1; then
+        _sync_err "init_repo --hf: huggingface CLI not found. Need 'hf' (preferred) or 'huggingface-cli'."
         return 1
       fi
 
       mkdir -p "$LOCAL_DIR" || true
 
-      local repo_type="${HF_REPO_TYPE:-model}"     # model|dataset
-      local revision="${HF_REVISION:-}"            # optional: branch/tag/commit
+      local repo_type="${HF_REPO_TYPE:-model}"   # model|dataset
+      local revision="${HF_REVISION:-}"          # optional: branch/tag/commit
 
       # Enable hf_transfer if present; do not fail if it's not available.
       export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
 
-      # Build include args (if none provided, download whole repo)
-      local -a inc=()
-      local spec
-      for spec in "${SPECS[@]}"; do
-        [[ -n "$spec" ]] || continue
-        inc+=(--include "$spec")
+      # Prefer 'hf' CLI if present; fallback to 'huggingface-cli'
+      local HF_CMD="hf"
+      command -v hf >/dev/null 2>&1 || HF_CMD="huggingface-cli"
+
+      # ---- Build include specs ----
+      # 1) positional SPECS (keeps your current behavior): treated as includes in HF mode
+      # 2) HF_INCLUDE_GLOBS env: additional includes
+      local -a include_specs=()
+      local s
+
+      for s in "${SPECS[@]}"; do
+        [[ -n "$s" ]] || continue
+        include_specs+=("$s")
+      done
+
+      if [[ -n "${HF_INCLUDE_GLOBS:-}" ]]; then
+        local -a env_inc=()
+        read -r -a env_inc <<<"${HF_INCLUDE_GLOBS}"
+        for s in "${env_inc[@]}"; do
+          [[ -n "$s" ]] || continue
+          include_specs+=("$s")
+        done
+      fi
+
+      # ---- Build exclude specs ----
+      local -a exclude_specs=()
+      if [[ -n "${HF_EXCLUDE_GLOBS:-}" ]]; then
+        local -a env_exc=()
+        read -r -a env_exc <<<"${HF_EXCLUDE_GLOBS}"
+        for s in "${env_exc[@]}"; do
+          [[ -n "$s" ]] || continue
+          exclude_specs+=("$s")
+        done
+      fi
+
+      # Convert to CLI args
+      local -a inc_args=()
+      local -a exc_args=()
+      for s in "${include_specs[@]}"; do
+        inc_args+=(--include "$s")
+      done
+      for s in "${exclude_specs[@]}"; do
+        exc_args+=(--exclude "$s")
       done
 
       local -a rev_args=()
       [[ -n "$revision" ]] && rev_args=(--revision "$revision")
 
       _sync_info "HF sync: repo=${REPO_ID} type=${repo_type}${revision:+ rev=${revision}} → ${LOCAL_DIR}"
-      [[ ${#inc[@]} -gt 0 ]] && _sync_info "Includes: ${SPECS[*]}"
+      [[ ${#include_specs[@]} -gt 0 ]] && _sync_info "Includes: ${include_specs[*]}"
+      [[ ${#exclude_specs[@]} -gt 0 ]] && _sync_info "Excludes: ${exclude_specs[*]}"
 
       # "Clone" (download snapshot into LOCAL_DIR). Repeatable/idempotent.
-      hf download "$REPO_ID" \
+      "$HF_CMD" download "$REPO_ID" \
         --repo-type "$repo_type" \
         "${rev_args[@]}" \
-        "${inc[@]}" \
+        "${inc_args[@]}" \
+        "${exc_args[@]}" \
         --local-dir "$LOCAL_DIR" || {
           _sync_err "init_repo --hf: download failed for $REPO_ID"
           return 1
@@ -5757,7 +5799,9 @@ init_repo() {
 
     git)
       # ------------------------------------------------------------
-      # Git mode (your existing behavior)
+      # Git mode (existing behavior)
+      # NOTE: git clone does not support include/exclude globs like hf download.
+      # If you ever want that behavior, you'd use sparse checkout or partial clone.
       # ------------------------------------------------------------
       local REMOTE_URL=""
       local LOG_URL=""
