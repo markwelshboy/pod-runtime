@@ -451,4 +451,391 @@ def cmd_put(args) -> None:
 
 def cmd_get(args) -> None:
     tok = need_token()
-    src = normalize
+    src = normalize_path(args.src)
+    if not src:
+        die("get: src required")
+
+    out = Path(args.out or Path(src).name).expanduser()
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        cached_p = _hf_download(args.repo, args.type, src, tok, cache_dir=args.cache_dir or None)
+    except Exception as e:
+        die(f"get: download failed: {e}", 1)
+
+    try:
+        if args.move:
+            try:
+                os.replace(str(cached_p), str(out))
+            except OSError:
+                shutil.copy2(str(cached_p), str(out))
+                try:
+                    cached_p.unlink()
+                except OSError:
+                    pass
+        else:
+            shutil.copy2(str(cached_p), str(out))
+    except Exception as e:
+        die(f"get: failed to write {out}: {e}", 1)
+
+    print(str(out))
+
+
+# ---------------- Snapshot commands (pure hub API, no CLI) ----------------
+
+def snap_id_from_name(name: str) -> str:
+    slug = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name).strip("._-")
+    slug = "_".join(slug.split())
+    slug = slug[:120] if slug else "snapshot"
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    return f"{ts}__{slug}"
+
+
+def cmd_snapshot_create(args) -> None:
+    tok = need_token()
+
+    if os.environ.get("HF_HUB_ENABLE_HF_TRANSFER") is None:
+        os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+
+    if not args.name:
+        die("snapshot create: --name is required")
+    if not args.items:
+        die("snapshot create: provide files/dirs to archive")
+
+    sid = snap_id_from_name(args.name)
+    tmp = Path(args.tmp_dir or ".").expanduser() / f"{sid}.tar"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+
+    tar_path = tmp
+    try:
+        if args.compress == "gz":
+            tar_path = tmp.with_suffix(".tar.gz")
+            subprocess.run(["tar", "-czf", str(tar_path), *args.items], check=True)
+        else:
+            subprocess.run(["tar", "-cf", str(tar_path), *args.items], check=True)
+    except subprocess.CalledProcessError as e:
+        die(f"snapshot create: tar failed: {e}", 1)
+
+    manifest = tmp.with_suffix(".manifest.json")
+    manifest.write_text(
+        json.dumps(
+            {
+                "id": sid,
+                "name": args.name,
+                "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "items": args.items,
+                "tar": {"basename": tar_path.name, "bytes": tar_path.stat().st_size, "compress": args.compress},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    snapdir = normalize_path(args.snapdir).rstrip("/")
+    tar_in_repo = f"{snapdir}/{tar_path.name}"
+    mf_in_repo = f"{snapdir}/{manifest.name}"
+
+    a = api(tok)
+    try:
+        a.upload_file(
+            path_or_fileobj=str(tar_path),
+            path_in_repo=tar_in_repo,
+            repo_id=args.repo,
+            repo_type=args.type,
+            commit_message=f"snapshot: {sid} - {args.name}",
+        )
+        a.upload_file(
+            path_or_fileobj=str(manifest),
+            path_in_repo=mf_in_repo,
+            repo_id=args.repo,
+            repo_type=args.type,
+            commit_message=f"snapshot manifest: {sid}",
+        )
+    except Exception as e:
+        die(f"snapshot create: upload failed: {e}", 1)
+
+    print(sid)
+
+
+def cmd_snapshot_list(args) -> None:
+    tok = need_token()
+    a = api(tok)
+    files = list_files(a, args.repo, args.type)
+    pref = normalize_path(args.snapdir).rstrip("/") + "/"
+    ids = sorted(
+        {Path(f).name[:-len(".manifest.json")] for f in files if f.startswith(pref) and f.endswith(".manifest.json")},
+        reverse=True,
+    )
+    for i in ids:
+        print(i)
+
+
+def cmd_snapshot_show(args) -> None:
+    tok = need_token()
+    a = api(tok)
+    files = list_files(a, args.repo, args.type)
+
+    pref = normalize_path(args.snapdir).rstrip("/") + "/"
+    sid = args.id
+    mf = f"{pref}{sid}.manifest.json"
+    if mf not in files:
+        die(f"snapshot show: manifest not found: {mf}", 1)
+
+    try:
+        cached = _hf_download(args.repo, args.type, mf, tok, cache_dir=None)
+        print(cached.read_text(encoding="utf-8"))
+    except Exception as e:
+        die(f"snapshot show: failed: {e}", 1)
+
+
+def cmd_snapshot_get(args) -> None:
+    tok = need_token()
+    if os.environ.get("HF_HUB_ENABLE_HF_TRANSFER") is None:
+        os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+
+    if not args.id:
+        die("snapshot get: id required")
+
+    pref = normalize_path(args.snapdir).rstrip("/")
+    extract_dir = Path(args.extract_dir or ".").expanduser()
+    extract_dir.mkdir(parents=True, exist_ok=True)
+
+    mf = f"{pref}/{args.id}.manifest.json"
+    try:
+        mf_cached = _hf_download(args.repo, args.type, mf, tok, cache_dir=args.cache_dir or None)
+    except Exception as e:
+        die(f"snapshot get: could not download manifest {mf}: {e}", 1)
+
+    try:
+        meta = json.loads(mf_cached.read_text(encoding="utf-8"))
+        tar_base = meta.get("tar", {}).get("basename")
+        if not tar_base:
+            die("snapshot get: manifest missing tar.basename", 1)
+    except Exception as e:
+        die(f"snapshot get: failed to parse manifest: {e}", 1)
+
+    tar_in_repo = f"{pref}/{tar_base}"
+    try:
+        tar_cached = _hf_download(args.repo, args.type, tar_in_repo, tok, cache_dir=args.cache_dir or None)
+    except Exception as e:
+        die(f"snapshot get: could not download tar {tar_in_repo}: {e}", 1)
+
+    try:
+        _tar_extract(tar_cached, extract_dir)
+    except subprocess.CalledProcessError as e:
+        die(f"snapshot get: tar extract failed: {e}", 1)
+
+    print("ok")
+
+
+def cmd_snapshot_destroy(args) -> None:
+    tok = need_token()
+    a = api(tok)
+    files = list_files(a, args.repo, args.type)
+
+    if not args.id:
+        die("snapshot destroy: id required")
+
+    pref = normalize_path(args.snapdir).rstrip("/") + "/"
+    targets = [f for f in files if f.startswith(pref + args.id + ".")]
+    if not targets:
+        die("snapshot destroy: nothing matched", 1)
+
+    if not args.yes:
+        print("About to DELETE:")
+        for t in targets:
+            print("  -", t)
+        confirm = input("Type DELETE to confirm: ").strip()
+        if confirm != "DELETE":
+            die("aborted", 1)
+
+    ops = [_make_delete_op(t) for t in targets]
+    try:
+        a.create_commit(
+            repo_id=args.repo,
+            repo_type=args.type,
+            operations=ops,
+            commit_message=f"destroy snapshot {args.id}",
+        )
+    except Exception as e:
+        die(f"snapshot destroy: failed: {e}", 1)
+    print("ok")
+
+
+# ---------------- Doctor ----------------
+
+def _cli_candidates() -> List[str]:
+    venv = os.environ.get("HFF_VENV", "/opt/hf-tools-venv")
+    cands = [
+        os.path.join(venv, "bin", "huggingface-cli"),
+        os.path.join(venv, "bin", "hf"),
+        "huggingface-cli",
+        "hf",
+    ]
+    return cands
+
+
+def cmd_doctor(args) -> None:
+    tok = os.environ.get("HF_TOKEN", "")
+    venv = os.environ.get("HFF_VENV", "/opt/hf-tools-venv")
+
+    report = {
+        "python": sys.executable,
+        "hff_venv_env": venv,
+        "hf_token_set": bool(tok),
+        "env": {
+            "HF_HUB_ENABLE_HF_TRANSFER": os.environ.get("HF_HUB_ENABLE_HF_TRANSFER"),
+            "HUGGINGFACE_HUB_TOKEN_set": bool(os.environ.get("HUGGINGFACE_HUB_TOKEN")),
+            "HF_HOME": os.environ.get("HF_HOME"),
+            "HF_HUB_CACHE": os.environ.get("HF_HUB_CACHE"),
+        },
+        "packages": {},
+        "hub_smoke": {},
+        "cli": {},
+    }
+
+    try:
+        import huggingface_hub
+        report["packages"]["huggingface_hub"] = getattr(huggingface_hub, "__version__", "?")
+    except Exception as e:
+        report["packages"]["huggingface_hub"] = f"ERROR: {e}"
+
+    try:
+        import hf_transfer
+        report["packages"]["hf_transfer"] = getattr(hf_transfer, "__version__", "OK")
+    except Exception as e:
+        report["packages"]["hf_transfer"] = f"missing/ERROR: {e}"
+
+    cli_info = {}
+    for cand in _cli_candidates():
+        exists = os.path.exists(cand) if ("/" in cand) else True
+        cli_info[cand] = {"exists_or_on_path": exists}
+    report["cli"]["candidates"] = cli_info
+
+    if tok:
+        try:
+            a = HfApi(token=tok)
+            report["hub_smoke"]["whoami"] = a.whoami().get("name", "?")
+            try:
+                a.repo_info(repo_id=args.repo, repo_type=args.type)
+                report["hub_smoke"]["repo_access"] = f"OK: {args.repo} ({args.type})"
+            except Exception as e:
+                report["hub_smoke"]["repo_access"] = f"ERROR: {e}"
+        except Exception as e:
+            report["hub_smoke"]["whoami"] = f"ERROR: {e}"
+    else:
+        report["hub_smoke"]["whoami"] = "SKIPPED (HF_TOKEN not set)"
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return
+
+    print("=== hff doctor ===")
+    print("python:", report["python"])
+    print("HFF_VENV:", report["hff_venv_env"])
+    print("HF_TOKEN set:", report["hf_token_set"])
+    print("huggingface_hub:", report["packages"].get("huggingface_hub"))
+    print("hf_transfer:", report["packages"].get("hf_transfer"))
+    print("HF_HUB_ENABLE_HF_TRANSFER:", report["env"].get("HF_HUB_ENABLE_HF_TRANSFER"))
+    print("HUGGINGFACE_HUB_TOKEN set:", report["env"].get("HUGGINGFACE_HUB_TOKEN_set"))
+    print("whoami:", report["hub_smoke"].get("whoami"))
+    print("repo access:", report["hub_smoke"].get("repo_access"))
+    print("CLI candidates (not required):")
+    for cand, info in report["cli"]["candidates"].items():
+        print(f"  - {cand}: {info['exists_or_on_path']}")
+    print("==================")
+
+
+# ---------------- CLI ----------------
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="hff.py")
+    p.add_argument("--repo", required=True, help="owner/name")
+    p.add_argument("--type", default="model", choices=["model", "dataset"], help="repo type")
+
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sp = sub.add_parser("ls")
+    sp.add_argument("path", nargs="?", default="")
+    sp.set_defaults(fn=cmd_ls)
+
+    sp = sub.add_parser("mkdir")
+    sp.add_argument("path")
+    sp.set_defaults(fn=cmd_mkdir)
+
+    sp = sub.add_parser("mv")
+    sp.add_argument("src")
+    sp.add_argument("dst")
+    sp.set_defaults(fn=cmd_mv)
+
+    sp = sub.add_parser("rm")
+    sp.add_argument("path")
+    sp.add_argument("--dry-run", action="store_true", help="print matched targets, do not delete")
+    sp.set_defaults(fn=cmd_rm)
+
+    sp = sub.add_parser("put")
+    sp.add_argument("local")
+    sp.add_argument("dst")
+    sp.add_argument("-m", "--message", default="")
+    sp.set_defaults(fn=cmd_put)
+
+    sp = sub.add_parser("get")
+    sp.add_argument("src")
+    sp.add_argument("out", nargs="?", default="")
+    sp.add_argument("--cache-dir", default="")
+    sp.add_argument("--move", action="store_true", help="move cached file into place (best-effort)")
+    sp.set_defaults(fn=cmd_get)
+
+    sp = sub.add_parser("snapshot")
+    sp.add_argument("--snapdir", default="snapshot", help="remote snapshot dir")
+    ssub = sp.add_subparsers(dest="scmd", required=True)
+
+    s1 = ssub.add_parser("create")
+    s1.add_argument("--name", required=True)
+    s1.add_argument("--compress", default="gz", choices=["gz", "none"])
+    s1.add_argument("--tmp-dir", default="")
+    s1.add_argument("items", nargs="+")
+    s1.set_defaults(fn=cmd_snapshot_create)
+
+    s2 = ssub.add_parser("list")
+    s2.set_defaults(fn=cmd_snapshot_list)
+
+    s3 = ssub.add_parser("show")
+    s3.add_argument("id")
+    s3.set_defaults(fn=cmd_snapshot_show)
+
+    s4 = ssub.add_parser("get")
+    s4.add_argument("id")
+    s4.add_argument("--extract-dir", default=".")
+    s4.add_argument("--cache-dir", default="")
+    s4.set_defaults(fn=cmd_snapshot_get)
+
+    s5 = ssub.add_parser("destroy")
+    s5.add_argument("id")
+    s5.add_argument("-y", "--yes", action="store_true")
+    s5.set_defaults(fn=cmd_snapshot_destroy)
+
+    sp = sub.add_parser("doctor")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(fn=cmd_doctor)
+
+    return p
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    args.fn(args)
+
+
+if __name__ == "__main__":
+    # Make it less brittle in interactive shells: clean error output,
+    # no massive tracebacks unless you opt-in.
+    try:
+        main()
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        die("interrupted", 130)
+    except Exception as e:
+        die(str(e), 1)
