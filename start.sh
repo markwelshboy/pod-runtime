@@ -152,22 +152,22 @@ section 2 "SSH"
 setup_ssh
 
 #------------------------------------------------------------------------
-section 3 "Relocate ComfyUI"
+#section 3 "Relocate ComfyUI"
 #----------------------------------------------
 # Ensure ComfyUI lives on the network volume
 #   /ComfyUI  →  $COMFY_HOME (/workspace/ComfyUI)
 #----------------------------------------------
-if [[ -d /ComfyUI ]]; then
-  mkdir -p "$(dirname "$COMFY_HOME")"
-
-  echo "[comfy-relocate] Merging base /ComfyUI into existing $COMFY_HOME structure (no overwrite)"
-  # Trailing slashes are important: copy contents, not the dir itself
-  rsync -a --ignore-existing /ComfyUI/ "$COMFY_HOME"/
-  # Optional: once you trust it, you can remove the original to avoid confusion
-  # rm -rf /ComfyUI
-else
-  echo "[comfy-relocate] ❌ Comfy not installed in expected location. Unable to move."
-fi
+#if [[ -d /ComfyUI ]]; then
+#  mkdir -p "$(dirname "$COMFY_HOME")"
+#
+#  echo "[comfy-relocate] Merging base /ComfyUI into existing $COMFY_HOME structure (no overwrite)"
+#  # Trailing slashes are important: copy contents, not the dir itself
+#  rsync -a --ignore-existing /ComfyUI/ "$COMFY_HOME"/
+#  # Optional: once you trust it, you can remove the original to avoid confusion
+#  # rm -rf /ComfyUI
+#else
+#  echo "[comfy-relocate] ❌ Comfy not installed in expected location. Unable to move."
+#fi
 
 #------------------------------------------------------------------------
 section 4 "Move Upscalers"
@@ -264,7 +264,7 @@ section 8 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
 
 if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
 
-  HF_REPO_TYPE=${HF_MY_REPO_TYPE:-model} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" "--exclude *.tar" || true
+  HF_REPO_TYPE=${HF_MY_REPO_TYPE:-model} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" || true
 
   if hf_repo_looks_good "$HF_MY_REPO_LOCAL"; then
     # Stash (symlink) the repo into /workspace for easy access/viewing

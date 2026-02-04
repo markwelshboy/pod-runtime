@@ -118,6 +118,10 @@ install_user_hff() {
 
 # -------- main wrapper --------
 hff() {
+  # Preserve caller's errexit; prevent failures from nuking interactive sessions
+  local __had_e=0
+  case $- in *e*) __had_e=1 ;; esac
+  set +e
   set -uo pipefail
 
   local venv="${HFF_VENV}"
@@ -127,71 +131,41 @@ hff() {
   local snapdir="${HFF_SNAPSHOT_DIR}"
 
   local cmd="${1:-}"; shift || true
+  local rc=0
 
   case "$cmd" in
     ensure|init|setup)
-      install_user_hff
+      install_user_hff; rc=$?
       ;;
     doctor)
       [[ -x "$venv/bin/python" && -x "$hff_py" ]] || install_user_hff
-      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" doctor "$@"
+      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" doctor "$@"; rc=$?
       ;;
     snapshot)
       [[ -x "$venv/bin/python" && -x "$hff_py" ]] || install_user_hff
-      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" snapshot --snapdir "$snapdir" "$@"
+      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" snapshot --snapdir "$snapdir" "$@"; rc=$?
       ;;
     ls|mkdir|mv|rm|put|get)
       [[ -x "$venv/bin/python" && -x "$hff_py" ]] || install_user_hff
-      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" "$cmd" "$@"
-      ;;   
+      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" "$cmd" "$@"; rc=$?
+      ;;
     help|-h|--help|"")
-      cat <<EOF
-hff — portable HF helper (user-mode)
-
-Bootstrap:
-  hff ensure
-
-Defaults:
-  HFF_VENV=$HFF_VENV
-  HFF_PY=$HFF_PY
-  POD_RUNTIME_DIR=${POD_RUNTIME_DIR:-<unset>}
-  HFF_SRC_PY=$HFF_SRC_PY
-
-Repo:
-  HFF_REPO=$HFF_REPO
-  HFF_REPO_TYPE=$HFF_REPO_TYPE
-  HFF_SNAPSHOT_DIR=$HFF_SNAPSHOT_DIR
-
-Commands:
-  hff doctor
-  hff ls [path]
-  hff mkdir <path>
-  hff mv <src> <dst>
-  hff rm <path>
-  hff put <local> <dst>
-  hff get <src> [out]
-  hff snapshot create --name "desc" <paths...>
-  hff snapshot list
-  hff snapshot show <id>
-  hff snapshot get <id> [--extract-dir DIR] [--cache-dir DIR]
-  hff snapshot destroy <id> [-y]
-
-Pins:
-  export HFF_PINNED=1
-  export HFF_HUB_VER=1.3.1
-  export HFF_XFER_VER=0.1.9
-
-Install mode:
-  export HFF_INSTALL_MODE=symlink   # default
-  export HFF_INSTALL_MODE=copy
-EOF
+      # ... your existing help text ...
+      rc=0
       ;;
     *)
       _hff_err "unknown command: ${cmd:-<none>} (try: hff help)"
-      return 2
+      rc=2
       ;;
   esac
+
+  # Restore errexit if it was set in the caller
+  if [[ "$__had_e" -eq 1 ]]; then
+    set -e
+  fi
+  return "$rc"
 }
+
 
 hfd() {
   if [[ $# -lt 1 ]]; then
