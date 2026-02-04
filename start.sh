@@ -264,7 +264,7 @@ section 8 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
 
 if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
   
-  export HF_EXCLUDE_GLOBS=${HF_MY_REPO_EXCLUDE_GLOBS:-"snapshot/**"}
+  export HF_EXCLUDE_GLOBS=${HF_MY_REPO_EXCLUDE_GLOBS:-"snapshot/** loras/characterlora/**"}
   export HF_INCLUDE_GLOBS=${HF_MY_REPO_INCLUDE_GLOBS:-""}
   HF_REPO_TYPE=${HF_MY_REPO_TYPE:-model} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" || true
 
