@@ -5683,6 +5683,23 @@ hf_sync_repo() {
 init_repo() {
   local MODE="git"
 
+  # Raise open-files soft limit (Xet/CAS can use lots of FDs)
+  # Uses current hard limit as the ceiling.
+  _raise_nofile_ulimit() {
+    local target="${1:-262144}"
+    local hard
+    hard="$(ulimit -Hn 2>/dev/null || echo "")"
+
+    # If we can read hard limit and it's numeric, cap target to hard
+    if [[ "$hard" =~ ^[0-9]+$ ]] && (( target > hard )); then
+      target="$hard"
+    fi
+
+    ulimit -n "$target" 2>/dev/null || true
+    # Optional: log what we ended up with
+    _sync_info "ulimit -n now: $(ulimit -n 2>/dev/null || echo '?') (hard: ${hard:-?})"
+  }
+
   case "${1:-}" in
     --hf)  MODE="hf";  shift ;;
     --git) MODE="git"; shift ;;
@@ -5721,6 +5738,8 @@ init_repo() {
         _sync_err "init_repo --hf: huggingface CLI not found. Need 'hf' (preferred) or 'huggingface-cli'."
         return 1
       fi
+
+      _raise_nofile_ulimit "${HF_ULIMIT_NOFILE:-262144}"
 
       mkdir -p "$LOCAL_DIR" || true
 
