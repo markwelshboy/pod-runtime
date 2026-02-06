@@ -293,13 +293,14 @@ rsync_or_symlink_source_to_destination rsync "$GIT_HEARMEMAN_WAN_REPO_LOCAL/work
                                              "$COMFY_HOME/user/default/"
 
 #----------------------------------------------
-# Synchronize My WAN git repo (and copy workflows into ComfyUI - repo_name subdir under 'workflows')
+# Synchronize My WAN git repo (and copy workflows into ComfyUI - subdirs under 'workflows/MyWorkflows')
 
 if [[ "${ENABLE_MY_WORKFLOWS_DOWNLOAD:-false}" == "true" ]]; then
 
   init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
-  rsync_or_symlink_source_to_destination rsync "$GIT_MYWORKFLOWS_REPO_LOCAL/" \
-                                              "$COMFY_HOME/user/default/workflows/"
+  rsync_or_symlink_source_to_destination symlink "$GIT_MYWORKFLOWS_REPO_LOCAL" "/workspace"
+  mkdir -p "$COMFY_HOME/user/default/workflows/MyWorkflows"
+  ln -sfn $GIT_MYWORKFLOWS_REPO_LOCAL/* "$COMFY_HOME/user/default/workflows/MyWorkflows/"
 
 else
   echo "ENABLE_MY_WORKFLOWS_DOWNLOAD=false → skipping MyWorkflows sync."
@@ -323,12 +324,12 @@ fi
 aria2_show_download_snapshot || true
 
 #------------------------------------------------------------------------
-section 10 "Comfy Flow/Methodology Specific Configurations"
+#section 10 "Comfy Flow/Methodology Specific Configurations"
 #----------------------------------------------
 # Specific Hearmeman methodologies / setups
 #-------------------------------------------
 
-change_latent_preview_method || true
+#change_latent_preview_method || true
 
 #------------------------------------------------------------------------
 section 11 "ComfyUI"

@@ -172,7 +172,7 @@ start_one() {
     "CUDA_VISIBLE_DEVICES=${gvar} PYTHONUNBUFFERED=1 \
      python \"${BASE}/main.py\" --listen --port ${port} \
        ${sage_attention} \
-       --output-directory \"${out}\" --temp-directory \"${cache}\" \
+       --output-directory \"${out}\" --temp-directory \"${cache}\" --preview-method latent2rgb \
        >> \"${LOGS}/comfyui-${port}.log\" 2>&1"
 }
 
@@ -186,7 +186,7 @@ start_8188() {
   tmux new-session -d -s comfy-8188 \
     "PYTHONUNBUFFERED=1 \
      python \"${BASE}/main.py\" --listen --port 8188 ${sage_attention} \
-       --output-directory \"${BASE}/output\" --temp-directory \"${BASE}/cache\" \
+       --output-directory \"${BASE}/output\" --temp-directory \"${BASE}/cache\" --preview-method latent2rgb \
        >> \"${LOGS}/comfyui-8188.log\" 2>&1"
 }
 
