@@ -143,7 +143,7 @@ section 1 "Status/Configuration Overview"
 on_start_comfy_banner
 
 #------------------------------------------------------------------------
-section 2 "SSH"
+section 2 "Configure SSH"
 #----------------------------------------------
 # Configure SSH using SSH* environment 
 #   variables
@@ -152,22 +152,11 @@ section 2 "SSH"
 setup_ssh
 
 #------------------------------------------------------------------------
-#section 3 "Relocate ComfyUI"
+section 3 "Git Auth Bootstrap"
 #----------------------------------------------
-# Ensure ComfyUI lives on the network volume
-#   /ComfyUI  →  $COMFY_HOME (/workspace/ComfyUI)
-#----------------------------------------------
-#if [[ -d /ComfyUI ]]; then
-#  mkdir -p "$(dirname "$COMFY_HOME")"
-#
-#  echo "[comfy-relocate] Merging base /ComfyUI into existing $COMFY_HOME structure (no overwrite)"
-#  # Trailing slashes are important: copy contents, not the dir itself
-#  rsync -a --ignore-existing /ComfyUI/ "$COMFY_HOME"/
-#  # Optional: once you trust it, you can remove the original to avoid confusion
-#  # rm -rf /ComfyUI
-#else
-#  echo "[comfy-relocate] ❌ Comfy not installed in expected location. Unable to move."
-#fi
+# If GITHUB_DEPLOY_KEY_COMFYUI_TEMPLATES is set, use it to set up git auth 
+#   for that repo 
+git_auth_bootstrap
 
 #------------------------------------------------------------------------
 section 4 "Move Upscalers"

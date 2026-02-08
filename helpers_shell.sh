@@ -1418,3 +1418,485 @@ hf_download_from_manifest() {
   printf '%s\n' "$any"
   return 0
 }
+
+#------------------------------------------------------------------------------
+# git_auth_bootstrap
+#
+# Installs GitHub deploy keys from environment variables:
+#   GITHUB_DEPLOY_KEY_<NAME>=base64_private_key
+#
+# Creates:
+#   ~/.ssh/github_<name>
+#   SSH host: github-<name>
+#
+# Idempotent, safe for repeated runs.
+#------------------------------------------------------------------------------
+
+git_auth_bootstrap() {
+  local ssh_dir="$HOME/.ssh"
+  mkdir -p "$ssh_dir"
+  chmod 700 "$ssh_dir"
+
+  local config_file="$ssh_dir/config"
+  touch "$config_file"
+  chmod 600 "$config_file"
+
+  local count=0
+
+  # Iterate over env vars
+  while IFS='=' read -r var_name var_value; do
+    [[ "$var_name" =~ ^GITHUB_DEPLOY_KEY_ ]] || continue
+    [[ -z "$var_value" ]] && continue
+
+    local name="${var_name#GITHUB_DEPLOY_KEY_}"
+    name="$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
+
+    local key_file="$ssh_dir/github_${name}"
+    local host_alias="github-${name}"
+
+    # Install key if not present
+    if [[ ! -f "$key_file" ]]; then
+      echo "🔐 Installing GitHub deploy key: $name"
+      echo "$var_value" | base64 -d > "$key_file"
+      chmod 600 "$key_file"
+    fi
+
+    # Add SSH config entry if missing
+    if ! grep -q "Host $host_alias" "$config_file"; then
+      cat <<EOF >> "$config_file"
+
+Host $host_alias
+  HostName github.com
+  User git
+  IdentityFile $key_file
+  IdentitiesOnly yes
+EOF
+    fi
+
+    ((count++))
+  done < <(env)
+
+  if [[ $count -gt 0 ]]; then
+    echo "🔐 Git auth ready ($count deploy key(s))"
+  else
+    echo "ℹ️  No GitHub deploy keys found in environment"
+  fi
+}
+
+#------------------------------------------------------------------------------
+# git_repo_use_deploy_key <repo_dir> <env_name> [<owner/repo>]
+#
+# Example:
+#   git_repo_use_deploy_key /workspace/ComfyUI/cache/.git_repo/comfyui-templates COMFYUI_TEMPLATES markwelshboy/comfyui-templates
+#
+# Requires:
+#   git_auth_bootstrap has already run and installed:
+#     ~/.ssh/github_<env_name_normalized>
+#   and configured SSH host alias:
+#     github-<env_name_normalized>
+#
+# If <owner/repo> is omitted, it tries to infer it from the current origin URL.
+#------------------------------------------------------------------------------
+
+git_repo_use_deploy_key() {
+  local repo_dir="${1:-}"
+  local env_name="${2:-}"
+  local owner_repo="${3:-}"
+
+  if [[ -z "$repo_dir" || -z "$env_name" ]]; then
+    echo "usage: git_repo_use_deploy_key <repo_dir> <env_name> [<owner/repo>]" >&2
+    return 2
+  fi
+
+  if [[ ! -d "$repo_dir/.git" ]]; then
+    echo "❌ Not a git repo: $repo_dir" >&2
+    return 2
+  fi
+
+  # Normalize env_name -> comfyui-templates style
+  local name
+  name="$(echo "$env_name" | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
+
+  local key_file="$HOME/.ssh/github_${name}"
+  local host_alias="github-${name}"
+
+  if [[ ! -f "$key_file" ]]; then
+    echo "❌ Deploy key not found: $key_file" >&2
+    echo "   Did you set GITHUB_DEPLOY_KEY_${env_name} and run git_auth_bootstrap?" >&2
+    return 2
+  fi
+
+  # Infer owner/repo from existing origin if not provided
+  if [[ -z "$owner_repo" ]]; then
+    local origin
+    origin="$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)"
+
+    # Accept:
+    #   https://github.com/owner/repo.git
+    #   git@github.com:owner/repo.git
+    #   git@something:owner/repo.git
+    if [[ "$origin" =~ github\.com[:/]+([^/]+/[^/.]+)(\.git)?$ ]]; then
+      owner_repo="${BASH_REMATCH[1]}"
+    elif [[ "$origin" =~ ^git@[^:]+:([^/]+/[^/.]+)(\.git)?$ ]]; then
+      owner_repo="${BASH_REMATCH[1]}"
+    fi
+  fi
+
+  if [[ -z "$owner_repo" ]]; then
+    echo "❌ Could not infer owner/repo for origin in $repo_dir" >&2
+    echo "   Provide it explicitly: git_repo_use_deploy_key $repo_dir $env_name owner/repo" >&2
+    return 2
+  fi
+
+  local desired="git@${host_alias}:${owner_repo}.git"
+  local current
+  current="$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)"
+
+  if [[ "$current" != "$desired" ]]; then
+    echo "🔧 Setting origin for $(basename "$repo_dir") -> $desired"
+    git -C "$repo_dir" remote set-url origin "$desired"
+  else
+    echo "✅ Origin already set for $(basename "$repo_dir")"
+  fi
+
+  # Optional quick auth sanity check (fast, no network clone)
+  # Only runs if github is reachable; doesn't fail hard.
+  ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T "git@${host_alias}" >/dev/null 2>&1 || true
+
+  return 0
+}
+
+#------------------------------------------------------------------------------
+# git_repo_ensure_clean_or_warn <repo_dir>
+# Prints repo status + ahead/behind and working tree cleanliness.
+# Returns:
+#   0 = clean
+#   1 = dirty (changes present) OR cannot determine
+#   2 = not a git repo / error
+#------------------------------------------------------------------------------
+git_repo_ensure_clean_or_warn() {
+  local repo_dir="${1:-}"
+  if [[ -z "$repo_dir" || ! -d "$repo_dir/.git" ]]; then
+    echo "❌ Not a git repo: $repo_dir" >&2
+    return 2
+  fi
+
+  # Make sure we have up-to-date ahead/behind info (best effort)
+  git -C "$repo_dir" fetch --prune --quiet 2>/dev/null || true
+
+  local branch upstream ab
+  branch="$(git -C "$repo_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")"
+  upstream="$(git -C "$repo_dir" rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || true)"
+  ab="?"
+  if [[ -n "$upstream" ]]; then
+    # format: "<behind> <ahead>"
+    ab="$(git -C "$repo_dir" rev-list --left-right --count "${upstream}...HEAD" 2>/dev/null || echo "?")"
+  fi
+
+  local dirty=0
+  if ! git -C "$repo_dir" diff --quiet 2>/dev/null; then dirty=1; fi
+  if ! git -C "$repo_dir" diff --cached --quiet 2>/dev/null; then dirty=1; fi
+  if [[ -n "$(git -C "$repo_dir" ls-files --others --exclude-standard 2>/dev/null)" ]]; then dirty=1; fi
+
+  echo "— git repo: $repo_dir"
+  echo "  branch:   $branch"
+  if [[ -n "$upstream" ]]; then
+    echo "  upstream: $upstream"
+    echo "  behind/ahead: $ab"
+  else
+    echo "  upstream: (none)"
+  fi
+
+  if [[ "$dirty" -eq 1 ]]; then
+    echo "  status:   ⚠️  working tree NOT clean"
+    # Short status can be very helpful
+    git -C "$repo_dir" status --porcelain=v1 2>/dev/null | sed 's/^/    /' || true
+    return 1
+  else
+    echo "  status:   ✅ clean"
+    return 0
+  fi
+}
+
+
+#------------------------------------------------------------------------------
+# git_repo_push_if_ahead <repo_dir> [--remote origin] [--branch <branch>] [--force]
+#
+# Pushes ONLY if:
+#   - there is an upstream and HEAD is ahead of it, OR
+#   - upstream missing and you pass --branch (will push -u)
+#
+# Returns:
+#   0 = pushed or nothing to do
+#   1 = push attempted but failed
+#   2 = invalid repo / error
+#------------------------------------------------------------------------------
+git_repo_push_if_ahead() {
+  local repo_dir="${1:-}"; shift || true
+  local remote="origin"
+  local branch=""
+  local force=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --remote) remote="$2"; shift 2 ;;
+      --branch) branch="$2"; shift 2 ;;
+      --force) force=1; shift ;;
+      --help|-h)
+        echo "usage: git_repo_push_if_ahead <repo_dir> [--remote origin] [--branch <branch>] [--force]"
+        return 0
+        ;;
+      *) echo "unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+
+  if [[ -z "$repo_dir" || ! -d "$repo_dir/.git" ]]; then
+    echo "❌ Not a git repo: $repo_dir" >&2
+    return 2
+  fi
+
+  # Best effort fetch to compute ahead/behind
+  git -C "$repo_dir" fetch --prune --quiet 2>/dev/null || true
+
+  local cur_branch upstream
+  cur_branch="$(git -C "$repo_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  [[ -z "$branch" ]] && branch="$cur_branch"
+
+  upstream="$(git -C "$repo_dir" rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || true)"
+  if [[ -z "$upstream" ]]; then
+    echo "ℹ️  No upstream for $repo_dir ($branch). Pushing with -u..."
+    if [[ "$force" -eq 1 ]]; then
+      git -C "$repo_dir" push --force-with-lease -u "$remote" "$branch" && return 0
+    else
+      git -C "$repo_dir" push -u "$remote" "$branch" && return 0
+    fi
+    echo "❌ Push failed: $repo_dir" >&2
+    return 1
+  fi
+
+  # Count ahead/behind: "<behind> <ahead>"
+  local counts behind ahead
+  counts="$(git -C "$repo_dir" rev-list --left-right --count "${upstream}...HEAD" 2>/dev/null || echo "")"
+  behind="$(echo "$counts" | awk '{print $1}')"
+  ahead="$(echo "$counts" | awk '{print $2}')"
+
+  if [[ -z "$ahead" ]]; then
+    echo "⚠️  Could not determine ahead/behind for $repo_dir; attempting push anyway (safe)..."
+  elif [[ "$ahead" == "0" ]]; then
+    echo "✅ Nothing to push (ahead=0): $repo_dir"
+    return 0
+  else
+    echo "⬆️  Ahead by $ahead commit(s): $repo_dir"
+  fi
+
+  if [[ "$force" -eq 1 ]]; then
+    git -C "$repo_dir" push --force-with-lease "$remote" "$branch" && return 0
+  else
+    git -C "$repo_dir" push "$remote" "$branch" && return 0
+  fi
+
+  echo "❌ Push failed: $repo_dir" >&2
+  return 1
+}
+
+
+#------------------------------------------------------------------------------
+# Helper: list active deploy-key host aliases produced by git_auth_bootstrap
+# Output: one per line, e.g. "github-comfyui-templates"
+#------------------------------------------------------------------------------
+git_auth_list_hosts() {
+  env | awk -F= '/^GITHUB_DEPLOY_KEY_/ {print $1}' \
+    | sed 's/^GITHUB_DEPLOY_KEY_//' \
+    | tr '[:upper:]' '[:lower:]' \
+    | tr '_' '-' \
+    | sed 's/^/github-/' \
+    | sort -u
+}
+
+
+#------------------------------------------------------------------------------
+# Helper: find git repos under roots
+# Usage: git_find_repos_under /path1 /path2 ...
+# Prints repo paths, one per line
+#------------------------------------------------------------------------------
+git_find_repos_under() {
+  local root
+  for root in "$@"; do
+    [[ -d "$root" ]] || continue
+    # Find ".git" dirs up to depth 5 (adjust if you want)
+    find "$root" -maxdepth 5 -type d -name ".git" 2>/dev/null \
+      | sed 's#/\.git$##'
+  done | sort -u
+}
+
+
+#------------------------------------------------------------------------------
+# session_wrapup
+#
+# Does:
+#  1) Optional hff snapshot (if hff exists)
+#  2) For each git repo under roots:
+#     - if its origin host matches an active deploy-key host alias (github-xxx)
+#     - then git add -A, optionally commit, and push if ahead
+#
+# Defaults:
+#  - roots: /workspace/ComfyUI/cache/.git_repo and /workspace (if present)
+#
+# Flags:
+#  --tag <tag>           tag/name passed to hff snapshot (and used in commit msg)
+#  --name <name>         same as tag; whichever you prefer
+#  --hff-repo <repo>     (optional) repo id for hff snapshot if your hff expects it
+#  --hff-type <type>     (optional) model|dataset|space (default: model)
+#  --hff-keep <paths>    comma-separated paths to keep in snapshot (best-effort)
+#  --no-snapshot         skip hff snapshot
+#  --no-commit           do not auto-commit; just push if already committed
+#  --commit-msg <msg>    override commit message
+#  --roots <p1,p2,...>   scan these for repos
+#  --push-all            push all repos under roots (ignore deploy-key host filter)
+#------------------------------------------------------------------------------
+session_wrapup() {
+  local tag=""
+  local name=""
+  local do_snapshot=1
+  local do_commit=1
+  local commit_msg=""
+  local roots_csv=""
+  local push_all=0
+
+  local hff_repo=""
+  local hff_type="model"
+  local hff_keep="ComfyUI,ComfyUI/models,ComfyUI/workflows,ComfyUI/custom_nodes,ComfyUI/cache"  # sensible-ish defaults
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --tag) tag="$2"; shift 2 ;;
+      --name) name="$2"; shift 2 ;;
+      --no-snapshot) do_snapshot=0; shift ;;
+      --no-commit) do_commit=0; shift ;;
+      --commit-msg) commit_msg="$2"; shift 2 ;;
+      --roots) roots_csv="$2"; shift 2 ;;
+      --push-all) push_all=1; shift ;;
+      --hff-repo) hff_repo="$2"; shift 2 ;;
+      --hff-type) hff_type="$2"; shift 2 ;;
+      --hff-keep) hff_keep="$2"; shift 2 ;;
+      --help|-h)
+        echo "usage: session_wrapup [--tag t|--name n] [--no-snapshot] [--no-commit] [--commit-msg msg] [--roots p1,p2] [--push-all] [--hff-repo id] [--hff-type model] [--hff-keep paths]"
+        return 0
+        ;;
+      *) echo "unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+
+  [[ -z "$name" ]] && name="$tag"
+  [[ -z "$tag" ]] && tag="$name"
+  [[ -z "$tag" ]] && tag="$(date +"%Y-%m-%d-%H%M%S")"
+
+  if [[ -z "$commit_msg" ]]; then
+    commit_msg="Wrapup: ${tag}"
+  fi
+
+  # ---- 1) Snapshot (best effort) ----
+  if [[ "$do_snapshot" -eq 1 ]]; then
+    if command -v hff >/dev/null 2>&1; then
+      echo "📸 hff snapshot: tag=$tag"
+      # This is intentionally "best effort" because your exact hff snapshot CLI may differ.
+      # Common patterns:
+      #   hff snapshot --tag "$tag" --keep "a,b,c"
+      #   hff snapshot <repo> --tag "$tag" --keep ...
+      if [[ -n "$hff_repo" ]]; then
+        hff snapshot "$hff_repo" --type "$hff_type" --tag "$tag" --keep "$hff_keep" || true
+      else
+        hff snapshot --tag "$tag" --keep "$hff_keep" || true
+      fi
+    else
+      echo "ℹ️  hff not found; skipping snapshot"
+    fi
+  fi
+
+  # ---- 2) Determine roots ----
+  local roots=()
+  if [[ -n "$roots_csv" ]]; then
+    IFS=',' read -r -a roots <<< "$roots_csv"
+  else
+    [[ -d "/workspace/ComfyUI/cache/.git_repo" ]] && roots+=("/workspace/ComfyUI/cache/.git_repo")
+    [[ -d "/workspace" ]] && roots+=("/workspace")
+  fi
+
+  if [[ "${#roots[@]}" -eq 0 ]]; then
+    echo "ℹ️  No roots to scan; done."
+    return 0
+  fi
+
+  # ---- 3) Active deploy-key hosts ----
+  local active_hosts
+  active_hosts="$(git_auth_list_hosts | tr '\n' ' ' | sed 's/[[:space:]]\+$//')"
+  if [[ -z "$active_hosts" && "$push_all" -ne 1 ]]; then
+    echo "ℹ️  No deploy keys active (no GITHUB_DEPLOY_KEY_* vars). Nothing to push."
+    return 0
+  fi
+  [[ -n "$active_hosts" ]] && echo "🔑 Active deploy-key hosts: $active_hosts"
+
+  # ---- 4) Find repos and push ----
+  local repo
+  local repos
+  repos="$(git_find_repos_under "${roots[@]}")"
+
+  if [[ -z "$repos" ]]; then
+    echo "ℹ️  No git repos found under roots."
+    return 0
+  fi
+
+  echo "🧹 Session wrapup: scanning repos..."
+  while IFS= read -r repo; do
+    [[ -d "$repo/.git" ]] || continue
+
+    local origin host
+    origin="$(git -C "$repo" remote get-url origin 2>/dev/null || true)"
+    host=""
+
+    # Parse host:
+    #   git@github-foo:owner/repo.git -> github-foo
+    #   ssh://git@github-foo/owner/repo.git -> github-foo (rare)
+    if [[ "$origin" =~ ^git@([^:]+): ]]; then
+      host="${BASH_REMATCH[1]}"
+    elif [[ "$origin" =~ ^ssh://git@([^/]+)/ ]]; then
+      host="${BASH_REMATCH[1]}"
+    fi
+
+    local should_push=0
+    if [[ "$push_all" -eq 1 ]]; then
+      should_push=1
+    else
+      # only push repos that use one of the active deploy-key hosts
+      if [[ -n "$host" ]]; then
+        # word-boundary-ish match
+        echo " $active_hosts " | grep -q " $host " && should_push=1
+      fi
+    fi
+
+    if [[ "$should_push" -ne 1 ]]; then
+      # Not managed by deploy-key bootstrap; skip quietly
+      continue
+    fi
+
+    echo ""
+    echo "📦 Repo: $repo"
+    echo "   origin: $origin"
+
+    if [[ "$do_commit" -eq 1 ]]; then
+      git -C "$repo" add -A 2>/dev/null || true
+
+      # Commit if there is anything staged/unstaged
+      if ! git -C "$repo" diff --cached --quiet 2>/dev/null; then
+        echo "📝 Committing: $commit_msg"
+        git -C "$repo" commit -m "$commit_msg" >/dev/null 2>&1 || true
+      fi
+    fi
+
+    git_repo_push_if_ahead "$repo" || true
+  done <<< "$repos"
+
+  echo ""
+  echo "✅ session_wrapup complete"
+  return 0
+}
