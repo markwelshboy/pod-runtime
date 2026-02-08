@@ -293,6 +293,9 @@ if [[ "${ENABLE_MY_WORKFLOWS_DOWNLOAD:-false}" == "true" ]]; then
   mkdir -p "$COMFY_HOME/user/default/workflows/MyWorkflows"
   ln -sfn $GIT_MYWORKFLOWS_REPO_LOCAL/* "$COMFY_HOME/user/default/workflows/MyWorkflows/"
 
+  git_repo_use_deploy_key \
+    "$GIT_MYWORKFLOWS_REPO_LOCAL" "$GIT_MYWORKFLOWS_REPO_KEY" "$GIT_MYWORKFLOWS_REPO_ID"
+
 else
   echo "ENABLE_MY_WORKFLOWS_DOWNLOAD=false → skipping MyWorkflows sync."
 fi
