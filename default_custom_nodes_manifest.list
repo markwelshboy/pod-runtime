@@ -78,6 +78,7 @@ https://github.com/o-l-l-i/ComfyUI-OlmLUT ComfyUI-OlmLUT
 https://github.com/o-l-l-i/ComfyUI-Olm-ImageAdjust ComfyUI-Olm-ImageAdjust
 # Seed VR2
 https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler ComfyUI-SeedVR2_VideoUpscaler
+https://github.com/moonwhaler/comfyui-seedvr2-tilingupscaler comfyui-seedvr2-tilingupscaler
 #
 https://github.com/justUmen/Bjornulf_custom_nodes Bjornulf_custom_nodes
 https://github.com/ltdrdata/ComfyUI-Inspire-Pack ComfyUI-Inspire-Pack
@@ -102,5 +103,9 @@ https://github.com/farizrifqi/ComfyUI-Image-Saver ComfyUI-Image-Saver
 https://github.com/APZmedia/APZmedia-comfyui-fast-image-save APZmedia-comfyui-fast-image-save
 https://github.com/kaibioinfo/ComfyUI_AdvancedRefluxControl ComfyUI_AdvancedRefluxControl
 https://github.com/adieyal/comfyui-dynamicprompts comfyui-dynamicprompts
-
-
+# Cross hair lines (for alignment)
+https://github.com/SparknightLLC/ComfyUI-CrosshairGuidelines ComfyUI-CrosshairGuidelines
+# 
+https://github.com/wildminder/ComfyUI-DyPE ComfyUI-DyPE
+https://github.com/Nourepide/ComfyUI-Allor ComfyUI-Allor
+https://github.com/1038lab/ComfyUI-QwenVL ComfyUI-QwenVL
