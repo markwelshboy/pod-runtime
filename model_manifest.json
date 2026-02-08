@@ -13,7 +13,8 @@
     "UPSCALE_DIR": "{COMFY_HOME}/models/upscale_models",
     "SAMS_DIR": "{COMFY_HOME}/models/sams",
     "CTRLNET_DIR": "{COMFY_HOME}/models/controlnet",
-    "CHECKPOINTS_DIR": "{COMFY_HOME}/models/checkpoints"
+    "CHECKPOINTS_DIR": "{COMFY_HOME}/models/checkpoints",
+    "SEEDVR2_DIR": "{COMFY_HOME}/models/SEEDVR2"
 },
   "sections": {
     "download_480p_native_models": [
