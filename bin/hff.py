@@ -415,39 +415,75 @@ def cmd_put(args) -> None:
     a = api(tok)
     files = set(list_files(a, args.repo, args.type))
 
-    local = Path(args.local).expanduser()
-    if not local.exists() or not local.is_file():
-        die(f"put: local file not found: {local}", 1)
+    # -------- local glob expansion --------
+    raw = args.local
+    paths: List[Path] = []
 
-    dst = normalize_path(args.dst)
-    if not dst:
+    if has_glob(raw):
+        # Expand locally (shell-like, but inside Python)
+        base = Path(".")
+        matches = list(base.glob(raw))
+        paths = [p for p in matches if p.is_file()]
+        if not paths:
+            die(f"put: no files matched: {raw}", 1)
+    else:
+        p = Path(raw).expanduser()
+        if not p.exists() or not p.is_file():
+            die(f"put: local file not found: {p}", 1)
+        paths = [p]
+
+    # -------- destination handling --------
+    dst_raw = normalize_path(args.dst)
+    if not dst_raw:
         die("put: dst required")
-    if dst.endswith("/"):
-        dst = dst + local.name
 
-    try:
-        ops: List[object] = []
-        ops += ensure_dir_ops(files, parent_dir(dst))
+    multi = len(paths) > 1
+
+    # If multiple files, dst must be a directory
+    if multi and not dst_raw.endswith("/"):
+        die("put: destination must be a directory when uploading multiple files", 1)
+
+    # Ensure directory once
+    target_dir = dst_raw.rstrip("/") if dst_raw.endswith("/") else parent_dir(dst_raw)
+
+    if target_dir:
+        ops = ensure_dir_ops(files, target_dir)
         if ops:
             a.create_commit(
                 repo_id=args.repo,
                 repo_type=args.type,
                 operations=ops,
-                commit_message=f"mkdir {parent_dir(dst)}",
+                commit_message=f"mkdir {target_dir}",
             )
 
-        a.upload_file(
-            path_or_fileobj=str(local),
-            path_in_repo=dst,
-            repo_id=args.repo,
-            repo_type=args.type,
-            commit_message=args.message or f"put {dst}",
-        )
-    except Exception as e:
-        die(f"put: failed: {e}", 1)
+    # -------- upload loop --------
+    uploaded = []
 
-    print("ok")
+    for local in paths:
+        if dst_raw.endswith("/"):
+            dst = dst_raw.rstrip("/") + "/" + local.name
+        else:
+            # single-file mode
+            dst = dst_raw
 
+        try:
+            a.upload_file(
+                path_or_fileobj=str(local),
+                path_in_repo=dst,
+                repo_id=args.repo,
+                repo_type=args.type,
+                commit_message=args.message or f"put {dst}",
+            )
+        except Exception as e:
+            die(f"put: failed for {local}: {e}", 1)
+
+        uploaded.append(dst)
+
+    # -------- output --------
+    if multi:
+        print(f"ok ({len(uploaded)} files)")
+    else:
+        print("ok")
 
 def cmd_get(args) -> None:
     tok = need_token()
