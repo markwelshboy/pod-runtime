@@ -298,7 +298,9 @@ rsync_or_symlink_source_to_destination rsync "$GIT_HEARMEMAN_WAN_REPO_LOCAL/work
 if [[ "${ENABLE_MY_WORKFLOWS_DOWNLOAD:-false}" == "true" ]]; then
 
   init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
+  # Stash (symlink) the repo into /workspace for easy access/viewing
   rsync_or_symlink_source_to_destination symlink "$GIT_MYWORKFLOWS_REPO_LOCAL" "/workspace"
+  # Create a specific subdir for these workflows to avoid mixing with WAN's workflows; use symlinks for easy updates
   mkdir -p "$COMFY_HOME/user/default/workflows/MyWorkflows"
   ln -sfn $GIT_MYWORKFLOWS_REPO_LOCAL/* "$COMFY_HOME/user/default/workflows/MyWorkflows/"
 
@@ -324,15 +326,7 @@ fi
 aria2_show_download_snapshot || true
 
 #------------------------------------------------------------------------
-#section 10 "Comfy Flow/Methodology Specific Configurations"
-#----------------------------------------------
-# Specific Hearmeman methodologies / setups
-#-------------------------------------------
-
-#change_latent_preview_method || true
-
-#------------------------------------------------------------------------
-section 11 "ComfyUI"
+section 10 "ComfyUI"
 #----------------------------------------------
 # Report the Custom Nodes being used for this 
 #   session. Use tmux's to launch ComfyUI
@@ -346,7 +340,7 @@ snapshot_custom_nodes_state --summary "before-comfy-launch" || true
 # Check health/status before launching ComfyUI
 #----------------------------------------------
 
-section 11.1 "Pre-ComfyUI Launch: Confirming Stack Health"
+section 10.1 "Pre-ComfyUI Launch: Confirming Stack Health"
 
 confirm_stack_health_or_stop || true
 
@@ -357,7 +351,7 @@ if [[ -f /workspace/logs/stack_broken ]]; then
   tail -f /dev/null
 fi
 
-section 11.2 "ComfyUI Launch..."
+section 10.2 "ComfyUI Launch..."
 
 cd "${COMFY_HOME:-/workspace/ComfyUI}"
 
@@ -374,7 +368,7 @@ else
 fi
 
 #------------------------------------------------------------------------
-section 12 "Aria2 (Manifest+CivitAI) Tracking till completion"
+section 11 "Aria2 (Manifest+CivitAI) Tracking till completion"
 #----------------------------------------------
 # Wait for all downloads to complete
 #----------------------------------------------
@@ -382,9 +376,8 @@ section 12 "Aria2 (Manifest+CivitAI) Tracking till completion"
 aria2_monitor_progress || true
 aria2_clear_results >/dev/null 2>&1 || true
 
-
 #------------------------------------------------------------------------
-section 13 "Disk Watcher"
+section 12 "Disk Watcher"
 #----------------------------------------------
 # Start disk watcher to monitor disk usage
 # Defaults to checking every 10 minutes, warning at 85%,
