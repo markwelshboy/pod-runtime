@@ -124,6 +124,59 @@ hff() {
   set +e
   set -uo pipefail
 
+  _hff_usage() {
+    cat <<'EOF'
+hff — HuggingFace File Manager (wrapper)
+
+Environment defaults:
+  HF_TOKEN               required for all operations
+  HFF_REPO               default repo id (owner/name)
+  HFF_REPO_TYPE          model|dataset
+  HFF_SNAPSHOT_DIR       remote snapshot directory (default: snapshot)
+  HFF_VENV               venv path used by wrapper
+  HFF_PY                 path to hff.py used by wrapper
+
+Usage:
+  hff <command> [args...]
+
+Commands:
+  ensure|init|setup        Install/ensure hff toolchain (wrapper)
+  doctor [--json]          Diagnostics for HF token, repo access, cli candidates
+  ls [path]                List repo files (supports globs)
+  mkdir <path>             Create a directory (via .gitkeep)
+  mv <src> <dst>           Move/rename file; if src ends with /, moves prefix
+  rm <path> [--dry-run]    Delete file(s); supports globs and prefix dirs
+  put <local> <dst> [-m]   Upload file; supports local globs; multi-file dst must end with /
+  get <src> [out]          Download file; optional --cache-dir, --move
+  snapshot <subcmd> ...    Snapshot management
+  help                     Show this help
+
+Snapshot subcommands:
+  hff snapshot create --name "label" [--compress gz|none] [--tmp-dir DIR] <items...>
+  hff snapshot list
+  hff snapshot show <id>
+  hff snapshot get <id> [--extract-dir DIR] [--cache-dir DIR]
+  hff snapshot destroy <id> [-y]
+
+Examples:
+  hff ls loras/
+  hff ls 'loras/*.safetensors'
+  hff put *.pt ultralytics/bbox/
+  hff get loras/my.safetensors ./my.safetensors
+  hff snapshot create --name "pod_2026-02-09" ComfyUI/models ComfyUI/workflows
+
+Notes:
+  - Repo paths are repo-relative (leading / is stripped)
+  - Globs are supported for `ls` and `rm`, and local globs for `put`
+EOF
+  }
+
+# In your hff() wrapper case:
+#   help|-h|--help|"")
+#     hff_usage
+#     rc=0
+#     ;;
+
   local venv="${HFF_VENV}"
   local hff_py="${HFF_PY}"
   local repo_id="${HFF_REPO}"
@@ -151,6 +204,7 @@ hff() {
       ;;
     help|-h|--help|"")
       # ... your existing help text ...
+      _hff_usage
       rc=0
       ;;
     *)

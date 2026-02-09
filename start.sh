@@ -149,7 +149,7 @@ section 2 "Configure SSH"
 #   variables
 #----------------------------------------------
 
-setup_ssh
+setup_ssh || true
 
 #------------------------------------------------------------------------
 section 3 "Git Auth Bootstrap"
@@ -157,15 +157,7 @@ section 3 "Git Auth Bootstrap"
 # If GITHUB_DEPLOY_KEY_COMFYUI_TEMPLATES is set, use it to set up git auth 
 #   for that repo 
 
-echo "[debug] before: type git_auth_bootstrap"
-type git_auth_bootstrap || true
-
-echo "[debug] env has deploy keys?"
-env | grep -E '^GITHUB_DEPLOY_KEY_' || true
-
-echo "[debug] calling git_auth_bootstrap..."
-git_auth_bootstrap || echo "[debug] git_auth_bootstrap returned $?"
-echo "[debug] after git_auth_bootstrap"
+git_auth_bootstrap || true
 
 #------------------------------------------------------------------------
 section 4 "Move Upscalers"
