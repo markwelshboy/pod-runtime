@@ -156,7 +156,16 @@ section 3 "Git Auth Bootstrap"
 #----------------------------------------------
 # If GITHUB_DEPLOY_KEY_COMFYUI_TEMPLATES is set, use it to set up git auth 
 #   for that repo 
-git_auth_bootstrap
+
+echo "[debug] before: type git_auth_bootstrap"
+type git_auth_bootstrap || true
+
+echo "[debug] env has deploy keys?"
+env | grep -E '^GITHUB_DEPLOY_KEY_' || true
+
+echo "[debug] calling git_auth_bootstrap..."
+git_auth_bootstrap || echo "[debug] git_auth_bootstrap returned $?"
+echo "[debug] after git_auth_bootstrap"
 
 #------------------------------------------------------------------------
 section 4 "Move Upscalers"
