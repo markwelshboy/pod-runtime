@@ -1457,10 +1457,11 @@ git_auth_bootstrap() {
 
   local count=0
 
-  # Iterate over env vars
-  while IFS='=' read -r var_name var_value; do
+  # Iterate over env vars safely (no parsing env output)
+  for var_name in $(compgen -e); do
     [[ "$var_name" =~ ^GITHUB_DEPLOY_KEY_ ]] || continue
-    [[ -z "$var_value" ]] && continue
+    var_value="${!var_name:-}"
+    [[ -n "$var_value" ]] || continue
 
     local name="${var_name#GITHUB_DEPLOY_KEY_}"
     name="$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
@@ -1468,23 +1469,40 @@ git_auth_bootstrap() {
     local key_file="$ssh_dir/github_${name}"
     local host_alias="github-${name}"
 
-    local cleaned
-    cleaned="$(printf '%s' "$var_value" | tr -d '\r\n\t ')"
+    if [[ ! -f "$key_file" ]]; then
+      echo "🔐 Installing GitHub deploy key: $name"
 
-    if ! printf '%s' "$cleaned" | base64 -d > "$key_file" 2>/tmp/base64_err; then
-      echo "❌ base64 decode failed for $var_name" >&2
-      echo "   len(raw)=$(printf '%s' "$var_value" | wc -c | tr -d ' ') len(cleaned)=$(printf '%s' "$cleaned" | wc -c | tr -d ' ')" >&2
-      echo "   head(raw(20)='$(printf '%s' "$cleaned" | head -c 20)'" >&2
-      echo "   tail(20)='$(printf '%s' "$cleaned" | tail -c 20)'" >&2
-      echo "   base64 said: $(cat /tmp/base64_err 2>/dev/null)" >&2
-      rm -f "$key_file"
-      continue
-    else
-      echo "✅ Deploy key decoded for $var_name -> $key_file"
+      local cleaned pad tmp
+      cleaned="$(printf '%s' "$var_value" | tr -d '\r\n\t ')"
+
+      pad=$(( ${#cleaned} % 4 ))
+      if [[ "$pad" -eq 2 ]]; then
+        cleaned="${cleaned}=="
+      elif [[ "$pad" -eq 3 ]]; then
+        cleaned="${cleaned}="
+      elif [[ "$pad" -eq 1 ]]; then
+        echo "❌ base64 looks corrupted (len%4==1) for $var_name" >&2
+        continue
+      fi
+
+      tmp="${key_file}.tmp"
+      rm -f "$tmp"
+      if ! printf '%s' "$cleaned" | base64 -d > "$tmp" 2>/tmp/base64_err; then
+        echo "❌ base64 decode failed for $var_name: $(cat /tmp/base64_err 2>/dev/null)" >&2
+        rm -f "$tmp"
+        continue
+      fi
+
+      if ! head -n 1 "$tmp" | grep -q "BEGIN OPENSSH PRIVATE KEY"; then
+        echo "❌ decoded key does not look like an OpenSSH private key for $var_name" >&2
+        rm -f "$tmp"
+        continue
+      fi
+
+      mv -f "$tmp" "$key_file"
+      chmod 600 "$key_file"
     fi
-    chmod 600 "$key_file"
 
-    # Add SSH config entry if missing
     if ! grep -q "Host $host_alias" "$config_file"; then
       cat <<EOF >> "$config_file"
 
@@ -1497,7 +1515,7 @@ EOF
     fi
 
     ((count++))
-  done < <(env)
+  done
 
   if [[ $count -gt 0 ]]; then
     echo "🔐 Git auth ready ($count deploy key(s))"
