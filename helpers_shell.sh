@@ -1433,6 +1433,12 @@ hf_download_from_manifest() {
 #------------------------------------------------------------------------------
 
 git_auth_bootstrap() {
+
+  need_apt coreutils || {
+    echo "ERROR: coreutils is required but could not be installed"
+    return 127
+  }
+  
   local ssh_dir="$HOME/.ssh"
   mkdir -p "$ssh_dir"
   chmod 700 "$ssh_dir"
