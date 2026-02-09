@@ -1468,12 +1468,21 @@ git_auth_bootstrap() {
     local key_file="$ssh_dir/github_${name}"
     local host_alias="github-${name}"
 
-    # Install key if not present
-    if [[ ! -f "$key_file" ]]; then
-      echo "🔐 Installing GitHub deploy key: $name"
-      echo "$var_value" | base64 -d > "$key_file"
-      chmod 600 "$key_file"
+    local cleaned
+    cleaned="$(printf '%s' "$var_value" | tr -d '\r\n\t ')"
+
+    if ! printf '%s' "$cleaned" | base64 -d > "$key_file" 2>/tmp/base64_err; then
+      echo "❌ base64 decode failed for $var_name" >&2
+      echo "   len(raw)=$(printf '%s' "$var_value" | wc -c | tr -d ' ') len(cleaned)=$(printf '%s' "$cleaned" | wc -c | tr -d ' ')" >&2
+      echo "   head(raw(20)='$(printf '%s' "$cleaned" | head -c 20)'" >&2
+      echo "   tail(20)='$(printf '%s' "$cleaned" | tail -c 20)'" >&2
+      echo "   base64 said: $(cat /tmp/base64_err 2>/dev/null)" >&2
+      rm -f "$key_file"
+      continue
+    else
+      echo "✅ Deploy key decoded for $var_name -> $key_file"
     fi
+    chmod 600 "$key_file"
 
     # Add SSH config entry if missing
     if ! grep -q "Host $host_alias" "$config_file"; then
