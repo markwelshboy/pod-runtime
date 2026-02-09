@@ -1434,10 +1434,18 @@ hf_download_from_manifest() {
 
 git_auth_bootstrap() {
 
-  need_apt coreutils || {
-    echo "ERROR: coreutils is required but could not be installed"
-    return 127
-  }
+  # Ensure base64 exists
+  if ! command -v base64 >/dev/null 2>&1; then
+    echo "⚠️ base64 not found; attempting install..."
+    if command -v apt-get >/dev/null 2>&1; then
+      apt-get update -qq && apt-get install -y -qq coreutils
+    elif command -v apk >/dev/null 2>&1; then
+      apk add --no-cache coreutils
+    else
+      echo "❌ Cannot install base64 (unknown package manager)" >&2
+      return 1
+    fi
+  fi
   
   local ssh_dir="$HOME/.ssh"
   mkdir -p "$ssh_dir"
