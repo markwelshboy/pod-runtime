@@ -1433,20 +1433,6 @@ hf_download_from_manifest() {
 #------------------------------------------------------------------------------
 
 git_auth_bootstrap() {
-
-  # Ensure base64 exists
-  if ! command -v base64 >/dev/null 2>&1; then
-    echo "⚠️ base64 not found; attempting install..."
-    if command -v apt-get >/dev/null 2>&1; then
-      apt-get update -qq && apt-get install -y -qq coreutils
-    elif command -v apk >/dev/null 2>&1; then
-      apk add --no-cache coreutils
-    else
-      echo "❌ Cannot install base64 (unknown package manager)" >&2
-      return 1
-    fi
-  fi
-  
   local ssh_dir="$HOME/.ssh"
   mkdir -p "$ssh_dir"
   chmod 700 "$ssh_dir"
@@ -1456,11 +1442,15 @@ git_auth_bootstrap() {
   chmod 600 "$config_file"
 
   local count=0
+  local ok=0
+  local failed=0
 
-  # Iterate over env vars safely (no parsing env output)
+  # Iterate env var NAMES safely (avoid parsing `env` output)
+  local var_name
   for var_name in $(compgen -e); do
     [[ "$var_name" =~ ^GITHUB_DEPLOY_KEY_ ]] || continue
-    var_value="${!var_name:-}"
+
+    local var_value="${!var_name:-}"
     [[ -n "$var_value" ]] || continue
 
     local name="${var_name#GITHUB_DEPLOY_KEY_}"
@@ -1468,6 +1458,8 @@ git_auth_bootstrap() {
 
     local key_file="$ssh_dir/github_${name}"
     local host_alias="github-${name}"
+
+    ((count++))
 
     if [[ ! -f "$key_file" ]]; then
       echo "🔐 Installing GitHub deploy key: $name"
@@ -1481,21 +1473,27 @@ git_auth_bootstrap() {
       elif [[ "$pad" -eq 3 ]]; then
         cleaned="${cleaned}="
       elif [[ "$pad" -eq 1 ]]; then
-        echo "❌ base64 looks corrupted (len%4==1) for $var_name" >&2
+        echo "❌ $var_name: base64 looks corrupted (len%4==1). len=${#cleaned}" >&2
+        ((failed++))
         continue
       fi
 
       tmp="${key_file}.tmp"
       rm -f "$tmp"
+
       if ! printf '%s' "$cleaned" | base64 -d > "$tmp" 2>/tmp/base64_err; then
-        echo "❌ base64 decode failed for $var_name: $(cat /tmp/base64_err 2>/dev/null)" >&2
+        echo "❌ $var_name: base64 decode failed: $(cat /tmp/base64_err 2>/dev/null)" >&2
+        echo "   len(cleaned)=${#cleaned} tail='$(printf '%s' "$cleaned" | tail -c 12)'" >&2
         rm -f "$tmp"
+        ((failed++))
         continue
       fi
 
       if ! head -n 1 "$tmp" | grep -q "BEGIN OPENSSH PRIVATE KEY"; then
-        echo "❌ decoded key does not look like an OpenSSH private key for $var_name" >&2
+        echo "❌ $var_name: decoded content not an OpenSSH private key" >&2
+        head -n 2 "$tmp" | sed 's/^/   decoded: /' >&2 || true
         rm -f "$tmp"
+        ((failed++))
         continue
       fi
 
@@ -1503,6 +1501,7 @@ git_auth_bootstrap() {
       chmod 600 "$key_file"
     fi
 
+    # Ensure SSH config stanza
     if ! grep -q "Host $host_alias" "$config_file"; then
       cat <<EOF >> "$config_file"
 
@@ -1514,15 +1513,26 @@ Host $host_alias
 EOF
     fi
 
-    ((count++))
+    # Quick verify key file looks sane (doesn't require network)
+    if ssh-keygen -yf "$key_file" >/dev/null 2>&1; then
+      ((ok++))
+    else
+      echo "❌ $var_name: private key file failed ssh-keygen validation: $key_file" >&2
+      ((failed++))
+      # Leave file for inspection rather than deleting
+    fi
   done
 
-  if [[ $count -gt 0 ]]; then
-    echo "🔐 Git auth ready ($count deploy key(s))"
-  else
+  if [[ "$count" -eq 0 ]]; then
     echo "ℹ️  No GitHub deploy keys found in environment"
+    return 0
   fi
+
+  echo "🔐 Git auth bootstrap: found=$count ok=$ok failed=$failed"
+  # IMPORTANT: never crash your pod boot; just report failures
+  return 0
 }
+
 
 #------------------------------------------------------------------------------
 # git_repo_use_deploy_key <repo_dir> <env_name> [<owner/repo>]
