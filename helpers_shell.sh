@@ -1258,7 +1258,7 @@ install_gdrive_folder_as() {
   printf '%s\n' "$dest"
 }
 
-hf_download_from_manifest() {
+hf_download_from_manifest_non_parallel() {
   _helpers_need curl; _helpers_need jq; _helpers_need awk
   _helpers_need hf
 
@@ -1477,7 +1477,7 @@ hf_download_from_manifest() {
 # git_auth_bootstrap
 #
 # Installs GitHub deploy keys from environment variables:
-#   GITHUB_DEPLOY_KEY_<NAME>=base64_private_key
+#   GIT_DEPLOY_KEY_<NAME>=base64_private_key
 #
 # Creates:
 #   ~/.ssh/github_<name>
@@ -1502,12 +1502,12 @@ git_auth_bootstrap() {
   # Iterate env var NAMES safely (avoid parsing `env` output)
   local var_name
   for var_name in $(compgen -e); do
-    [[ "$var_name" =~ ^GITHUB_DEPLOY_KEY_ ]] || continue
+    [[ "$var_name" =~ ^GIT_DEPLOY_KEY_ ]] || continue
 
     local var_value="${!var_name:-}"
     [[ -n "$var_value" ]] || continue
 
-    local name="${var_name#GITHUB_DEPLOY_KEY_}"
+    local name="${var_name#GIT_DEPLOY_KEY_}"
     name="$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
 
     local key_file="$ssh_dir/github_${name}"
@@ -1627,7 +1627,7 @@ git_repo_use_deploy_key() {
 
   if [[ ! -f "$key_file" ]]; then
     echo "❌ Deploy key not found: $key_file" >&2
-    echo "   Did you set GITHUB_DEPLOY_KEY_${env_name} and run git_auth_bootstrap?" >&2
+    echo "   Did you set GIT_DEPLOY_KEY_${env_name} and run git_auth_bootstrap?" >&2
     return 2
   fi
 
@@ -1827,8 +1827,8 @@ git_repo_push_if_ahead() {
 # Output: one per line, e.g. "github-comfyui-templates"
 #------------------------------------------------------------------------------
 git_auth_list_hosts() {
-  env | awk -F= '/^GITHUB_DEPLOY_KEY_/ {print $1}' \
-    | sed 's/^GITHUB_DEPLOY_KEY_//' \
+  env | awk -F= '/^GIT_DEPLOY_KEY_/ {print $1}' \
+    | sed 's/^GIT_DEPLOY_KEY_//' \
     | tr '[:upper:]' '[:lower:]' \
     | tr '_' '-' \
     | sed 's/^/github-/' \
@@ -1953,7 +1953,7 @@ session_wrapup() {
   local active_hosts
   active_hosts="$(git_auth_list_hosts | tr '\n' ' ' | sed 's/[[:space:]]\+$//')"
   if [[ -z "$active_hosts" && "$push_all" -ne 1 ]]; then
-    echo "ℹ️  No deploy keys active (no GITHUB_DEPLOY_KEY_* vars). Nothing to push."
+    echo "ℹ️  No deploy keys active (no GIT_DEPLOY_KEY_* vars). Nothing to push."
     return 0
   fi
   [[ -n "$active_hosts" ]] && echo "🔑 Active deploy-key hosts: $active_hosts"
