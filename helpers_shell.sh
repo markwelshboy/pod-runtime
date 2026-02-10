@@ -1660,13 +1660,30 @@ git_repo_use_deploy_key() {
   if [[ "$current" != "$desired" ]]; then
     echo "🔧 Setting origin for $(basename "$repo_dir") -> $desired"
     git -C "$repo_dir" remote set-url origin "$desired"
+    echo "✅ Origin set for $(basename "$repo_dir")"
   else
     echo "✅ Origin already set for $(basename "$repo_dir")"
   fi
 
   # Optional quick auth sanity check (fast, no network clone)
   # Only runs if github is reachable; doesn't fail hard.
-  ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T "git@${host_alias}" >/dev/null 2>&1 || true
+  {
+    local _ssh_out
+    _ssh_out="$(ssh \
+        -o BatchMode=yes \
+        -o ConnectTimeout=5 \
+        -o StrictHostKeyChecking=accept-new \
+        -o UserKnownHostsFile=/tmp/github_known_hosts \
+        -o GlobalKnownHostsFile=/dev/null \
+        -T "git@${host_alias}" 2>&1 || true)"
+
+    if echo "$_ssh_out" | grep -q "successfully authenticated"; then
+      echo "✅ SSH auth check passed for host alias: $host_alias"
+    else
+      echo "⚠️ SSH auth check inconclusive for $host_alias" >&2
+      echo "   Last line: $(echo "$_ssh_out" | tail -n 1)" >&2
+    fi
+  } || true
 
   return 0
 }

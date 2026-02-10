@@ -262,6 +262,7 @@ if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
     # Stash (symlink) the repo into /workspace for easy access/viewing
     rsync_or_symlink_source_to_destination symlink "$HF_MY_REPO_LOCAL" "/workspace"
     # Create additional symlinks into main COMFY dirs as needed
+    _sync_info "✅ Linking files from $HF_MY_REPO_LOCAL into ComfyUI directories via symlinks..."
     ln -sfn $HF_MY_REPO_LOCAL/loras/* "$LORAS_DIR/"
     ln -sf  $HF_MY_REPO_LOCAL/ultralytics/* "$ULTRALYTICS_DIR/bbox/"
     ln -sfn $HF_MY_REPO_LOCAL/models/* "$MODELS_DIR/"
@@ -272,7 +273,7 @@ if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
   fi
 
 else
-  echo "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
+  _sync_info "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
 fi
 
 #----------------------------------------------
