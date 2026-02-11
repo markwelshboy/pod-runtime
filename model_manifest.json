@@ -826,6 +826,36 @@
         "url": "https://huggingface.co/Kuvshin/models-moved/resolve/main/4x-UltraSharpV2.pth",
         "path": "{UPSCALE_DIR}/4x-UltraSharpV2.pth"
       }
+    ],
+    "download_silent_snow_real_skin_detailer": [
+      {
+        "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/clip_l.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/t5xxl_fp8_e4m3fn.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/qwen_3_4b.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/lovis93/testllm/resolve/ed9cf1af7465cebca4649157f118e331cf2a084f/ae.safetensors",
+        "path": "{VAE_DIR}/ae.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/skbhadra/ClearRealityV1/resolve/main/4x-ClearRealityV1.pth",
+        "path": "{UPSCALE_DIR}/4x-ClearRealityV1.pth"
+      },
+      {
+        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+        "path": "{SEEDVR2_DIR}/seedvr2_ema_3b_fp8_e4m3fn.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors",
+        "path": "{SEEDVR2_DIR}/ema_vae_fp16.safetensors"
+      }
     ]
   }
 }
