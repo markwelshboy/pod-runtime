@@ -435,17 +435,20 @@ civitai() {
   # civitai - Civitai downloader/listing helper (GNU-style)
   #
   # New:
-  #   civitai --id urn:air:sdxl:checkpoint:civitai:1837476@2607296
-  #   civitai urn:air:sdxl:checkpoint:civitai:1837476@2607296
+  #   - Variant selection via metadata:
+  #       --fp fp8|fp16
+  #       --format SafeTensor|GGUF
+  #       --size full|pruned
   #
   # Behavior:
-  #   - Default download: .safetensors only
-  #   - If an explicit version is provided (URN with @, or --version): download ALL files in that version
-  #     unless you narrow with --download-files or --file.
+  #   - Default download (no explicit version): SafeTensor/full, and ONE fp variant (default prefers fp8 if present).
+  #   - If an explicit version is provided (URN with @, or --version):
+  #       default download is ALL files in that version (unless you narrow with --file or --download-files / extension filtering).
+  #     NOTE: If multiple variants share same filename, downloading ALL may overwrite; prefer --fp/--format/--size or --file.
   #
   # List:
-  #   - --list defaults to .safetensors
-  #   - --list --list-files "zip json" shows .safetensors + .zip + .json (etc)
+  #   - --list prints per-version summary of SafeTensor/full fp variants (marks default with *).
+  #   - --list-files still works as before (adds extra extensions to include), but summary remains focused on SafeTensor/full fp.
 
   local model_id=""
   local outdir="."
@@ -463,16 +466,21 @@ civitai() {
   local interactive=0
   [[ $- == *i* ]] && interactive=1
 
+  # Variant selectors (metadata-driven)
+  local want_fp=""              # e.g. fp8, fp16
+  local want_format=""          # e.g. SafeTensor, GGUF  (default: SafeTensor)
+  local want_size=""            # e.g. full, pruned     (default: full)
+
   _usage() {
     cat <<'EOF'
 usage:
-  civitai --list <model_id> [--list-files "zip json"] [--quiet]
-  civitai <model_id> [--out DIR] [--version ID] [--file NAME] [--download-files "zip json"] [--sanitize] [--quiet]
-  civitai --id <civitai_urn> [--out DIR] [--file NAME] [--download-files "zip json"] [--sanitize] [--quiet]
-  civitai <civitai_urn> [--out DIR] [--file NAME] [--download-files "zip json"] [--sanitize] [--quiet]
+  civitai --list <model_id_or_urn> [--list-files "zip json"] [--fp fp16] [--quiet]
+  civitai <model_id_or_urn> [--out DIR] [--version ID] [--file NAME]
+                         [--download-files "zip json"] [--fp fp16] [--format SafeTensor] [--size full]
+                         [--sanitize] [--quiet]
 
 options:
-  --list                  List available files grouped by version (defaults: .safetensors)
+  --list                  List available files grouped by version (summary includes SafeTensor/full fp variants)
   --list-files "exts"     Extra extensions to include in --list (space-separated, no dots)
                           Example: --list-files "zip json"
 
@@ -485,6 +493,10 @@ options:
                           Example: --download-files "zip json"
                           Note: if you explicitly pin a version (URN @ or --version), default is ALL files anyway.
 
+  --fp FP                 Select fp variant when available (e.g. fp8, fp16)
+  --format FORMAT          Select metadata.format (default: SafeTensor)
+  --size SIZE              Select metadata.size (default: full)
+
   --sanitize              Replace spaces with underscores
   --quiet                 Less output
   --strict                In interactive shells, return non-zero on errors (otherwise errors return 0 to avoid killing SSH)
@@ -495,14 +507,13 @@ env:
 
 examples:
   civitai --list 139562
-  civitai --list 139562 --list-files "zip json"
+  civitai --list 139562 --fp fp16
+  civitai --list urn:air:flux1:checkpoint:civitai:978314@1413133
 
-  civitai 139562 --out "$COMFY/models/checkpoints"
+  civitai 139562 --out "$COMFY/models/checkpoints"                # defaults to SafeTensor/full + default fp
+  civitai 139562 --out "$COMFY/models/checkpoints" --fp fp16      # choose fp16
   civitai 139562 --out "$COMFY/models/checkpoints" --version 798204  # downloads ALL files in that version
-  civitai 139562 --out "$COMFY/models/checkpoints" --download-files "zip json"
-  civitai 139562 --out "$COMFY/models/checkpoints" --version 798204 --file some_bundle.zip
-
-  civitai --id urn:air:sdxl:checkpoint:civitai:1837476@2607296 --out "$COMFY/models/checkpoints"
+  civitai 139562 --out "$COMFY/models/checkpoints" --version 798204 --fp fp16 --format SafeTensor --size full
 EOF
   }
 
@@ -607,6 +618,18 @@ EOF
         want_file="$2"
         shift 2
         ;;
+      --fp)
+        want_fp="$2"
+        shift 2
+        ;;
+      --format)
+        want_format="$2"
+        shift 2
+        ;;
+      --size)
+        want_size="$2"
+        shift 2
+        ;;
       --sanitize)
         sanitize=1
         shift
@@ -666,28 +689,60 @@ EOF
     || { _fail 1 "failed to fetch model metadata for id=${model_id}"; return $?; }
   [[ -z "$json" ]] && { _fail 1 "empty response fetching model metadata for id=${model_id}"; return $?; }
 
+  # Defaults for variant selectors (apply mainly to non-explicit-version downloads)
+  [[ -z "$want_format" ]] && want_format="SafeTensor"
+  [[ -z "$want_size"   ]] && want_size="full"
+
   # ---------- LIST MODE ----------
   if [[ "$mode" == "list" ]]; then
-    local rx
-    rx="$(_ext_regex_from_list "$list_files")"
-
-    # Show versions newest-first, and only matching files by extension.
-    jq -r --arg rx "$rx" '
+    # Print one summary line per version:
+    #   Version: <id> | <name> | <publishedAt> - <first safetensors name> (fp: fp8*, fp16)
+    #
+    # If --fp is provided, mark that as default (*) in display (if present).
+    jq -r --arg wantfp "$want_fp" '
       .modelVersions
       | map(. + { _sort: (.publishedAt // .createdAt // "1970-01-01T00:00:00.000Z") })
       | sort_by(._sort) | reverse
       | .[]
-      | "Version: \(.id)  |  \(.name)  |  \(.publishedAt // .createdAt // "unknown")",
-        (
+      | (
           .files
-          | map(select(.name | test($rx; "i")))
+          | map(select((.metadata.format // "") == "SafeTensor"))
+          | map(select((.metadata.size   // "") == "full"))
+          | map(.metadata.fp // empty)
+          | unique
+        ) as $fps
+      | (
+          .files
+          | map(select((.metadata.format // "") == "SafeTensor"))
+          | map(select((.metadata.size   // "") == "full"))
           | map(.name)
           | unique
-          | if length == 0 then "  (no matching files)"
-            else .[] | "  - " + .
+        ) as $names
+      | if ($names | length) == 0 then
+          "Version: \(.id)  |  \(.name)  |  \(.publishedAt // .createdAt // "unknown") - (no SafeTensor/full files)"
+        else
+          (
+            if $wantfp != "" and ($fps | index($wantfp)) != null then $wantfp
+            elif ($fps | index("fp8")) != null then "fp8"
+            elif ($fps | length) > 0 then $fps[0]
+            else ""
             end
-        ),
-        ""
+          ) as $default_fp
+          | "Version: \(.id)  |  \(.name)  |  \(.publishedAt // .createdAt // "unknown") - "
+            + ($names[0])
+            + " (fp: "
+            + (
+                if ($fps | length) == 0 then
+                  "unknown*"
+                else
+                  ($fps
+                    | map(if . == $default_fp then (. + "*") else . end)
+                    | join(", ")
+                  )
+                end
+              )
+            + ")"
+        end
     ' <<<"$json"
     return 0
   fi
@@ -717,16 +772,36 @@ EOF
     _fail 1 "could not determine modelVersionId"; return $?
   fi
 
+  # Default selection policy for variants (ONLY for non-explicit-version downloads and when not using --file):
+  # - If user supplied --fp, honor it.
+  # - Else: prefer fp8 if present, else first available fp for want_format/want_size.
+  if [[ -z "$want_fp" && -z "$want_file" && "$explicit_version" == 0 ]]; then
+    want_fp="$(jq -r --argjson vid "$chosen_vid" --arg fmt "$want_format" --arg size "$want_size" '
+      .modelVersions | map(select(.id == $vid)) | .[0].files
+      | map(select((.metadata.format // "") == $fmt))
+      | map(select((.metadata.size   // "") == $size))
+      | map(.metadata.fp // empty)
+      | unique
+      | if index("fp8") != null then "fp8"
+        elif length > 0 then .[0]
+        else ""
+        end
+    ' <<<"$json")"
+  fi
+
   [[ "$quiet" != 1 ]] && {
     echo "[civitai] model_id=${model_id} modelVersionId=${chosen_vid}"
     [[ -n "$urn_id" ]] && echo "[civitai] urn=${urn_id}"
     echo "[civitai] outdir=${outdir}"
+    [[ -n "$want_format" ]] && echo "[civitai] format=${want_format}"
+    [[ -n "$want_size" ]] && echo "[civitai] size=${want_size}"
+    [[ -n "$want_fp" ]] && echo "[civitai] fp=${want_fp}"
   }
 
   # Decide what to include by default:
   # - If want_file is set: download exactly that file.
   # - Else if explicit_version: download ALL files in that version.
-  # - Else: download .safetensors + any --download-files extras.
+  # - Else: download .safetensors (+ extras) BUT filtered to want_format/want_size/want_fp to avoid collisions.
   local rx=""
   if [[ -z "$want_file" ]]; then
     if [[ "$explicit_version" == 1 ]]; then
@@ -752,18 +827,46 @@ EOF
       ' <<<"$json"
     )"
   else
-    manifest="$(
-      jq -r --argjson vid "$chosen_vid" --arg rx "$rx" '
-        .modelVersions
-        | map(select(.id == $vid))
-        | .[0].files
-        | map(select(.name | test($rx; "i")))
-        | map({name:.name, url:.downloadUrl})
-        | unique_by(.name + "\u0000" + .url)
-        | .[]
-        | "\(.name)\t\(.url)"
-      ' <<<"$json"
-    )"
+    if [[ "$explicit_version" == 1 ]]; then
+      # Explicit version: ALL files (as before). User can narrow with --file or extensions.
+      manifest="$(
+        jq -r --argjson vid "$chosen_vid" --arg rx "$rx" '
+          .modelVersions
+          | map(select(.id == $vid))
+          | .[0].files
+          | map(select(.name | test($rx; "i")))
+          | map({name:.name, url:.downloadUrl})
+          | unique_by(.name + "\u0000" + .url)
+          | .[]
+          | "\(.name)\t\(.url)"
+        ' <<<"$json"
+      )"
+    else
+      # Non-explicit version: select one SafeTensor/full flavor (fp chosen above or via --fp),
+      # and still allow extra extensions via --download-files if present (but those won't have fp/format usually).
+      manifest="$(
+        jq -r --argjson vid "$chosen_vid" --arg rx "$rx" \
+              --arg fmt "$want_format" --arg size "$want_size" --arg fp "$want_fp" '
+          .modelVersions
+          | map(select(.id == $vid))
+          | .[0].files
+          | map(select(.name | test($rx; "i")))
+          | map(
+              if (.name | test("\\.safetensors$"; "i")) then
+                select((.metadata.format // "") == $fmt)
+                | select((.metadata.size   // "") == $size)
+                | (if $fp != "" then select((.metadata.fp // "") == $fp) else . end)
+              else
+                .
+              end
+            )
+          | map({name:.name, url:.downloadUrl})
+          | unique_by(.name + "\u0000" + .url)
+          | .[]
+          | "\(.name)\t\(.url)"
+        ' <<<"$json"
+      )"
+    fi
   fi
 
   if [[ -z "$manifest" ]]; then
