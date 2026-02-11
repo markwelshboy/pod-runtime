@@ -466,6 +466,7 @@ civitai() {
   local interactive=0
   [[ $- == *i* ]] && interactive=1
 
+  local download_all=0
   # Variant selectors (metadata-driven)
   local want_fp=""              # e.g. fp8, fp16
   local want_format=""          # e.g. SafeTensor, GGUF  (default: SafeTensor)
@@ -642,6 +643,10 @@ EOF
         strict=1
         shift
         ;;
+      --all) 
+        download_all=1; 
+        shift 
+        ;;
       --help)
         _usage
         return 0
@@ -804,9 +809,11 @@ EOF
   # - Else: download .safetensors (+ extras) BUT filtered to want_format/want_size/want_fp to avoid collisions.
   local rx=""
   if [[ -z "$want_file" ]]; then
-    if [[ "$explicit_version" == 1 ]]; then
-      rx=".*"  # ALL files
+    if [[ "$explicit_version" == 1 && "$download_all" == 1 ]]; then
+      rx=".*"  # ALL files in that version
     else
+      # Default behavior (even when explicit_version):
+      # safetensors + any extra extensions user asked for
       rx="$(_ext_regex_from_list "$download_files")"
     fi
   fi
@@ -827,8 +834,8 @@ EOF
       ' <<<"$json"
     )"
   else
-    if [[ "$explicit_version" == 1 ]]; then
-      # Explicit version: ALL files (as before). User can narrow with --file or extensions.
+    if [[ "$explicit_version" == 1 && "$download_all" == 1 ]]; then
+      # Explicit version + --all: truly download everything (old behavior)
       manifest="$(
         jq -r --argjson vid "$chosen_vid" --arg rx "$rx" '
           .modelVersions
@@ -842,8 +849,7 @@ EOF
         ' <<<"$json"
       )"
     else
-      # Non-explicit version: select one SafeTensor/full flavor (fp chosen above or via --fp),
-      # and still allow extra extensions via --download-files if present (but those won't have fp/format usually).
+      # Explicit version (default): respect variant selectors for safetensors to avoid GGUF collisions
       manifest="$(
         jq -r --argjson vid "$chosen_vid" --arg rx "$rx" \
               --arg fmt "$want_format" --arg size "$want_size" --arg fp "$want_fp" '
