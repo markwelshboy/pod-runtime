@@ -3687,7 +3687,7 @@ show_env () {
   echo "========================================================================"
   echo ""
   echo " COMFY_HOME:            $COMFY_HOME"
-  echo " Comfy version:         $(detect_comfy_version || echo unknown)"
+  echo " Comfy version:         $(probe_comfy_version || echo unknown)"
   echo ""
   echo " Custom nodes dir:      $CUSTOM_DIR"
   echo " Cache dir:             $CACHE_DIR"
@@ -4146,7 +4146,7 @@ civitai_token_status() {
   fi
 
   # 2) Common placeholder patterns
-  if [[ "$token" == "token_here" || "$token" == "CIVITAI_TOKEN_HERE" ]]; then
+  if [[ "$token" == "token_here" || "$token" == "CIVITAI_TOKEN" ]]; then
     printf '%s' "⚠️ placeholder value"
     return 1
   fi
