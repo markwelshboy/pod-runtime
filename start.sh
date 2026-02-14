@@ -384,6 +384,9 @@ if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
     ln -sfn $HF_MY_REPO_LOCAL/models/* "$MODELS_DIR/"
     ln -sf  $HF_MY_REPO_LOCAL/upscalers/* "$UPSCALE_DIR/"
     ln -sfn $HF_MY_REPO_LOCAL/checkpoints/* "$CHECKPOINTS_DIR/"
+
+    tg "📥 HuggingFace repo sync completed: $HF_MY_REPO_ID" || true
+
   else
     _sync_warn "$HF_MY_REPO_ID repo not healthy at '$HF_MY_REPO_LOCAL' (skipping symlinks)."
   fi
