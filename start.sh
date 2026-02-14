@@ -363,8 +363,6 @@ fi
 
 aria2_show_download_snapshot || true
 
-sleep infinity
-
 #------------------------------------------------------------------------
 section 11 "Pull my LORA / model repo from Huggingface and symlink into ComfyUI"
 #----------------------------------------------
@@ -374,9 +372,9 @@ section 11 "Pull my LORA / model repo from Huggingface and symlink into ComfyUI"
 
 if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
   
-  export HF_EXCLUDE_GLOBS="${HF_MY_REPO_EXCLUDE_GLOBS}"
-  export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS}"
-  HF_REPO_TYPE="${HF_MY_REPO_TYPE}" init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" || true
+  HF_EXCLUDE_GLOBS="snapshot/** loras/characterlora/**"
+  HF_INCLUDE_GLOBS=""
+  HF_REPO_TYPE=${HF_MY_REPO_TYPE} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" || true
 
   if hf_repo_looks_good "$HF_MY_REPO_LOCAL"; then
     # Stash (symlink) the repo into /workspace for easy access/viewing
