@@ -139,6 +139,12 @@ exec > >(tee -a "$STARTUP_LOG") 2>&1
 echo "[bootstrap] Logging to: ${STARTUP_LOG}"
 
 #------------------------------------------------------------------------
+section 0.1 "Start-up Telegram Message"
+#----------------------------------------------
+
+tg "▶️ Starting bootstrap of ComfyUI inference session" || true
+
+#------------------------------------------------------------------------
 section 0.5 "Basic Housekeeping"
 #----------------------------------------------
 
@@ -269,33 +275,6 @@ section 8 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
 #----------------------------------------------
 
 #----------------------------------------------
-# Synchronize 'diffusionetc' from HF to local cache repo (and symlink into ComfyUI)
-
-if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
-  
-  export HF_EXCLUDE_GLOBS=${HF_MY_REPO_EXCLUDE_GLOBS:-"snapshot/** loras/characterlora/**"}
-  export HF_INCLUDE_GLOBS=${HF_MY_REPO_INCLUDE_GLOBS:-""}
-  HF_REPO_TYPE=${HF_MY_REPO_TYPE:-model} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" || true
-
-  if hf_repo_looks_good "$HF_MY_REPO_LOCAL"; then
-    # Stash (symlink) the repo into /workspace for easy access/viewing
-    rsync_or_symlink_source_to_destination symlink "$HF_MY_REPO_LOCAL" "/workspace"
-    # Create additional symlinks into main COMFY dirs as needed
-    _sync_info "✅ Linking files from $HF_MY_REPO_LOCAL into ComfyUI directories via symlinks..."
-    ln -sfn $HF_MY_REPO_LOCAL/loras/* "$LORAS_DIR/"
-    ln -sf  $HF_MY_REPO_LOCAL/ultralytics/* "$ULTRALYTICS_DIR/bbox/"
-    ln -sfn $HF_MY_REPO_LOCAL/models/* "$MODELS_DIR/"
-    ln -sf  $HF_MY_REPO_LOCAL/upscalers/* "$UPSCALE_DIR/"
-    ln -sfn $HF_MY_REPO_LOCAL/checkpoints/* "$CHECKPOINTS_DIR/"
-  else
-    _sync_warn "$HF_MY_REPO_ID repo not healthy at '$HF_MY_REPO_LOCAL' (skipping symlinks)."
-  fi
-
-else
-  echo "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
-fi
-
-#----------------------------------------------
 # Synchronize Hearmeman WAN git repo (and copy workflows into ComfyUI - merge with existing 'workflows' dir)
 
 init_repo --git "$GIT_HEARMEMAN_WAN_REPO_ID" "$GIT_HEARMEMAN_WAN_REPO_LOCAL" || true
@@ -383,7 +362,36 @@ else
 fi
 
 #------------------------------------------------------------------------
-section 11 "Aria2 (Manifest+CivitAI) Tracking till completion"
+section 11 "Pull my LORA / model repo from Huggingface and symlink into ComfyUI"
+#----------------------------------------------
+# Synchronize 'diffusionetc' from HF to local 
+#   cache repo (and symlink into ComfyUI)
+#----------------------------------------------
+
+if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
+  
+  HF_REPO_TYPE=${HF_MY_REPO_TYPE:-model} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" || true
+
+  if hf_repo_looks_good "$HF_MY_REPO_LOCAL"; then
+    # Stash (symlink) the repo into /workspace for easy access/viewing
+    rsync_or_symlink_source_to_destination symlink "$HF_MY_REPO_LOCAL" "/workspace"
+    # Create additional symlinks into main COMFY dirs as needed
+    _sync_info "✅ Linking files from $HF_MY_REPO_LOCAL into ComfyUI directories via symlinks..."
+    ln -sfn $HF_MY_REPO_LOCAL/loras/* "$LORAS_DIR/"
+    ln -sf  $HF_MY_REPO_LOCAL/ultralytics/* "$ULTRALYTICS_DIR/bbox/"
+    ln -sfn $HF_MY_REPO_LOCAL/models/* "$MODELS_DIR/"
+    ln -sf  $HF_MY_REPO_LOCAL/upscalers/* "$UPSCALE_DIR/"
+    ln -sfn $HF_MY_REPO_LOCAL/checkpoints/* "$CHECKPOINTS_DIR/"
+  else
+    _sync_warn "$HF_MY_REPO_ID repo not healthy at '$HF_MY_REPO_LOCAL' (skipping symlinks)."
+  fi
+
+else
+  echo "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
+fi
+
+#------------------------------------------------------------------------
+section 12 "Aria2 (Manifest+CivitAI) Tracking till completion"
 #----------------------------------------------
 # Wait for all downloads to complete
 #----------------------------------------------
@@ -392,7 +400,7 @@ aria2_monitor_progress || true
 aria2_clear_results >/dev/null 2>&1 || true
 
 #------------------------------------------------------------------------
-section 12 "Disk Watcher"
+section 13 "Disk Watcher"
 #----------------------------------------------
 # Start disk watcher to monitor disk usage
 # Defaults to checking every 10 minutes, warning at 85%,
