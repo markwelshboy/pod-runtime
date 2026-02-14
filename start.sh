@@ -25,6 +25,7 @@ umask 077
 PERSIST_GLOBS=(
   "ENABLE_*"
   "INSTALL_*"
+  "*_TOKEN"
   "HF_*"
   "GIT_*"
   "LAUNCH_*"
