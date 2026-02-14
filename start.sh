@@ -361,6 +361,8 @@ else
   tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}." || true
 fi
 
+aria2_show_download_snapshot || true
+
 #------------------------------------------------------------------------
 section 11 "Pull my LORA / model repo from Huggingface and symlink into ComfyUI"
 #----------------------------------------------
@@ -379,10 +381,10 @@ if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
     rsync_or_symlink_source_to_destination symlink "$HF_MY_REPO_LOCAL" "/workspace"
     # Create additional symlinks into main COMFY dirs as needed
     _sync_info "✅ Linking files from $HF_MY_REPO_LOCAL into ComfyUI directories via symlinks..."
-    ln -sfn $HF_MY_REPO_LOCAL/loras/* "$LORAS_DIR/"
-    ln -sf  $HF_MY_REPO_LOCAL/ultralytics/* "$ULTRALYTICS_DIR/bbox/"
-    ln -sfn $HF_MY_REPO_LOCAL/models/* "$MODELS_DIR/"
-    ln -sf  $HF_MY_REPO_LOCAL/upscalers/* "$UPSCALE_DIR/"
+    ln -sfn $HF_MY_REPO_LOCAL/loras/*       "$LORAS_DIR/"
+    ln -sf  $HF_MY_REPO_LOCAL/ultralytics/* "$ULTRALYTICS_DIR/"
+    ln -sfn $HF_MY_REPO_LOCAL/models/*      "$MODELS_DIR/"
+    ln -sf  $HF_MY_REPO_LOCAL/upscalers/*   "$UPSCALE_DIR/"
     ln -sfn $HF_MY_REPO_LOCAL/checkpoints/* "$CHECKPOINTS_DIR/"
 
     tg "📥 HuggingFace repo sync completed: $HF_MY_REPO_ID" || true
