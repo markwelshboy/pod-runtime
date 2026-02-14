@@ -363,6 +363,8 @@ fi
 
 aria2_show_download_snapshot || true
 
+sleep infinity
+
 #------------------------------------------------------------------------
 section 11 "Pull my LORA / model repo from Huggingface and symlink into ComfyUI"
 #----------------------------------------------
