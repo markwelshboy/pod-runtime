@@ -204,6 +204,12 @@ ensure_comfy_dirs() {
     "${SEEDVR2_DIR:?}" \
     "${UPSCALE_DIR:?}"
 
+  #-- Model directories
+  mkdir -p \
+    "${ULTRALYTICS_DIR}/bbox" \
+    "${ULTRALYTICS_DIR}/segs" \
+    "${ULTRALYTICS_DIR}/extras"
+
   #-- Extras
   mkdir -p \
     "$COMFY_HOME/user/default/workflows"
