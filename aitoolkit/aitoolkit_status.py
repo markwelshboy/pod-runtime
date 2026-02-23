@@ -257,7 +257,12 @@ def status_once():
         s=None
 
     slope_1k = None if s is None else s*1000
-
+    
+    plateau = None
+    if slope_1k is not None:
+        plateau = abs(slope_1k) < PLATEAU_ABS_PER_1K
+    plateau_txt = "n/a" if plateau is None else ("YES" if plateau else "no")
+    
     # trend
     trend="❓"
     if slope_1k is not None:
@@ -283,16 +288,28 @@ def status_once():
     if MAX_STEPS>0:
         progress=f"{latest['step']}/{MAX_STEPS} ({latest['step']/MAX_STEPS*100:.1f}%)"
 
-    msg="\n".join([
-        f"🧪 {RUN_TITLE}",
-        f"Step {latest['step']} | Loss {fmt(latest['loss'])}{' ⚠️SPIKE' if spike else ''}",
-        f"EMA {fmt(ema_v)} | LR {fmt(latest['lr'],8)} | {progress}",
-        f"Rolling avg={fmt(avg)} min={fmt(minv)} max={fmt(maxv)}",
-        f"{trend} slope={fmt(slope_1k)} /1k",
-        f"Speed {fmt(spm,2)} step/min | ETA {eta_txt}",
-        f"Time {now_str()}",
-    ])
+    progress_txt = f" | {progress}" if progress else ""
+    eta_out = eta_txt if eta_txt else "n/a"
 
+    msg = "\n".join([
+        f"🧪 {RUN_TITLE}",
+        (
+            f"Step {latest['step']} | "
+            f"Loss {fmt(latest['loss'])}{' ⚠️SPIKE' if spike else ''} | "
+            f"EMA(α={EMA_ALPHA}) {fmt(ema_v)} | "
+            f"LR {fmt(latest['lr'], 8)}"
+            f"{progress_txt}"
+        ),
+        f"Rolling({ROLLING_N}): avg={fmt(avg)}  min={fmt(minv)}  max={fmt(maxv)}",
+        (
+            f"{trend} Trend | "
+            f"Slope({SLOPE_N}): {fmt(slope_1k)} /1k | "
+            f"Plateau<{PLATEAU_ABS_PER_1K}: {plateau_txt}"
+        ),
+        f"Speed({SPEED_N}): {fmt(spm, 2)} step/min | ETA: {eta_out}",
+        f"Time: {now_str()}",
+    ])
+    
     # samples
     if TELEGRAM_SAMPLES:
         se=yaml_sample_every()
@@ -347,4 +364,3 @@ def main():
 
 if __name__=="__main__":
     main()
-    
