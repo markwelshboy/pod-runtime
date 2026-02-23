@@ -86,10 +86,16 @@ need_pkg() {
 }
 
 # --- normalize OUTDIR ---
-if [[ "$RUN_ARG" = /* ]]; then
+# Accept:
+#   - absolute: /app/ai-toolkit/output/<run>
+#   - relative under output/: output/<run>
+#   - bare run name: <run>
+if [[ "$RUN_ARG" == /* ]]; then
   OUTDIR="$RUN_ARG"
+elif [[ "$RUN_ARG" == output/* ]]; then
+  OUTDIR="${AITK_ROOT}/${RUN_ARG}"     # /app/ai-toolkit/output/<run>
 else
-  OUTDIR="${OUT_BASE}/${RUN_ARG}"
+  OUTDIR="${OUT_BASE}/${RUN_ARG}"      # /app/ai-toolkit/output/<run>
 fi
 RUN_NAME="$(basename "$OUTDIR")"
 
@@ -103,8 +109,16 @@ cd "$AITK_ROOT"
 # --- wrapper logs (so you can debug hangs) ---
 WRAP_LOG="${OUTDIR}/status_wrapper.log"
 exec 3>>"$WRAP_LOG"
-echo "[wrapper] $(date) starting monitor.sh for $RUN_NAME (pid=$$)" >&3
-echo "[wrapper] FOREGROUND=$FOREGROUND MONITOR_ALLOW_INSTALL=$MONITOR_ALLOW_INSTALL" >&3
+
+wlog() {
+  # logs to wrapper file AND stderr so you see it immediately
+  echo "[wrapper] $*" >&3
+  echo "[wrapper] $*" >&2
+}
+
+wlog "[wrapper] $(date) starting monitor.sh for $RUN_NAME (pid=$$)"
+wlog "[wrapper] FOREGROUND=$FOREGROUND MONITOR_ALLOW_INSTALL=$MONITOR_ALLOW_INSTALL"
+
 
 # --- status env ---
 export AI_TOOLKIT_OUTPUT_DIR="$OUTDIR"
@@ -148,7 +162,7 @@ export TELEGRAM_SEND_BIN="${TELEGRAM_SEND_BIN:-telegram-send}"
 if [[ "${TELEGRAM_ENABLE}" != "0" ]]; then
   ensure_telegram_cfg
   if ! command -v telegram-send >/dev/null 2>&1; then
-    echo "[wrapper] telegram-send missing" >&3
+    wlog "[wrapper] telegram-send missing"
     need_pkg telegram-send telegram-send telegram-send || true
   fi
 fi
@@ -158,7 +172,7 @@ WAIT_FOR_DB="${WAIT_FOR_DB:-0}"         # default 0 because Python can self-wait
 WAIT_FOR_DB_FAIL="${WAIT_FOR_DB_FAIL:-0}"
 
 if [[ "$WAIT_FOR_DB" == "1" ]]; then
-  echo "[wrapper] waiting for DB: ${AI_TOOLKIT_LOSS_DB}" >&3
+  wlog "[wrapper] waiting for DB: ${AI_TOOLKIT_LOSS_DB}"
   for _ in {1..600}; do
     [[ -f "${AI_TOOLKIT_LOSS_DB}" ]] && break
     sleep 1
@@ -169,13 +183,13 @@ if [[ "$WAIT_FOR_DB" == "1" ]]; then
 fi
 
 echo "Starting monitor for ${RUN_NAME}..."
-echo "[wrapper] starting python monitor @ $(date)" >&3
+wlog "[wrapper] starting python monitor @ $(date)"
 
 MON_PID=""
 cleanup() {
   set +e
   if [[ -n "${MON_PID}" ]] && kill -0 "${MON_PID}" 2>/dev/null; then
-    echo "[wrapper] stopping monitor pid=${MON_PID} @ $(date)" >&3
+    wlog "[wrapper] stopping monitor pid=${MON_PID} @ $(date)"
     kill "${MON_PID}" 2>/dev/null || true
   fi
 }
@@ -184,12 +198,12 @@ trap cleanup EXIT INT TERM
 python "$STATUS_PY" --loop > "${OUTDIR}/status_monitor.log" 2>&1 &
 MON_PID=$!
 echo "$MON_PID" > "${OUTDIR}/status_monitor.pid"
-echo "[wrapper] monitor pid=${MON_PID}" >&3
+wlog "[wrapper] monitor pid=${MON_PID}"
 
 if [[ "$FOREGROUND" == "1" ]]; then
   wait "$MON_PID" || true
   echo "Monitor exited."
-  echo "[wrapper] monitor exited @ $(date)" >&3
+  wlog "[wrapper] monitor exited @ $(date)"
 else
   echo "[wrapper] daemonized (foreground=0). tail -f ${OUTDIR}/status_monitor.log" >&3
   disown "$MON_PID" 2>/dev/null || true
