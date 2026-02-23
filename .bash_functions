@@ -15,12 +15,16 @@ load_runtime_env() {
   
   secrets="/root/.secrets/env.current"
 
+  # Vast/runtime env (if present)
+  source_if_exists "/etc/rp_environment"
+
   # Tokens & session env
   source_if_exists "$secrets"
 
   # ComfyUI repo env + helpers
   source_if_exists "$repo_root/.env"
   source_if_exists "$repo_root/helpers.sh"
+  source_if_exists "$repo_root/helpers_shell.sh"
 
 }
 

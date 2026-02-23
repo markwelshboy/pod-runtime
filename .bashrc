@@ -113,11 +113,6 @@ export repo_root="${REPO_ROOT:?REPO_ROOT not set}"
 # Vast / ComfyUI environment wiring
 # -------------------------
 
-# Pull in Vast/runtime environment (only if present)
-if [[ -f /etc/rp_environment ]]; then
-  source /etc/rp_environment
-fi
-
 # Make sure /workspace etc. is on PATH for mirror/rebase helpers etc.
 case ":$PATH:" in
   *:/workspace:*) ;;
