@@ -127,4 +127,8 @@ if type -t load_runtime_env >/dev/null 2>&1; then
   load_runtime_env 2>/dev/null || true
 fi
 
-cd /workspace
+if [ -f /etc/rp_environment ]; then
+  cd /app/ai-toolkit
+else
+  cd /workspace 
+fi
