@@ -112,12 +112,12 @@ exec 3>>"$WRAP_LOG"
 
 wlog() {
   # logs to wrapper file AND stderr so you see it immediately
-  echo "[wrapper] $*" >&3
-  echo "[wrapper] $*" >&2
+  echo "[monitor wrapper] $*" >&3
+  echo "[monitor wrapper] $*" >&2
 }
 
-wlog "[wrapper] $(date) starting monitor.sh for $RUN_NAME (pid=$$)"
-wlog "[wrapper] FOREGROUND=$FOREGROUND MONITOR_ALLOW_INSTALL=$MONITOR_ALLOW_INSTALL"
+wlog "$(date) starting monitor.sh for $RUN_NAME (pid=$$)"
+wlog "FOREGROUND=$FOREGROUND MONITOR_ALLOW_INSTALL=$MONITOR_ALLOW_INSTALL"
 
 
 # --- status env ---
@@ -203,7 +203,7 @@ trap cleanup EXIT INT TERM
 python "$STATUS_PY" --loop > "${OUTDIR}/status_monitor.log" 2>&1 &
 MON_PID=$!
 echo "$MON_PID" > "${OUTDIR}/status_monitor.pid"
-wlog "[wrapper] monitor pid=${MON_PID}"
+wlog "monitor pid=${MON_PID}"
 
 if [[ "$FOREGROUND" == "1" ]]; then
   wait "$MON_PID" || true
