@@ -5790,15 +5790,16 @@ init_repo() {
         done
       fi
 
-      # Convert to CLI args
+      # Convert to CLI args (older hf expects ONE --include with many values)
       local -a inc_args=()
       local -a exc_args=()
-      for s in "${include_specs[@]}"; do
-        inc_args+=(--include "$s")
-      done
-      for s in "${exclude_specs[@]}"; do
-        exc_args+=(--exclude "$s")
-      done
+
+      if (( ${#include_specs[@]} > 0 )); then
+        inc_args=(--include "${include_specs[@]}")
+      fi
+      if (( ${#exclude_specs[@]} > 0 )); then
+        exc_args=(--exclude "${exclude_specs[@]}")
+      fi
 
       local -a rev_args=()
       [[ -n "$revision" ]] && rev_args=(--revision "$revision")
