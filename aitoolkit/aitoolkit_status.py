@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-AI-Toolkit training monitor:
+AI-Toolkit training monitor (SQLite loss_log.db + Telegram):
 - Reads loss + lr from loss_log.db (steps/metrics tables)
-- Computes rolling stats, EMA smoothing, slope (linear regression), plateau detection
-- Measures speed (steps/min) and optional ETA if MAX_STEPS is set
+- Rolling stats, EMA smoothing, slope (linear regression), plateau detection
+- Speed (steps/min) and ETA if MAX_STEPS is set
+- Optional spike detection (loss vs rolling average)
 - Sends Telegram status via telegram-send
-- Optional: sends sample images on the sample cadence from training_config.yaml/config.yaml
+- Optional: sends sample images on cadence from YAML (sample.sample_every) or override
+
+Telegram formatting:
+- If TELEGRAM_PRE=1 (default), wraps message in <pre>...</pre> and sends with --format html
 """
 
 import os
@@ -36,6 +40,7 @@ SPEED_N = int(os.environ.get("SPEED_N", "300"))  # points for speed
 # plateau threshold: abs(loss change) per 1000 steps (lower = stricter)
 PLATEAU_ABS_PER_1K = float(os.environ.get("PLATEAU_ABS_PER_1K", "0.002"))
 
+# Spike detection (current loss vs rolling avg)
 SPIKE_MULT = float(os.environ.get("SPIKE_MULT", "2.0"))
 
 # Alert gating
@@ -49,6 +54,9 @@ STATE_PATH = os.environ.get("STATE_PATH", os.path.join(OUTPUT_DIR, ".status_stat
 # Telegram
 TG_ENABLED = os.environ.get("TELEGRAM_ENABLE", "1") != "0"
 TG_BIN = os.environ.get("TELEGRAM_SEND_BIN", "telegram-send")
+
+# Use <pre> monospace HTML formatting by default
+TELEGRAM_PRE = os.environ.get("TELEGRAM_PRE", "1") != "0"
 
 # Metric keys (confirmed in your DB)
 LOSS_KEY = os.environ.get("LOSS_KEY", "loss/loss")
@@ -64,6 +72,9 @@ TELEGRAM_SAMPLES_MAX = int(os.environ.get("TELEGRAM_SAMPLES_MAX", "4"))
 TELEGRAM_SAMPLES_STEP_MODE = os.environ.get("TELEGRAM_SAMPLES_STEP", "latest").strip().lower()  # latest|nearest|exact
 TELEGRAM_SAMPLES_INCLUDE_PROMPTS = os.environ.get("TELEGRAM_SAMPLES_INCLUDE_PROMPTS", "0") != "0"
 TELEGRAM_SAMPLES_PROMPT_CHARS = int(os.environ.get("TELEGRAM_SAMPLES_PROMPT_CHARS", "140"))
+
+# Send images whenever we send a status (uses latest sample step) if set
+TELEGRAM_SAMPLES_ON_STATUS = os.environ.get("TELEGRAM_SAMPLES_ON_STATUS", "0") != "0"
 
 # ----------------------------
 # Helpers
@@ -90,12 +101,28 @@ def run_cmd(cmd: List[str]) -> Tuple[int, str]:
     except FileNotFoundError:
         return 127, ""
 
+def html_escape(s: str) -> str:
+    return (
+        s.replace("&", "&amp;")
+         .replace("<", "&lt;")
+         .replace(">", "&gt;")
+    )
+
 def send_telegram_text(msg: str) -> None:
     if not TG_ENABLED:
         print(msg)
         return
-    rc, out = run_cmd([TG_BIN, msg])
+
+    if TELEGRAM_PRE:
+        # HTML <pre> requires escaping
+        payload = f"<pre>{html_escape(msg)}</pre>"
+        cmd = [TG_BIN, "--format", "html", payload]
+    else:
+        cmd = [TG_BIN, msg]
+
+    rc, out = run_cmd(cmd)
     if rc != 0:
+        # fallback to stdout
         print(msg)
         if out:
             print(f"[telegram-send error] {out}")
@@ -329,40 +356,27 @@ def resolve_samples_every_and_prompts() -> Tuple[int, List[str]]:
     prompts = blk.get("prompts") or []
     return (se if se > 0 else 0), prompts
 
-def telegram_send_image(path: str, caption: str) -> bool:
-    if not TG_ENABLED:
-        return False
-    candidates = [
-        [TG_BIN, "--image", path, caption],
-        [TG_BIN, "--photo", path, caption],
-        [TG_BIN, "-i", path, caption],
-    ]
-    for cmd in candidates:
-        rc, _ = run_cmd(cmd)
-        if rc == 0:
-            return True
-    return False
-
 def telegram_send_images(paths: List[str], caption: str) -> bool:
     """
     telegram-send 0.37 supports:
       telegram-send -i img1 img2 --caption "..."
-    We send up to TELEGRAM_SAMPLES_MAX images in one message.
     """
     if not TG_ENABLED:
         return False
     if not paths:
         return False
 
-    cmd = [TG_BIN, "-i", *paths, "--caption", caption]
+    # Caption: keep simple (Telegram captions may not render <pre>; this is fine)
+    cap = caption
+    cmd = [TG_BIN, "-i", *paths, "--caption", cap]
     rc, out = run_cmd(cmd)
     if rc == 0:
         return True
 
-    # Fallback: if multi-image fails for any reason, try one-by-one
+    # Fallback: try one-by-one
     ok_any = False
     for p in paths:
-        rc2, _ = run_cmd([TG_BIN, "-i", p, "--caption", caption])
+        rc2, _ = run_cmd([TG_BIN, "-i", p, "--caption", cap])
         ok_any = ok_any or (rc2 == 0)
     if not ok_any and out:
         print(f"[telegram-send image error] {out}")
@@ -483,10 +497,11 @@ def run_once() -> int:
     roll = rolling_stats(roll_vals)
     ema_v = ema(roll_vals, EMA_ALPHA)
 
-    # ---- spike detection (current loss vs rolling average) ----
+    # spike detection
     spike = False
     if latest["loss"] is not None and roll["avg"] is not None and roll["avg"] > 0:
         spike = latest["loss"] > (SPIKE_MULT * roll["avg"])
+    spike_txt = " ⚠️SPIKE" if spike else ""
 
     spm = steps_per_min(pts_speed)
     eta = eta_str(latest["step"], spm)
@@ -527,8 +542,6 @@ def run_once() -> int:
         pct = (latest["step"] / MAX_STEPS) * 100.0
         progress_txt = f" | Progress: {pct:.1f}% ({latest['step']}/{MAX_STEPS})"
 
-    spike_txt = " ⚠️SPIKE" if spike else ""
-
     msg = "\n".join(
         [
             f"🧪 AI-Toolkit: {RUN_TITLE}",
@@ -544,23 +557,26 @@ def run_once() -> int:
     if ALERT_MODE != "always":
         msg += f"\nTrigger: {reason} (mode={ALERT_MODE})"
 
-    # ---- optional: send sample images (based on YAML cadence or override) ----
+    # ---- optional: send sample images ----
     samples_every, sample_prompts = resolve_samples_every_and_prompts()
     send_images_now = (
         TELEGRAM_SAMPLES
         and TG_ENABLED
-        and samples_every > 0
-        and (latest["step"] % samples_every == 0)
+        and send_ok
+        and (
+            TELEGRAM_SAMPLES_ON_STATUS
+            or (samples_every > 0 and (latest["step"] % samples_every == 0))
+        )
     )
 
-    if send_ok and send_images_now:
+    if send_images_now:
         chosen_step = pick_sample_step(latest["step"], TELEGRAM_SAMPLES_STEP_MODE, SAMPLES_DIR)
         if chosen_step is not None:
             imgs = sample_images_for_step(SAMPLES_DIR, chosen_step, TELEGRAM_SAMPLES_MAX)
             if imgs:
                 cap_lines = [
                     f"{RUN_TITLE}",
-                    f"Samples @ step {chosen_step} (current {latest['step']}, cadence={samples_every})",
+                    f"Samples @ step {chosen_step} (current {latest['step']}, cadence={samples_every or 'status'})",
                     f"loss={fmt_num(latest['loss'], 6)}  lr={fmt_num(latest['lr'], 8)}",
                 ]
                 if TELEGRAM_SAMPLES_INCLUDE_PROMPTS:
@@ -609,4 +625,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

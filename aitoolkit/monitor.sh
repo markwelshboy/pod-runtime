@@ -2,6 +2,7 @@
 set -euo pipefail
 
 die() { echo "ERROR: $*" >&2; exit 1; }
+have() { command -v "$1" >/dev/null 2>&1; }
 
 # --- args ---
 [[ $# -ge 1 ]] || die "usage: $0 <run_name_or_outdir>"
@@ -11,10 +12,10 @@ RUN_ARG="$1"; shift || true
 AITK_ROOT="/app/ai-toolkit"
 OUT_BASE="${AITK_ROOT}/output"
 
+# FIX: ensure this matches your installed filename
 STATUS_PY="/app/pod-runtime/aitoolkit/aitoolkit_status.py"
 
 ensure_telegram_cfg() {
-  # Create telegram-send.conf only if env vars exist
   if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
     mkdir -p /root/.config
     cat > /root/.config/telegram-send.conf <<EOF
@@ -30,54 +31,30 @@ need_apt() {
   local cmd="$1"
   local pkg="${2:-$1}"
 
-  # Allow: need_apt cmd "pkg1 pkg2 ..."
-  # Allow: need_apt cmd pkg1 (simple)
-  if command -v "$cmd" >/dev/null 2>&1; then
-    return 0
-  fi
+  command -v "$cmd" >/dev/null 2>&1 && return 0
 
   echo "[need_apt] missing: $cmd — attempting apt install: $pkg" >&2
+  command -v apt-get >/dev/null 2>&1 || { echo "[need_apt] ERROR: apt-get not found" >&2; return 127; }
 
-  # Bail early if apt-get doesn't exist (alpine/scratch/etc)
-  if ! command -v apt-get >/dev/null 2>&1; then
-    echo "[need_apt] ERROR: apt-get not found. Base image is not Debian/Ubuntu (try apk add / yum / dnf)." >&2
-    return 127
-  fi
-
-  # Choose runner (root vs sudo)
   local run=()
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
     run=(bash -lc)
   else
-    if command -v sudo >/dev/null 2>&1; then
-      run=(sudo -E bash -lc)
-    else
-      echo "[need_apt] ERROR: $cmd missing and not root; sudo not installed. Run as root or install sudo." >&2
-      return 127
-    fi
+    command -v sudo >/dev/null 2>&1 || { echo "[need_apt] ERROR: sudo not found" >&2; return 127; }
+    run=(sudo -E bash -lc)
   fi
 
-  # Non-interactive apt
   local apt_env="export DEBIAN_FRONTEND=noninteractive;"
 
-  # Update (retry once)
   "${run[@]}" "${apt_env} apt-get update" >/dev/null 2>&1 || \
   "${run[@]}" "${apt_env} apt-get update" >/dev/null 2>&1 || true
 
-  # Install best-effort
   "${run[@]}" "${apt_env} apt-get install -y --no-install-recommends $pkg" >/dev/null 2>&1 || true
 
-  # Verify
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "[need_apt] ERROR: required command not found after apt install: $cmd (pkg: $pkg)" >&2
-    echo "[need_apt] Debug info:" >&2
-    "${run[@]}" "cat /etc/os-release 2>/dev/null | sed -n '1,20p' >&2 || true"
-    "${run[@]}" "ls -l /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null >&2 || true"
-    "${run[@]}" "grep -Rhs '^[^#].*deb ' /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null >&2 || true"
-    return 127
-  fi
+  command -v "$cmd" >/dev/null 2>&1 && return 0
 
-  return 0
+  echo "[need_apt] ERROR: required command not found after install: $cmd (pkg: $pkg)" >&2
+  return 127
 }
 
 need_pkg() {
@@ -102,17 +79,7 @@ need_pkg() {
   return 127
 }
 
-maybe_need_apt() {
-  # Optional: install telegram-send if need_apt helper exists
-  if have need_apt; then
-    need_apt telegram-send
-  elif ! have telegram-send; then
-    echo "WARN: telegram-send not found and need_apt not available; monitor will print to stdout unless TELEGRAM_ENABLE=0" >&2
-  fi
-}
-
 # --- normalize OUTDIR ---
-# Allow user to pass "5H1V_runname" or "/app/ai-toolkit/output/5H1V_runname"
 if [[ "$RUN_ARG" = /* ]]; then
   OUTDIR="$RUN_ARG"
 else
@@ -120,21 +87,28 @@ else
 fi
 RUN_NAME="$(basename "$OUTDIR")"
 
-# --- prep dirs ---
+# --- sanity checks ---
+[[ -d "$AITK_ROOT" ]] || die "AITK_ROOT not found: $AITK_ROOT"
+[[ -f "$STATUS_PY" ]] || die "Monitor script not found: $STATUS_PY"
+mkdir -p "$OUTDIR"
+
 cd "$AITK_ROOT"
 
-need_apt sqlite3        # for monitor to read loss DB; best to ensure before training starts
-need_apt telegram-send  # optional, for monitor alerts; best to ensure before training starts
-ensure_telegram_cfg
+# Ensure telegram-send exists if telegram enabled
+: "${TELEGRAM_ENABLE:=1}"
+if [[ "${TELEGRAM_ENABLE}" != "0" ]]; then
+  need_pkg telegram-send telegram-send telegram-send || true
+  ensure_telegram_cfg
+fi
 
-export TELEGRAM_ENABLE=1
-export TELEGRAM_PRE=1
-export TELEGRAM_SEND_BIN=telegram-send          # adjust if different
+export TELEGRAM_PRE="${TELEGRAM_PRE:-1}"
+export TELEGRAM_SEND_BIN="${TELEGRAM_SEND_BIN:-telegram-send}"
 
 # --- status env ---
 export AI_TOOLKIT_OUTPUT_DIR="$OUTDIR"
 export AI_TOOLKIT_LOSS_DB="${AI_TOOLKIT_OUTPUT_DIR}/loss_log.db"
 export AI_TOOLKIT_SAMPLES_DIR="$AI_TOOLKIT_OUTPUT_DIR/samples"
+export RUN_TITLE="${RUN_TITLE:-$RUN_NAME}"
 
 export MAX_STEPS="${TRAIN_STATUS_MAX_STEPS:-20000}"
 export INTERVAL_MIN="${TRAIN_STATUS_INTERVAL_MIN:-30}"
@@ -155,9 +129,17 @@ export PLATEAU_ABS_PER_1K="${TRAIN_STATUS_PLATEAU_ABS_PER_1K:-0.0015}"
 export SLOPE_FLAT_PER_1K="${TRAIN_STATUS_SLOPE_FLAT_PER_1K:-0.0015}"
 export SLOPE_BAD_PER_1K="${TRAIN_STATUS_SLOPE_BAD_PER_1K:-0.004}"
 
+# Samples
+export TELEGRAM_SAMPLES="${TRAIN_STATUS_TELEGRAM_SAMPLES:-0}"
+export TELEGRAM_SAMPLES_EVERY="${TRAIN_STATUS_TELEGRAM_SAMPLES_EVERY:-auto}"
+export TELEGRAM_SAMPLES_MAX="${TRAIN_STATUS_TELEGRAM_SAMPLES_MAX:-4}"
+export TELEGRAM_SAMPLES_STEP="${TRAIN_STATUS_TELEGRAM_SAMPLES_STEP:-latest}"   # latest|nearest|exact
+export TELEGRAM_SAMPLES_ON_STATUS="${TRAIN_STATUS_TELEGRAM_SAMPLES_ON_STATUS:-0}"
+export TELEGRAM_SAMPLES_INCLUDE_PROMPTS="${TRAIN_STATUS_TELEGRAM_SAMPLES_INCLUDE_PROMPTS:-0}"
+export TELEGRAM_SAMPLES_PROMPT_CHARS="${TRAIN_STATUS_TELEGRAM_SAMPLES_PROMPT_CHARS:-140}"
+
 # --- cleanup handling ---
 MON_PID=""
-
 cleanup() {
   set +e
   if [[ -n "${MON_PID}" ]] && kill -0 "${MON_PID}" 2>/dev/null; then
@@ -167,19 +149,25 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# wait up to 10 min for DB to appear
-for i in {1..600}; do
-  [[ -f "${AI_TOOLKIT_LOSS_DB}" ]] && break
-  sleep 1
-done
+# Optional: wait up to 10 min for DB to appear (but don't fail hard unless you want to)
+WAIT_FOR_DB="${WAIT_FOR_DB:-1}"         # 1=wait, 0=don't wait
+WAIT_FOR_DB_FAIL="${WAIT_FOR_DB_FAIL:-0}" # 1=die if missing after wait
+
+if [[ "$WAIT_FOR_DB" == "1" ]]; then
+  for _ in {1..600}; do
+    [[ -f "${AI_TOOLKIT_LOSS_DB}" ]] && break
+    sleep 1
+  done
+  if [[ "$WAIT_FOR_DB_FAIL" == "1" && ! -f "${AI_TOOLKIT_LOSS_DB}" ]]; then
+    die "loss DB did not appear after 10 minutes: ${AI_TOOLKIT_LOSS_DB}"
+  fi
+fi
 
 # --- start monitor ---
-echo "Starting monitor..."
+echo "Starting monitor for ${RUN_NAME}..."
 python "$STATUS_PY" --loop > "${OUTDIR}/status_monitor.log" 2>&1 &
 MON_PID=$!
 echo "$MON_PID" > "${OUTDIR}/status_monitor.pid"
 
-# --- wait ---
 wait "$MON_PID" || true
 echo "Monitor exited."
-# cleanup trap will stop monitor
