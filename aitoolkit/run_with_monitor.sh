@@ -177,18 +177,33 @@ elif [[ ! -f "$CFG_LOCAL" ]]; then
   mv -f "${RUN_NAME}.yaml" "$CFG_LOCAL"
 fi
 
+export TELEGRAM_ENABLE=1
+export TELEGRAM_SEND_BIN=telegram-send          # adjust if different
+
 # --- status env ---
 export AI_TOOLKIT_OUTPUT_DIR="$OUTDIR"
 export AI_TOOLKIT_LOSS_DB="${AI_TOOLKIT_OUTPUT_DIR}/loss_log.db"
+export AI_TOOLKIT_SAMPLES_DIR="$AI_TOOLKIT_OUTPUT_DIR/samples"
 
 export MAX_STEPS="${TRAIN_STATUS_MAX_STEPS:-20000}"
 export INTERVAL_MIN="${TRAIN_STATUS_INTERVAL_MIN:-30}"
-export ALERT_MODE="${TRAIN_STATUS_ALERT_MODE:-always}"
+
+# Alerting
+export BAD_JUMP_FRAC="${TRAIN_STATUS_BAD_JUMP_FRAC:-0.25}"
+export ALERT_MODE="${TRAIN_STATUS_ALERT_MODE:-always}"            # always|interesting|bad
 export MIN_STEP_ADVANCE="${TRAIN_STATUS_MIN_STEP_ADVANCE:-500}"
-export ROLLING_N="${TRAIN_STATUS_ROLLING_N:-100}"
+export SPIKE_MULT="${TRAIN_STATUS_SPIKE_MULT:-2.0}"
+
+# Stats
+export ROLLING_N="${TRAIN_STATUS_ROLLING_N:-200}"
 export EMA_ALPHA="${TRAIN_STATUS_EMA_ALPHA:-0.10}"
-export SLOPE_N="${TRAIN_STATUS_SLOPE_N:-300}"
+export SLOPE_N="${TRAIN_STATUS_SLOPE_N:-500}"
 export SPEED_N="${TRAIN_STATUS_SPEED_N:-300}"
+export PLATEAU_ABS_PER_1K="${TRAIN_STATUS_PLATEAU_ABS_PER_1K:-0.0015}"
+
+export SLOPE_FLAT_PER_1K="${TRAIN_STATUS_SLOPE_FLAT_PER_1K:-0.0015}"
+export SLOPE_BAD_PER_1K="${TRAIN_STATUS_SLOPE_BAD_PER_1K:-0.004}"
+
 
 # optional: make monitor exit automatically when training exits (if you add pid.txt support later)
 # export STOP_WHEN_TRAIN_EXITS=1

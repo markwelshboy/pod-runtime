@@ -36,6 +36,8 @@ SPEED_N = int(os.environ.get("SPEED_N", "300"))  # points for speed
 # plateau threshold: abs(loss change) per 1000 steps (lower = stricter)
 PLATEAU_ABS_PER_1K = float(os.environ.get("PLATEAU_ABS_PER_1K", "0.002"))
 
+SPIKE_MULT = float(os.environ.get("SPIKE_MULT", "2.0"))
+
 # Alert gating
 # always|interesting|bad
 ALERT_MODE = os.environ.get("ALERT_MODE", "always").strip().lower()
@@ -341,6 +343,31 @@ def telegram_send_image(path: str, caption: str) -> bool:
             return True
     return False
 
+def telegram_send_images(paths: List[str], caption: str) -> bool:
+    """
+    telegram-send 0.37 supports:
+      telegram-send -i img1 img2 --caption "..."
+    We send up to TELEGRAM_SAMPLES_MAX images in one message.
+    """
+    if not TG_ENABLED:
+        return False
+    if not paths:
+        return False
+
+    cmd = [TG_BIN, "-i", *paths, "--caption", caption]
+    rc, out = run_cmd(cmd)
+    if rc == 0:
+        return True
+
+    # Fallback: if multi-image fails for any reason, try one-by-one
+    ok_any = False
+    for p in paths:
+        rc2, _ = run_cmd([TG_BIN, "-i", p, "--caption", caption])
+        ok_any = ok_any or (rc2 == 0)
+    if not ok_any and out:
+        print(f"[telegram-send image error] {out}")
+    return ok_any
+
 def list_sample_steps(samples_dir: str) -> List[int]:
     if not os.path.isdir(samples_dir):
         return []
@@ -456,6 +483,11 @@ def run_once() -> int:
     roll = rolling_stats(roll_vals)
     ema_v = ema(roll_vals, EMA_ALPHA)
 
+    # ---- spike detection (current loss vs rolling average) ----
+    spike = False
+    if latest["loss"] is not None and roll["avg"] is not None and roll["avg"] > 0:
+        spike = latest["loss"] > (SPIKE_MULT * roll["avg"])
+
     spm = steps_per_min(pts_speed)
     eta = eta_str(latest["step"], spm)
 
@@ -467,6 +499,20 @@ def run_once() -> int:
 
     plateau = plateau_flag(slope)
     slope_1k = None if slope is None else slope * 1000.0
+
+    SLOPE_FLAT_PER_1K = float(os.environ.get("SLOPE_FLAT_PER_1K", "0.0015"))
+    SLOPE_BAD_PER_1K  = float(os.environ.get("SLOPE_BAD_PER_1K", "0.004"))
+
+    trend = "❓"
+    if slope_1k is not None:
+        if slope_1k <= -SLOPE_FLAT_PER_1K:
+            trend = "✅"
+        elif abs(slope_1k) < SLOPE_FLAT_PER_1K:
+            trend = "🟨"
+        elif slope_1k >= SLOPE_BAD_PER_1K:
+            trend = "🚨"
+        else:
+            trend = "↗️"
 
     samples_now = sample_count()
     state = load_state()
@@ -481,12 +527,14 @@ def run_once() -> int:
         pct = (latest["step"] / MAX_STEPS) * 100.0
         progress_txt = f" | Progress: {pct:.1f}% ({latest['step']}/{MAX_STEPS})"
 
+    spike_txt = " ⚠️SPIKE" if spike else ""
+
     msg = "\n".join(
         [
             f"🧪 AI-Toolkit: {RUN_TITLE}",
-            f"Step: {latest['step']} | Loss: {fmt_num(latest['loss'], 6)} | EMA(α={EMA_ALPHA}): {fmt_num(ema_v, 6)} | LR: {fmt_num(latest['lr'], 8)}{progress_txt}",
+            f"Step: {latest['step']} | Loss: {fmt_num(latest['loss'], 6)}{spike_txt} | EMA(α={EMA_ALPHA}): {fmt_num(ema_v, 6)} | LR: {fmt_num(latest['lr'], 8)}{progress_txt}",
             f"Rolling({ROLLING_N}): avg={fmt_num(roll['avg'], 6)}  min={fmt_num(roll['min'], 6)}  max={fmt_num(roll['max'], 6)}",
-            f"Slope({SLOPE_N}): {fmt_num(slope_1k, 6)} loss/1k (negative=improving) | Plateau<{PLATEAU_ABS_PER_1K}: {plateau_txt}",
+            f"{trend} Slope({SLOPE_N}): {fmt_num(slope_1k, 6)} loss/1k (negative=improving) | Plateau<{PLATEAU_ABS_PER_1K}: {plateau_txt}",
             f"Speed({SPEED_N}): {fmt_num(spm, 2)} steps/min" + (f" | ETA: {eta}" if eta else ""),
             f"Time: {fmt_time_unix(latest['wall_time'])}",
             f"Samples: {samples_now}" + (f" (+{samples_delta})" if samples_delta is not None and samples_delta > 0 else ""),
@@ -522,9 +570,7 @@ def run_once() -> int:
                         cap_lines.append(ptxt)
                 caption = "\n".join(cap_lines)
 
-                ok_any = False
-                for p in imgs:
-                    ok_any = telegram_send_image(p, caption) or ok_any
+                ok_any = telegram_send_images(imgs, caption)
                 if not ok_any:
                     msg += "\nSamples: (could not send images via telegram-send)\n" + "\n".join(
                         os.path.basename(x) for x in imgs
