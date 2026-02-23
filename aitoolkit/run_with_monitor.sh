@@ -147,9 +147,9 @@ RUN_NAME="$(basename "$OUTDIR")"
 cd "$AITK_ROOT"
 mkdir -p "$OUT_BASE" "$DATASETS_DIR" "${AITK_ROOT}/config" "$OUTDIR"
 
-ensure_telegram_cfg
 need_apt sqlite3        # for monitor to read loss DB; best to ensure before training starts
 need_apt telegram-send  # optional, for monitor alerts; best to ensure before training starts
+ensure_telegram_cfg
 
 # --- datasets (idempotent) ---
 # Adjust these to your actual extracted directory names

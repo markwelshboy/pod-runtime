@@ -120,6 +120,13 @@ else
 fi
 RUN_NAME="$(basename "$OUTDIR")"
 
+# --- prep dirs ---
+cd "$AITK_ROOT"
+
+need_apt sqlite3        # for monitor to read loss DB; best to ensure before training starts
+need_apt telegram-send  # optional, for monitor alerts; best to ensure before training starts
+ensure_telegram_cfg
+
 # --- status env ---
 export AI_TOOLKIT_OUTPUT_DIR="$OUTDIR"
 export AI_TOOLKIT_LOSS_DB="${AI_TOOLKIT_OUTPUT_DIR}/loss_log.db"
@@ -133,6 +140,18 @@ export EMA_ALPHA="${TRAIN_STATUS_EMA_ALPHA:-0.10}"
 export SLOPE_N="${TRAIN_STATUS_SLOPE_N:-300}"
 export SPEED_N="${TRAIN_STATUS_SPEED_N:-300}"
 
+# --- cleanup handling ---
+MON_PID=""
+
+cleanup() {
+  set +e
+  if [[ -n "${MON_PID}" ]] && kill -0 "${MON_PID}" 2>/dev/null; then
+    echo "Stopping monitor (pid=${MON_PID})..."
+    kill "${MON_PID}" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
 # wait up to 10 min for DB to appear
 for i in {1..600}; do
   [[ -f "${AI_TOOLKIT_LOSS_DB}" ]] && break
@@ -144,3 +163,8 @@ echo "Starting monitor..."
 python "$STATUS_PY" --loop > "${OUTDIR}/status_monitor.log" 2>&1 &
 MON_PID=$!
 echo "$MON_PID" > "${OUTDIR}/status_monitor.pid"
+
+# --- wait ---
+wait "$MON_PID" || true
+echo "Monitor exited."
+# cleanup trap will stop monitor
