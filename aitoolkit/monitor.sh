@@ -162,7 +162,7 @@ export TELEGRAM_SEND_BIN="${TELEGRAM_SEND_BIN:-telegram-send}"
 if [[ "${TELEGRAM_ENABLE}" != "0" ]]; then
   ensure_telegram_cfg
   if ! command -v telegram-send >/dev/null 2>&1; then
-    wlog "[wrapper] telegram-send missing"
+    wlog "telegram-send missing"
     need_pkg telegram-send telegram-send telegram-send || true
   fi
 fi
@@ -172,7 +172,7 @@ WAIT_FOR_DB="${WAIT_FOR_DB:-0}"         # default 0 because Python can self-wait
 WAIT_FOR_DB_FAIL="${WAIT_FOR_DB_FAIL:-0}"
 
 if [[ "$WAIT_FOR_DB" == "1" ]]; then
-  wlog "[wrapper] waiting for DB: ${AI_TOOLKIT_LOSS_DB}"
+  wlog "waiting for DB: ${AI_TOOLKIT_LOSS_DB}"
   for _ in {1..600}; do
     [[ -f "${AI_TOOLKIT_LOSS_DB}" ]] && break
     sleep 1
@@ -183,13 +183,18 @@ if [[ "$WAIT_FOR_DB" == "1" ]]; then
 fi
 
 echo "Starting monitor for ${RUN_NAME}..."
-wlog "[wrapper] starting python monitor @ $(date)"
+wlog "starting python monitor @ $(date)"
 
 MON_PID=""
+DAEMONIZED=0
 cleanup() {
   set +e
+  if [[ "$DAEMONIZED" == "1" ]]; then
+    # In daemon mode, we intentionally leave the child running
+    return 0
+  fi
   if [[ -n "${MON_PID}" ]] && kill -0 "${MON_PID}" 2>/dev/null; then
-    wlog "[wrapper] stopping monitor pid=${MON_PID} @ $(date)"
+    wlog "stopping monitor pid=${MON_PID} @ $(date)"
     kill "${MON_PID}" 2>/dev/null || true
   fi
 }
@@ -203,8 +208,9 @@ wlog "[wrapper] monitor pid=${MON_PID}"
 if [[ "$FOREGROUND" == "1" ]]; then
   wait "$MON_PID" || true
   echo "Monitor exited."
-  wlog "[wrapper] monitor exited @ $(date)"
+  wlog "monitor exited @ $(date)"
 else
-  echo "[wrapper] daemonized (foreground=0). tail -f ${OUTDIR}/status_monitor.log" >&3
+  DAEMONIZED=1
+  wlog "daemonized (foreground=0). tail -f ${OUTDIR}/status_monitor.log"
   disown "$MON_PID" 2>/dev/null || true
 fi
