@@ -127,9 +127,13 @@ need_apt sqlite3        # for monitor to read loss DB; best to ensure before tra
 need_apt telegram-send  # optional, for monitor alerts; best to ensure before training starts
 ensure_telegram_cfg
 
+export TELEGRAM_ENABLE=1
+export TELEGRAM_SEND_BIN=telegram-send          # adjust if different
+
 # --- status env ---
 export AI_TOOLKIT_OUTPUT_DIR="$OUTDIR"
 export AI_TOOLKIT_LOSS_DB="${AI_TOOLKIT_OUTPUT_DIR}/loss_log.db"
+export AI_TOOLKIT_SAMPLES_DIR="$AI_TOOLKIT_OUTPUT_DIR/samples"
 
 export MAX_STEPS="${TRAIN_STATUS_MAX_STEPS:-20000}"
 export INTERVAL_MIN="${TRAIN_STATUS_INTERVAL_MIN:-30}"
