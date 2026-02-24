@@ -241,9 +241,63 @@ hfd() {
   fi
 
   local filename="$rest"
+  local base="$(basename "$filename")"
+  local target_dir="$local_dir"
+  local target_path="$target_dir/$base"
 
-  echo "→ hf download $org/$repo $filename --local-dir $local_dir"
-  hf download "$org/$repo" "$filename" --local-dir "$local_dir"
+  mkdir -p "$target_dir"
+
+  echo "→ hf download $org/$repo $filename --local-dir $target_dir"
+  hf download "$org/$repo" "$filename" --local-dir "$target_dir" || return $?
+
+  # If it already ended up flattened (or was at root), we're done.
+  if [[ -f "$target_path" ]]; then
+    return 0
+  fi
+
+  # Common expected locations
+  local cand1="$target_dir/$filename"
+  local cand2="$target_dir/split_files/$filename"
+
+  local found=""
+  if [[ -f "$cand1" ]]; then
+    found="$cand1"
+  elif [[ -f "$cand2" ]]; then
+    found="$cand2"
+  else
+    # Fallback: search under local_dir for the basename; prefer something under split_files
+    # If multiple matches, take the newest.
+    found="$(
+      find "$target_dir" -type f -name "$base" 2>/dev/null \
+        | awk '
+            {print}
+          ' \
+        | while IFS= read -r f; do
+            # Score split_files hits higher
+            if [[ "$f" == *"/split_files/"* ]]; then
+              printf "2\t%s\t%s\n" "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"
+            else
+              printf "1\t%s\t%s\n" "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"
+            fi
+          done \
+        | sort -k1,1nr -k2,2nr \
+        | head -n1 \
+        | cut -f3-
+    )"
+  fi
+
+  if [[ -z "${found:-}" || ! -f "$found" ]]; then
+    echo "❌ Download completed but couldn't locate '$base' under '$target_dir'"
+    return 1
+  fi
+
+  echo "→ flatten: $(realpath -m "$found") -> $(realpath -m "$target_path")"
+  mv -f "$found" "$target_path" || return $?
+
+  # Cleanup: remove empty dirs (best-effort)
+  # Try removing split_files subtree first if it exists, then prune empties generally.
+  [[ -d "$target_dir/split_files" ]] && find "$target_dir/split_files" -type d -empty -delete 2>/dev/null || true
+  find "$target_dir" -type d -empty -delete 2>/dev/null || true
 }
 
 cdlv() {

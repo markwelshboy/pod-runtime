@@ -261,7 +261,7 @@ def status_once():
     plateau = None
     if slope_1k is not None:
         plateau = abs(slope_1k) < PLATEAU_ABS_PER_1K
-    plateau_txt = "n/a" if plateau is None else ("YES" if plateau else "no")
+    plateau_txt = "n/a" if plateau is None else ("YES" if plateau else "No")
     
     # trend
     trend="❓"
@@ -309,7 +309,7 @@ def status_once():
         f"Speed({SPEED_N}): {fmt(spm, 2)} step/min | ETA: {eta_out}",
         f"Time: {now_str()}",
     ])
-    
+
     # samples
     if TELEGRAM_SAMPLES:
         se=yaml_sample_every()
