@@ -373,8 +373,8 @@ section 11 "Pull my LORA / model repo from Huggingface and symlink into ComfyUI"
 
 if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
   
-  export HF_EXCLUDE_GLOBS="loras/characterlora/**"
-  export HF_INCLUDE_GLOBS="loras/** ultralytics/** upscalers/** checkpoints/**"
+  export HF_EXCLUDE_GLOBS="training/** snapshot/**"
+  export HF_INCLUDE_GLOBS="loras/** models/** checkpoints/** ultralytics/** upscalers/**"
   HF_REPO_TYPE=${HF_MY_REPO_TYPE} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" || true
 
   if hf_repo_looks_good "$HF_MY_REPO_LOCAL"; then
@@ -383,11 +383,12 @@ if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
     # Create additional symlinks into main COMFY dirs as needed
     _sync_info "✅ Linking files from $HF_MY_REPO_LOCAL into ComfyUI directories via symlinks..."
     ln -sfn $HF_MY_REPO_LOCAL/loras/*             "$LORAS_DIR/"               || true
-    ln -sf  $HF_MY_REPO_LOCAL/ultralytics/bbox/*  "$ULTRALYTICS_DIR/bbox/"    || true
-    ln -sf  $HF_MY_REPO_LOCAL/ultralytics/new/*   "$ULTRALYTICS_DIR/extras/"  || true
     ln -sfn $HF_MY_REPO_LOCAL/models/*            "$MODELS_DIR/"              || true
-    ln -sf  $HF_MY_REPO_LOCAL/upscalers/*         "$UPSCALE_DIR/"             || true
     ln -sfn $HF_MY_REPO_LOCAL/checkpoints/*       "$CHECKPOINTS_DIR/"         || true
+    [ -f   "$HF_MY_REPO_LOCAL/ultralytics/ultralytics.tar" ] && ( tar -xf "$HF_MY_REPO_LOCAL/ultralytics/ultralytics.tar" -C "$ULTRALYTICS_DIR/" )  || true
+    ln -sfn $HF_MY_REPO_LOCAL/ultralytics/*       "$ULTRALYTICS_DIR/"         || true
+    [ -f   "$HF_MY_REPO_LOCAL/upscalers/upscalers.tar" ]     && ( tar -xf "$HF_MY_REPO_LOCAL/upscalers/upscalers.tar" -C "$UPSCALERS_DIR/" )        || true
+    ln -sfn $HF_MY_REPO_LOCAL/upscalers/*         "$UPSCALERS_DIR/"           || true
 
     tg "📥 HuggingFace repo sync completed: $HF_MY_REPO_ID"                   || true
 
