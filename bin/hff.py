@@ -346,53 +346,111 @@ def cmd_mv(args) -> None:
     if not src or not dst:
         die("mv: src/dst required")
 
-    # Directory/prefix move: src ends with /
-    if src_raw.endswith("/") or src.endswith("/"):
-        src_prefix = src.rstrip("/") + "/"
-        dst_prefix = dst.rstrip("/") + "/"
+    def _first_glob_index(s: str) -> int:
+        for i, ch in enumerate(s):
+            if ch in "*?[":
+                return i
+        return -1
 
-        # move everything under src_prefix
-        matches = sorted([f for f in files_set if f.startswith(src_prefix)])
-        if not matches:
-            die(f"mv: nothing under prefix: {src_prefix}", 1)
+    def _glob_base_prefix(pat_raw: str) -> str:
+        """Return a directory-like prefix for a glob pattern (always ends with '/')."""
+        pat = normalize_path(pat_raw)
+        gi = _first_glob_index(pat)
+        if gi < 0:
+            return pat.rstrip("/") + "/"
+        fixed = pat[:gi]
+        # If glob starts mid-component, strip to last '/' so we don't create odd rel paths
+        if "/" in fixed:
+            fixed = fixed.rsplit("/", 1)[0] + "/"
+        else:
+            fixed = ""
+        return fixed
 
-        # Build operations in one commit
-        ops: List[object] = []
+    def _commit_in_batches(ops_all: List[object], msg_prefix: str) -> None:
+        # HF commits can fail if you try to stuff *too many* ops into one commit.
+        # Default batch is conservative; override with --batch-size.
+        batch = max(int(getattr(args, "batch_size", 200)), 10)
+        if not ops_all:
+            return
+        for i in range(0, len(ops_all), batch):
+            chunk = ops_all[i:i + batch]
+            suffix = "" if len(ops_all) <= batch else f" (batch {i//batch + 1}/{(len(ops_all)+batch-1)//batch})"
+            a.create_commit(
+                repo_id=args.repo,
+                repo_type=args.type,
+                operations=chunk,
+                commit_message=msg_prefix + suffix,
+            )
+
+    # ---- Determine targets (single, prefix, or glob) ----
+    all_files = sorted(files_set)
+
+    is_glob = has_glob(src_raw)
+    is_prefix = src_raw.endswith("/") or src.endswith("/")
+    # If src doesn't exist as a file, but there are children under it, treat it as a prefix move.
+    if (not is_glob) and (not is_prefix) and (src not in files_set):
+        pref = src.rstrip("/") + "/"
+        if any(f.startswith(pref) for f in files_set):
+            is_prefix = True
+
+    if is_glob or is_prefix:
+        # Compute match set
+        if is_glob:
+            matches = match_glob(all_files, src_raw)
+            if not matches:
+                die(f"mv: nothing matched: {src_raw}", 1)
+            base = _glob_base_prefix(src_raw)
+        else:
+            base = src.rstrip("/") + "/"
+            matches = [f for f in all_files if f.startswith(base)]
+            if not matches:
+                die(f"mv: nothing under prefix: {base}", 1)
+
+        # Destination is treated as a directory for multi-move.
+        # (Allow omitting the trailing slash to match common "mv dirA dirB" expectations.)
+        dst_prefix = normalize_path(dst_raw).rstrip("/") + "/"
+
+        # Keep the source directory around (so you can leave a stable tree with .gitkeep)
+        # and avoid moving .gitkeep itself.
+        src_keep_dir = base.rstrip("/")
+        ops_all: List[object] = []
+        ops_all += ensure_dir_ops(files_set, src_keep_dir)
+
         ensured_dirs: Set[str] = set()
 
         def ensure_parent(d: str) -> None:
             d = normalize_path(d)
             if not d or d in ensured_dirs:
                 return
-            ops.extend(ensure_dir_ops(files_set, d))
+            ops_all.extend(ensure_dir_ops(files_set, d))
             ensured_dirs.add(d)
 
-        moved: List[str] = []
+        moved_count = 0
         for f in matches:
-            rel = f[len(src_prefix):]  # preserve structure
+            # Never move the source keep file
+            if f == f"{src_keep_dir}/.gitkeep":
+                continue
+
+            rel = f[len(base):] if base else f
             new_path = dst_prefix + rel
 
-            # ensure parent dir exists (best-effort)
             ensure_parent(parent_dir(new_path))
 
             new_path2 = unique_dest(new_path, files_set)
-            ops.append(_make_copy_op(f, new_path2))
-            ops.append(_make_delete_op(f))
+            ops_all.append(_make_copy_op(f, new_path2))
+            ops_all.append(_make_delete_op(f))
             files_set.add(new_path2)
-            moved.append(new_path2)
+            moved_count += 1
+
+        if moved_count == 0:
+            die(f"mv: nothing to move (only .gitkeep matched?): {src_raw}", 1)
 
         try:
-            a.create_commit(
-                repo_id=args.repo,
-                repo_type=args.type,
-                operations=ops,
-                commit_message=f"mv {src_prefix} -> {dst_prefix} ({len(matches)} files)",
-            )
+            _commit_in_batches(ops_all, f"mv {src_raw} -> {dst_raw} ({moved_count} files)")
         except Exception as e:
-            die(f"mv: dir move failed: {e}", 1)
+            die(f"mv: bulk move failed: {e}", 1)
 
-        # Print destination prefix (and count) in a friendly way
-        print(f"{dst_prefix}  ({len(matches)} files)")
+        print(f"{dst_prefix}  ({moved_count} files)")
         return
 
     # Single-file move
@@ -487,34 +545,101 @@ def cmd_put(args) -> None:
 
 def cmd_get(args) -> None:
     tok = need_token()
-    src = normalize_path(args.src)
+    src_raw = (args.src or "").strip()
+    src = normalize_path(src_raw)
     if not src:
         die("get: src required")
 
-    out = Path(args.out or Path(src).name).expanduser()
-    out.parent.mkdir(parents=True, exist_ok=True)
+    # Resolve targets (single file, prefix, or glob)
+    a = api(tok)
+    files = list_files(a, args.repo, args.type)
+    files_set = set(files)
 
-    try:
-        cached_p = _hf_download(args.repo, args.type, src, tok, cache_dir=args.cache_dir or None)
-    except Exception as e:
-        die(f"get: download failed: {e}", 1)
+    targets: List[str] = []
+    base_prefix = ""  # reserved for future layout tweaks
 
-    try:
-        if args.move:
-            try:
-                os.replace(str(cached_p), str(out))
-            except OSError:
-                shutil.copy2(str(cached_p), str(out))
-                try:
-                    cached_p.unlink()
-                except OSError:
-                    pass
+    if has_glob(src_raw):
+        targets = match_glob(files, src_raw)
+        if not targets:
+            die(f"get: nothing matched: {src_raw}", 1)
+
+        def _first_glob_index(s: str) -> int:
+            for i, ch in enumerate(s):
+                if ch in "*?[":
+                    return i
+            return -1
+
+        gi = _first_glob_index(src)
+        fixed = src[:gi] if gi >= 0 else src
+        if "/" in fixed:
+            base_prefix = fixed.rsplit("/", 1)[0] + "/"
         else:
-            shutil.copy2(str(cached_p), str(out))
-    except Exception as e:
-        die(f"get: failed to write {out}: {e}", 1)
+            base_prefix = ""
 
-    print(str(out))
+    else:
+        pref = src.rstrip("/") + "/"
+        if src_raw.endswith("/") or src.endswith("/") or (src not in files_set and any(f.startswith(pref) for f in files)):
+            base_prefix = pref
+            targets = [f for f in files if f.startswith(pref)]
+            if not targets:
+                die(f"get: nothing under prefix: {pref}", 1)
+        else:
+            if src not in files_set:
+                die(f"get: not found: {src}", 1)
+            targets = [src]
+
+    multi = len(targets) > 1
+
+    out_raw = (args.out or "").strip()
+    if multi:
+        out_dir = Path(out_raw or ".").expanduser()
+        if out_raw and (not out_raw.endswith("/")) and (out_dir.exists() and not out_dir.is_dir()):
+            die("get: out must be a directory for multiple files", 1)
+        out_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        out_dir = None
+
+    written: List[str] = []
+    for t in targets:
+        try:
+            cached_p = _hf_download(args.repo, args.type, t, tok, cache_dir=args.cache_dir or None)
+        except Exception as e:
+            die(f"get: download failed for {t}: {e}", 1)
+
+        if multi:
+            if getattr(args, "flat", False):
+                rel = Path(t).name
+            else:
+                rel = t
+                _ = base_prefix
+            out_path = (out_dir / rel).expanduser()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            out_path = Path(out_raw or Path(t).name).expanduser()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            if args.move:
+                try:
+                    os.replace(str(cached_p), str(out_path))
+                except OSError:
+                    shutil.copy2(str(cached_p), str(out_path))
+                    try:
+                        cached_p.unlink()
+                    except OSError:
+                        pass
+            else:
+                shutil.copy2(str(cached_p), str(out_path))
+        except Exception as e:
+            die(f"get: failed to write {out_path}: {e}", 1)
+
+        written.append(str(out_path))
+
+    if multi:
+        for p in written:
+            print(p)
+    else:
+        print(written[0])
 
 
 # ---------------- Snapshot commands (pure hub API, no CLI) ----------------
@@ -802,6 +927,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("mv")
     sp.add_argument("src")
     sp.add_argument("dst")
+    sp.add_argument("--batch-size", type=int, default=200, help="max commit operations per batch for bulk moves")
     sp.set_defaults(fn=cmd_mv)
 
     sp = sub.add_parser("rm")
@@ -820,6 +946,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("out", nargs="?", default="")
     sp.add_argument("--cache-dir", default="")
     sp.add_argument("--move", action="store_true", help="move cached file into place (best-effort)")
+    sp.add_argument("--flat", action="store_true", help="for glob/prefix downloads, write files into out dir without subdirs")
     sp.set_defaults(fn=cmd_get)
 
     sp = sub.add_parser("snapshot")

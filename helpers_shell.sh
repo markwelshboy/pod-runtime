@@ -144,10 +144,10 @@ Commands:
   doctor [--json]          Diagnostics for HF token, repo access, cli candidates
   ls [path]                List repo files (supports globs)
   mkdir <path>             Create a directory (via .gitkeep)
-  mv <src> <dst>           Move/rename file; if src ends with /, moves prefix
+  mv <src> <dst>           Move/rename; supports prefix and globs (dst is treated as a dir for multi-move)
   rm <path> [--dry-run]    Delete file(s); supports globs and prefix dirs
   put <local> <dst> [-m]   Upload file; supports local globs; multi-file dst must end with /
-  get <src> [out]          Download file; optional --cache-dir, --move
+  get <src> [out]          Download file(s); supports prefix/globs; optional --cache-dir, --move, --flat
   snapshot <subcmd> ...    Snapshot management
   help                     Show this help
 
@@ -167,7 +167,7 @@ Examples:
 
 Notes:
   - Repo paths are repo-relative (leading / is stripped)
-  - Globs are supported for `ls` and `rm`, and local globs for `put`
+  - Globs are supported for `ls`, `rm`, `mv`, and `get` (and local globs for `put`)
 EOF
   }
 
