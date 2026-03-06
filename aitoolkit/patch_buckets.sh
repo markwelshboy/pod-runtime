@@ -4,7 +4,7 @@ set -euo pipefail
 DEFAULT_FILE="/app/ai-toolkit/toolkit/buckets.py"
 
 usage() {
-  echo "Usage: $0 WIDTHxHEIGHT [-f buckets.py]"
+  echo "Usage: $0 WIDTHxHEIGHT [-f /app/ai-toolkit/toolkit/buckets.py]"
   exit 1
 }
 
