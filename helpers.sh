@@ -4245,11 +4245,7 @@ hf_token_status() {
   esac
 }
 
-# --------------------------------------------------
-# SSH setup: authorized_keys from env, start sshd
-# --------------------------------------------------
 setup_ssh() {
-  # Support a few env var names for the public key
   local pub="${SSH_PUBLIC_KEY:-${PUBLIC_KEY:-}}"
 
   if [[ -z "$pub" ]]; then
@@ -4265,24 +4261,49 @@ setup_ssh() {
   echo "[ssh] Setting up sshd with provided public key..."
 
   mkdir -p /var/run/sshd
-
   mkdir -p /root/.ssh
-  chmod 700 /root/.ssh
-  printf '%s\n' "$pub" > /root/.ssh/authorized_keys
-  chmod 600 /root/.ssh/authorized_keys
 
-  # Harden a bit: disable password auth, allow root only with keys
+  # Force ownership and perms on the full path sshd checks
+  chown root:root /root || true
+  chmod 700 /root || true
+
+  chown root:root /root/.ssh || true
+  chmod 700 /root/.ssh || true
+
+  printf '%s\n' "$pub" > /root/.ssh/authorized_keys
+  chown root:root /root/.ssh/authorized_keys || true
+  chmod 600 /root/.ssh/authorized_keys || true
+
+  # Also fix parent dirs in case the image is odd
+  chown root:root /var /var/run /var/run/sshd 2>/dev/null || true
+  chmod 755 /var /var/run /var/run/sshd 2>/dev/null || true
+
   if [[ -f /etc/ssh/sshd_config ]]; then
     sed -ri 's/^#?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
     sed -ri 's/^#?PermitRootLogin .*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+
+    if grep -q '^#\?PubkeyAuthentication' /etc/ssh/sshd_config; then
+      sed -ri 's/^#?PubkeyAuthentication .*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+    else
+      printf '\nPubkeyAuthentication yes\n' >> /etc/ssh/sshd_config
+    fi
+
+    if grep -q '^#\?AuthorizedKeysFile' /etc/ssh/sshd_config; then
+      sed -ri 's|^#?AuthorizedKeysFile .*|AuthorizedKeysFile .ssh/authorized_keys|' /etc/ssh/sshd_config
+    else
+      printf '\nAuthorizedKeysFile .ssh/authorized_keys\n' >> /etc/ssh/sshd_config
+    fi
   fi
 
   if [[ ! -f /etc/ssh/ssh_host_ed25519_key && ! -f /etc/ssh/ssh_host_rsa_key ]]; then
     echo "[ssh] Generating SSH host keys..."
     ssh-keygen -A
   fi
-  
-  # Start sshd in the background, logging to stdout
+
+  echo "[ssh] Final perms before starting sshd:"
+  ls -ld /root /root/.ssh || true
+  ls -l /root/.ssh/authorized_keys || true
+
   /usr/sbin/sshd -D -e &
   echo "[ssh] sshd started."
   sleep 5
