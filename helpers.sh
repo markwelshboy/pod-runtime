@@ -303,6 +303,7 @@ telegram_send() {
     -d "chat_id=${TELEGRAM_CHAT_ID}" \
     --data-urlencode "text=${msg}" \
     -d "disable_web_page_preview=true" \
+    -d "parse_mode=HTML" \
     >/dev/null 2>&1 || true
 }
 
@@ -445,7 +446,7 @@ $(pod_usage_summary)
 
       if [[ -z "${use:-}" ]]; then
         printf "[%s] disk_watch WARN: df failed for path=%s\n" "$(date -Is)" "$path" >>"$sink"
-        telegram_send --format html "⚠️ disk_watch df failed for path=${path}
+        telegram_send "⚠️ disk_watch df failed for path=${path}
 <pre>
 $(pod_usage_summary)</pre>"
         sleep "$interval"
@@ -465,7 +466,7 @@ $(pod_usage_summary)</pre>"
         printf "%s" "$line" >>"$sink"
 
         if [[ "$level" == "WARN" ]]; then
-          telegram_send --format html "⚠️ Disk Warning
+          telegram_send "⚠️ Disk Warning
 <pre>
 path:         ${path}
 mount:        ${mounted}
@@ -474,7 +475,7 @@ avail:        ${avail}
 
 $(pod_usage_summary)</pre>"
         elif [[ "$level" == "CRIT" ]]; then
-          telegram_send --format html "🛑 Disk CRITICAL
+          telegram_send "🛑 Disk CRITICAL
 <pre>
 path:         ${path}
 mount:        ${mounted}
@@ -483,7 +484,7 @@ avail:        ${avail}
 
 $(pod_usage_summary)</pre>"
         elif [[ "$level" == "ok" ]]; then
-          telegram_send --format html "✅ Disk back to OK
+          telegram_send "✅ Disk back to OK
 <pre>
 path:         ${path}
 mount:        ${mounted}
@@ -550,7 +551,7 @@ EOF
   (
     printf "[%s] pod_nag started on %s (interval=%ss)\n" "$(date -Is)" "$(hostname)" "$interval" >>"$sink"
 
-    telegram_send --format html "🔔 pod_nag started
+    telegram_send "🔔 pod_nag started
 <pre>
 $(pod_usage_summary)
 interval: ${interval}s</pre>"
@@ -571,7 +572,7 @@ $(pod_usage_summary)
 Remember to kill it if you're done.</pre>"
       fi
 
-      telegram_send --format html "$msg"
+      telegram_send "$msg"
       printf "[%s] pod_nag heartbeat sent\n" "$(date -Is)" >>"$sink"
 
       sleep "$interval"
@@ -590,7 +591,7 @@ disk_watch_stop() {
     kill "$pid" 2>/dev/null || true
     rm -f /tmp/disk_watch.pid
     echo "[disk_watch] stopped (pid=$pid)"
-    telegram_send --format html "🧹 disk_watch stopped on $(hostname) (pid=$pid)"
+    telegram_send "🧹 disk_watch stopped on $(hostname) (pid=$pid)"
   else
     echo "[disk_watch] not running"
   fi
@@ -603,7 +604,7 @@ pod_nag_stop() {
     kill "$pid" 2>/dev/null || true
     rm -f /tmp/pod_nag.pid
     echo "[pod_nag] stopped (pid=$pid)"
-    telegram_send --format html "🧹 pod_nag stopped on $(hostname) (pid=$pid)"
+    telegram_send "🧹 pod_nag stopped on $(hostname) (pid=$pid)"
   else
     echo "[pod_nag] not running"
   fi
