@@ -4499,10 +4499,13 @@ setup_ssh() {
   fi
 
   echo "[ssh] Final perms before starting sshd:"
+  echo "-----------------------------------------------------------"
   ls -ld /root /root/.ssh || true
   ls -l /root/.ssh/authorized_keys || true
+  echo "-----------------------------------------------------------"
 
   /usr/sbin/sshd -D -e &
+  echo
   echo "[ssh] sshd started."
   sleep 5
 }
