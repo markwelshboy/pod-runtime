@@ -417,6 +417,8 @@ section 13 "Disk Watcher"
 #----------------------------------------------
 disk_watch_start --path / --log /workspace/logs/disk_watch.log || true
 
+pod_nag --interval 3600 || true
+
 echo ""
 echo "Bootstrap complete. Bootstrap log: ${COMFY_LOGS}/startup.log"
 echo "General logs: ${COMFY_LOGS}"

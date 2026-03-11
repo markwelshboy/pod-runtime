@@ -306,6 +306,87 @@ telegram_send() {
     >/dev/null 2>&1 || true
 }
 
+# --------------------------------------------------
+# Pretty summary of /workspace/ComfyUI/models
+# --------------------------------------------------
+pod_models_summary() {
+  # usage: pod_models_summary [MODELS_DIR]
+  local models_dir="${1:-/workspace/ComfyUI/models}"
+
+  if [[ ! -d "$models_dir" ]]; then
+    echo "📦 Models summary: directory not found: $models_dir"
+    return 1
+  fi
+
+  local total
+  total="$(du -sh "$models_dir" 2>/dev/null | awk '{print $1}')"
+
+  echo "╭─ 📦 ComfyUI models on $(hostname) (total: ${total:-?})"
+
+  local found=0
+  while IFS= read -r line; do
+    found=1
+    local size path name
+    size="${line%%$'\t'*}"
+    path="${line#*$'\t'}"
+    name="${path#$models_dir/}"
+    printf "│  %-22s %8s\n" "$name" "$size"
+  done < <(
+    find "$models_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null \
+      | xargs -0 du -sh 2>/dev/null \
+      | sort -h \
+      | awk 'BEGIN{OFS="\t"} {print $1, $2}'
+  )
+
+  if [[ "$found" -eq 0 ]]; then
+    echo "│  (no model subdirectories found)"
+  fi
+
+  echo "╰─"
+}
+
+
+# --------------------------------------------------
+# Compact pod usage summary for telegram/logging
+# --------------------------------------------------
+pod_usage_summary() {
+  local models_dir="${1:-/workspace/ComfyUI/models}"
+
+  local host now uptime_human
+  host="$(hostname)"
+  now="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+  uptime_human="$(uptime -p 2>/dev/null | sed 's/^up //')"
+
+  local root_use root_avail
+  local ws_use ws_avail
+  local models_total
+
+  root_use="$(df -hP / 2>/dev/null | awk 'NR==2{print $5}')"
+  root_avail="$(df -hP / 2>/dev/null | awk 'NR==2{print $4}')"
+
+  ws_use="$(df -hP /workspace 2>/dev/null | awk 'NR==2{print $5}')"
+  ws_avail="$(df -hP /workspace 2>/dev/null | awk 'NR==2{print $4}')"
+
+  if [[ -d "$models_dir" ]]; then
+    models_total="$(du -sh "$models_dir" 2>/dev/null | awk '{print $1}')"
+  else
+    models_total="n/a"
+  fi
+
+  cat <<EOF
+Host:         ${host}
+Time:         ${now}
+Uptime:       ${uptime_human:-unknown}
+root:         ${root_use:-?} used, ${root_avail:-?} free
+workspace:    ${ws_use:-?} used, ${ws_avail:-?} free
+Models total: ${models_total}
+EOF
+}
+
+
+# --------------------------------------------------
+# Disk watcher with usage summary in telegram messages
+# --------------------------------------------------
 disk_watch_start() {
   # usage: disk_watch_start [--path /] [--warn 85] [--crit 92] [--interval 20] [--log /workspace/logs/disk_watch.log]
   local path="/"
@@ -336,30 +417,37 @@ EOF
     esac
   done
 
-  # decide output sink
   local sink="/dev/stdout"
   if [[ -n "$log" ]]; then
     mkdir -p "$(dirname "$log")" 2>/dev/null || true
     sink="$log"
   fi
 
-  # background loop; no set -e/-u so it won't kill your shell
+  {
+    printf "[%s] disk_watch starting on %s\n" "$(date -Is)" "$(hostname)"
+    pod_models_summary "/workspace/ComfyUI/models"
+  } >>"$sink" 2>/dev/null || true
+
   (
     local last_level="ok"
 
-    # Optional: announce start via telegram
-    telegram_send "📦 disk_watch started on $(hostname) (path: $path, warn: ${warn}%, crit: ${crit}%, interval: ${interval}s)"
+    telegram_send "📦 disk_watch started
+<pre>
+$(pod_usage_summary)
+/watch path: ${path}
+/warn: ${warn}%  /crit: ${crit}%  /interval: ${interval}s</pre>"
 
     while true; do
-      # df output: Use% Mounted on
       local use avail mounted
       use="$(df -P "$path" 2>/dev/null | awk 'NR==2{gsub("%","",$5); print $5}')"
       avail="$(df -hP "$path" 2>/dev/null | awk 'NR==2{print $4}')"
       mounted="$(df -P "$path" 2>/dev/null | awk 'NR==2{print $6}')"
 
-      # If df failed (e.g. path missing), just sleep and retry
       if [[ -z "${use:-}" ]]; then
         printf "[%s] disk_watch WARN: df failed for path=%s\n" "$(date -Is)" "$path" >>"$sink"
+        telegram_send "⚠️ disk_watch df failed for path=${path}
+<pre>
+$(pod_usage_summary)</pre>"
         sleep "$interval"
         continue
       fi
@@ -374,16 +462,35 @@ EOF
         line=$(printf "[%s] disk_watch %s: %s%% used (avail %s) on %s (mount %s)\n" \
           "$(date -Is)" "$level" "$use" "$avail" "$path" "${mounted:-?}")
 
-        # Log transitions (including back to OK)
         printf "%s" "$line" >>"$sink"
 
-        # Telegram notify on transitions
         if [[ "$level" == "WARN" ]]; then
-          telegram_send "⚠️ Disk warning on $(hostname): ${use}% used (avail ${avail}) path=${path} mount=${mounted}"
+          telegram_send "⚠️ Disk Warning
+<pre>
+path:         ${path}
+mount:        ${mounted}
+used:         ${use}%
+avail:        ${avail}
+
+$(pod_usage_summary)</pre>"
         elif [[ "$level" == "CRIT" ]]; then
-          telegram_send "🛑 Disk CRITICAL on $(hostname): ${use}% used (avail ${avail}) path=${path} mount=${mounted}"
+          telegram_send "🛑 Disk CRITICAL
+<pre>
+path:         ${path}
+mount:        ${mounted}
+used:         ${use}%
+avail:        ${avail}
+
+$(pod_usage_summary)</pre>"
         elif [[ "$level" == "ok" ]]; then
-          telegram_send "✅ Disk back to OK on $(hostname): ${use}% used (avail ${avail}) path=${path} mount=${mounted}"
+          telegram_send "✅ Disk back to OK
+<pre>
+path:         ${path}
+mount:        ${mounted}
+used:         ${use}%
+avail:        ${avail}
+
+$(pod_usage_summary)</pre>"
         fi
 
         last_level="$level"
@@ -398,6 +505,84 @@ EOF
   echo "[disk_watch] started (pid=$pid) path=$path warn=$warn crit=$crit interval=${interval}s log=${log:-stdout}"
 }
 
+
+# --------------------------------------------------
+# Periodic "pod still up" nagger
+# --------------------------------------------------
+pod_nag() {
+  # usage:
+  #   pod_nag [--interval 3600] [--log FILE] [--message "custom text"]
+  #
+  # env defaults:
+  #   POD_NAG_INTERVAL=3600
+
+  local interval="${POD_NAG_INTERVAL:-3600}"
+  local log=""
+  local message=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --interval) interval="$2"; shift 2 ;;
+      --log) log="$2"; shift 2 ;;
+      --message) message="$2"; shift 2 ;;
+      --help|-h)
+        cat <<EOF
+pod_nag [--interval 3600] [--log FILE] [--message "TEXT"]
+
+Defaults can be set via env:
+  POD_NAG_INTERVAL
+
+Telegram env (required for actual messages):
+  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+EOF
+        return 0
+        ;;
+      *) echo "pod_nag: unknown option: $1" >&2; return 2 ;;
+    esac
+  done
+
+  local sink="/dev/stdout"
+  if [[ -n "$log" ]]; then
+    mkdir -p "$(dirname "$log")" 2>/dev/null || true
+    sink="$log"
+  fi
+
+  (
+    printf "[%s] pod_nag started on %s (interval=%ss)\n" "$(date -Is)" "$(hostname)" "$interval" >>"$sink"
+
+    telegram_send "🔔 pod_nag started
+<pre>
+$(pod_usage_summary)
+interval: ${interval}s</pre>"
+
+    while true; do
+      local msg
+      if [[ -n "$message" ]]; then
+        msg="🔔 ${message}
+<pre>
+$(pod_usage_summary)
+
+Remember to kill it if you're done.</pre>"
+      else
+        msg="💸 Pod still up
+<pre>
+$(pod_usage_summary)
+
+Remember to kill it if you're done.</pre>"
+      fi
+
+      telegram_send "$msg"
+      printf "[%s] pod_nag heartbeat sent\n" "$(date -Is)" >>"$sink"
+
+      sleep "$interval"
+    done
+  ) &
+
+  local pid=$!
+  echo "$pid" > /tmp/pod_nag.pid
+  echo "[pod_nag] started (pid=$pid) interval=${interval}s log=${log:-stdout}"
+}
+
 disk_watch_stop() {
   local pid=""
   if [[ -f /tmp/disk_watch.pid ]]; then pid="$(cat /tmp/disk_watch.pid)"; fi
@@ -408,6 +593,19 @@ disk_watch_stop() {
     telegram_send "🧹 disk_watch stopped on $(hostname) (pid=$pid)"
   else
     echo "[disk_watch] not running"
+  fi
+}
+
+pod_nag_stop() {
+  local pid=""
+  if [[ -f /tmp/pod_nag.pid ]]; then pid="$(cat /tmp/pod_nag.pid)"; fi
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    rm -f /tmp/pod_nag.pid
+    echo "[pod_nag] stopped (pid=$pid)"
+    telegram_send "🧹 pod_nag stopped on $(hostname) (pid=$pid)"
+  else
+    echo "[pod_nag] not running"
   fi
 }
 
