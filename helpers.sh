@@ -445,7 +445,7 @@ $(pod_usage_summary)
 
       if [[ -z "${use:-}" ]]; then
         printf "[%s] disk_watch WARN: df failed for path=%s\n" "$(date -Is)" "$path" >>"$sink"
-        telegram_send "⚠️ disk_watch df failed for path=${path}
+        telegram_send --format html "⚠️ disk_watch df failed for path=${path}
 <pre>
 $(pod_usage_summary)</pre>"
         sleep "$interval"
@@ -465,7 +465,7 @@ $(pod_usage_summary)</pre>"
         printf "%s" "$line" >>"$sink"
 
         if [[ "$level" == "WARN" ]]; then
-          telegram_send "⚠️ Disk Warning
+          telegram_send --format html "⚠️ Disk Warning
 <pre>
 path:         ${path}
 mount:        ${mounted}
@@ -474,7 +474,7 @@ avail:        ${avail}
 
 $(pod_usage_summary)</pre>"
         elif [[ "$level" == "CRIT" ]]; then
-          telegram_send "🛑 Disk CRITICAL
+          telegram_send --format html "🛑 Disk CRITICAL
 <pre>
 path:         ${path}
 mount:        ${mounted}
@@ -483,7 +483,7 @@ avail:        ${avail}
 
 $(pod_usage_summary)</pre>"
         elif [[ "$level" == "ok" ]]; then
-          telegram_send "✅ Disk back to OK
+          telegram_send --format html "✅ Disk back to OK
 <pre>
 path:         ${path}
 mount:        ${mounted}
@@ -550,7 +550,7 @@ EOF
   (
     printf "[%s] pod_nag started on %s (interval=%ss)\n" "$(date -Is)" "$(hostname)" "$interval" >>"$sink"
 
-    telegram_send "🔔 pod_nag started
+    telegram_send --format html "🔔 pod_nag started
 <pre>
 $(pod_usage_summary)
 interval: ${interval}s</pre>"
@@ -571,7 +571,7 @@ $(pod_usage_summary)
 Remember to kill it if you're done.</pre>"
       fi
 
-      telegram_send "$msg"
+      telegram_send --format html "$msg"
       printf "[%s] pod_nag heartbeat sent\n" "$(date -Is)" >>"$sink"
 
       sleep "$interval"
@@ -590,7 +590,7 @@ disk_watch_stop() {
     kill "$pid" 2>/dev/null || true
     rm -f /tmp/disk_watch.pid
     echo "[disk_watch] stopped (pid=$pid)"
-    telegram_send "🧹 disk_watch stopped on $(hostname) (pid=$pid)"
+    telegram_send --format html "🧹 disk_watch stopped on $(hostname) (pid=$pid)"
   else
     echo "[disk_watch] not running"
   fi
@@ -603,7 +603,7 @@ pod_nag_stop() {
     kill "$pid" 2>/dev/null || true
     rm -f /tmp/pod_nag.pid
     echo "[pod_nag] stopped (pid=$pid)"
-    telegram_send "🧹 pod_nag stopped on $(hostname) (pid=$pid)"
+    telegram_send --format html "🧹 pod_nag stopped on $(hostname) (pid=$pid)"
   else
     echo "[pod_nag] not running"
   fi
@@ -2090,7 +2090,7 @@ build_sage_bundle() {
   mkdir -p "$CACHE_DIR"
   local tarpath="${CACHE_DIR}/torch_sage_bundle_${key}.tgz"
   
-  echo "[sage-bundle] [build_sage_bundle] Building Sage Bundle..." >&2
+  echo "  [build_sage_bundle] Building Sage Bundle..." >&2
 
   SAGE_TARPATH="$tarpath" "$PY" - << 'PY'
 import importlib, os, sysconfig, tarfile, sys
@@ -2135,30 +2135,34 @@ with tarfile.open(tarpath, "w:gz") as tf:
         tf.add(dist_dir, arcname=os.path.basename(dist_dir))
 PY
 
+  echo "  [build_sage_bundle] Built Sage Attention Bundle → ${tarpath}" >&2
   echo "$tarpath"
 }
 
 build_sage_bundle_wrapper() {
   local key="${1:?SAGE_KEY required}"
   local tarpath="${CACHE_DIR}/torch_sage_bundle_${key}.tgz"
+  echo "  [build_sage_bundle_wrapper] Building Sage Bundle Wrapper" >&2
 
   SAGE_TARPATH="$tarpath" "$PY" -m pip show torch >/dev/null 2>&1 || {
-    echo "[sage-bundle] [build_sage_bundle_wrapper] Torch not installed; cannot build Sage bundle." >&2
+    echo "  [build_sage_bundle_wrapper] Torch not installed; cannot build Sage bundle." >&2
     return 1
   }
 
   tarpath="$(build_sage_bundle "$key")" || return 1
+  echo "  [build_sage_bundle_wrapper] Built Sage Bundle Wrapper → ${tarpath}" >&2
   echo "$tarpath"
 }
 
 push_sage_bundle_if_requested() {
   if [[ "${PUSH_SAGE_BUNDLE:-0}" != "1" ]]; then
+    echo "[push_sage_bundle_if_requested] PUSH_SAGE_BUNDLE is not set to 1. Returning." >&2
     return 0
   fi
 
   local key tarpath
   key="$(torch_sage_key)"
-  echo "[sage-bundle] [push_sage_bundle_if_requested] Pushing Sage bundle to HF for key=${key}…" >&2
+  echo "[push_sage_bundle_if_requested] Pushing Sage bundle to HF for key=${key}…" >&2
 
   # Hard gate: don't push a bundle if we can't import SageAttention
   if ! "$PY" - << 'PY'
@@ -2175,28 +2179,28 @@ print("Could not import any SageAttention module (tried: sageattention, SageAtte
 raise SystemExit(1)
 PY
   then
-    echo "[sage-bundle] [push_sage_bundle_if_requested] ❌ Not pushing Sage bundle — SageAttention is not importable." >&2
+    echo "[push_sage_bundle_if_requested] ❌ Not pushing Sage bundle — SageAttention is not importable." >&2
     return 1
   fi
 
   tarpath="$(build_sage_bundle_wrapper "$key")" || {
-    echo "[sage-bundle] [push_sage_bundle_if_requested] Failed to build Sage bundle." >&2
+    echo "[push_sage_bundle_if_requested] Failed to build Sage bundle." >&2
     return 1
   }
 
   hf_push_files "torch_sage bundle ${key}" "$tarpath"
-  echo "[sage-bundle] [push_sage_bundle_if_requested] Uploaded torch_sage_bundle_${key}.tgz"
+  echo "[push_sage_bundle_if_requested] Uploaded torch_sage_bundle_${key}.tgz to HF." >&2
 }
 
 hf_fetch_sage_bundle() {
   local key="${1:?SAGE_KEY}" repo patt local_tgz
 
-  echo "[sage-bundle] [hf_fetch_sage_bundle] Ensuring local HF repo..." >&2
+  echo "  [hf_fetch_sage_bundle] Ensuring local HF repo exists..." >&2
   repo="$(hf_ensure_local_repo)" || {
-    echo "[sage-bundle] [hf_fetch_sage_bundle] ❌ Could not create local HF repo." >&2
+    echo "  [hf_fetch_sage_bundle] ❌ Could not create local HF repo." >&2
     return 1
   }
-  echo "[sage-bundle] [hf_fetch_sage_bundle] Local repo=${repo}." >&2
+  echo "[hf_fetch_sage_bundle] Local repo=${repo}." >&2
 
   # List available Sage bundles in a nullglob-safe way
   local matches=()
@@ -2205,25 +2209,25 @@ hf_fetch_sage_bundle() {
   shopt -u nullglob
 
   if ((${#matches[@]} == 0)); then
-    echo "[sage-bundle] [hf_fetch_sage_bundle] No Sage bundles found in ${repo}/bundles." >&2
+    echo "  [hf_fetch_sage_bundle] No Sage bundles found in ${repo}/bundles." >&2
   else
-    echo "[sage-bundle] [hf_fetch_sage_bundle] Available Sage bundles:" >&2
+    echo "  [hf_fetch_sage_bundle] Available Sage bundles:" >&2
     for f in "${matches[@]}"; do
       echo "  - $(basename "$f")" >&2
     done
   fi
 
   patt="${repo}/bundles/torch_sage_bundle_${key}.tgz"
-  echo "[sage-bundle] [hf_fetch_sage_bundle] Looking for matching bundle $(basename $patt)." >&2
+  echo "  [hf_fetch_sage_bundle] Looking for matching bundle $(basename $patt)." >&2
 
   if [[ ! -f "$patt" ]]; then
-    echo "[sage-bundle] [hf_fetch_sage_bundle] ❌ Exact bundle not found for key=${key}." >&2
+    echo "  [hf_fetch_sage_bundle] ❌ Exact bundle not found for key=${key}." >&2
     return 1
   fi
 
   mkdir -p "$CACHE_DIR"
   local_tgz="${CACHE_DIR}/$(basename "$patt")"
-  echo "[sage-bundle] [hf_fetch_sage_bundle] Found bundle. Copying → ${local_tgz}." >&2
+  echo "  [hf_fetch_sage_bundle] Found bundle. Copying → ${local_tgz}." >&2
   cp -f "$patt" "$local_tgz"
 
   echo "$local_tgz"
