@@ -36,7 +36,7 @@ https://github.com/lrzjason/ComfyUI-VAE-Utils.git ComfyUI-VAE-Utils
 https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git ComfyUI-Custom-Scripts
 https://github.com/chibiace/ComfyUI-Chibi-Nodes.git ComfyUI-Chibi-Nodes
 https://github.com/Smirnov75/ComfyUI-mxToolkit.git ComfyUI-mxToolkit
-https://github.com/alt-key-project/comfyui-dream-video-batches.git comfyui-dream-video-batches
+#https://github.com/alt-key-project/comfyui-dream-video-batches.git comfyui-dream-video-batches
 https://github.com/PGCRT/CRT-Nodes.git CRT-Nodes
 # Longer videos GGUF
 #https://github.com/city96/ComfyUI-GGUF ComfyUI-GGUF
@@ -123,3 +123,4 @@ https://github.com/Shiba-2-shiba/ComfyUI_FreeU_V2_advanced ComfyUI_FreeU_V2_adva
 https://github.com/Miosp/ComfyUI-FBCNN ComfyUI-FBCNN
 https://github.com/ChenDarYen/ComfyUI-NAG ComfyUI-NAG
 
+https://github.com/Nuked88/ComfyUI-N-Nodes ComfyUI-N-Nodes
