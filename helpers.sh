@@ -435,8 +435,10 @@ EOF
     telegram_send "📦 disk_watch started
 <pre>
 $(pod_usage_summary)
-/watch path: ${path}
-/warn: ${warn}%  /crit: ${crit}%  /interval: ${interval}s</pre>"
+/watch path:  ${path}
+/warn:        ${warn}%  /crit:        ${crit}%
+/interval:    ${interval}s
+</pre>"
 
     while true; do
       local use avail mounted
@@ -1233,7 +1235,7 @@ hf_ensure_local_repo() {
 
   url="$(hf_remote_url 2>/dev/null || true)"
   if [[ -z "$url" ]]; then
-    echo "[hf-ensure-local-repo] hf_ensure_local_repos: hf_remote_url unresolved" >&2
+    echo "  [hf-ensure-local-repo] hf_ensure_local_repos: hf_remote_url unresolved" >&2
     return 1
   fi
 
@@ -1245,22 +1247,22 @@ hf_ensure_local_repo() {
 
   # Redact token just for logging:
   display_url="$(printf '%s\n' "$url" | sed -E 's#(https://oauth2:)[^@]*@#\1***@#')"
-  echo "[hf-ensure-local-repo] Master repo url=${display_url}" >&2
-  echo "[hf-ensure-local-repo] Using root=${root}" >&2
-  echo "[hf-ensure-local-repo] Using local repo=${repo}" >&2
+  echo "  [hf-ensure-local-repo] Master repo url=${display_url}" >&2
+  echo "  [hf-ensure-local-repo] Using root=${root}" >&2
+  echo "  [hf-ensure-local-repo] Using local repo=${repo}" >&2
 
   mkdir -p "$root"
 
   if [[ -d "$repo/.git" ]]; then
-    echo "[hf-ensure-local-repo] Refreshing repo $repo" >&2
+    echo "  [hf-ensure-local-repo] Refreshing repo $repo" >&2
     git -C "$repo" fetch --depth=1 origin main >/dev/null 2>&1 || true
     git -C "$repo" reset --hard origin/main >/dev/null 2>&1 || true
   else
-    echo "[hf-ensure-local-repo] Cloning HF repo into $repo…" >&2
+    echo "  [hf-ensure-local-repo] Cloning HF repo into $repo…" >&2
     mkdir -p "$repo"
     # Allow non-interactive; rely on token baked into URL
     if ! GIT_TERMINAL_PROMPT=0 git clone --depth=1 "$url" "$repo" >/dev/null 2>&1; then
-      echo "[hf-ensure-local-repo] ❌ Failed to clone HF repo into $repo" >&2
+      echo "  [hf-ensure-local-repo] ❌ Failed to clone HF repo into $repo" >&2
       return 1
     fi
   fi
@@ -2377,18 +2379,18 @@ ensure_sage_from_bundle_or_build() {
 
   # If the user wants a fresh build, skip bundle lookup entirely
   if [[ "${SAGE_FORCE_REBUILD:-0}" == "1" ]]; then
-    echo "[sage-bundle] [ensure_sage_from_bundle_or_build] SAGE_FORCE_REBUILD=1 — skipping bundle restore and rebuilding from source." >&2
+    echo "  [ensure_sage_from_bundle_or_build] SAGE_FORCE_REBUILD=1 — skipping bundle restore and rebuilding from source." >&2
   else
 
-    echo "[sage-bundle] [ensure_sage_from_bundle_or_build] Looking for Sage bundle key=${key}…" >&2
+    echo "  [ensure_sage_from_bundle_or_build] Looking for Sage bundle key=${key}…" >&2
   
     local pattern="${CACHE_DIR}/torch_sage_bundle_${key}.tgz"
 
     if [[ -f "$pattern" ]]; then
-      echo "[sage-bundle] [ensure_sage_from_bundle_or_build] ✅ Found local Sage bundle in cache: $(basename "$pattern")" >&2
+      echo "  [ensure_sage_from_bundle_or_build] ✅ Found local Sage bundle in cache: $(basename "$pattern")" >&2
     else
       # Exact bundle from HF
-      echo "[sage-bundle] [ensure_sage_from_bundle_or_build] No version of bundle (${pattern}) found in local cache=${CACHE_DIR}. Attempting to fetch bundle from HF repo." >&2
+      echo "  [ensure_sage_from_bundle_or_build] No version of bundle (${pattern}) found in local cache=${CACHE_DIR}. Attempting to fetch bundle from HF repo." >&2
       if tarpath="$(hf_fetch_sage_bundle "$key")"; then
         :
       else
@@ -2407,12 +2409,12 @@ ensure_sage_from_bundle_or_build() {
   fi
 
   if [[ -n "${tarpath:-}" && -f "$tarpath" ]]; then
-    echo "[sage-bundle] [ensure_sage_from_bundle_or_build] ✅ Using Sage bundle: $(basename "$tarpath")" >&2
+    echo "  [ensure_sage_from_bundle_or_build] ✅ Using Sage bundle: $(basename "$tarpath")" >&2
     SAGE_TARPATH="$tarpath" restore_sage_from_tar
     return 0
   fi
  
-  echo "[sage-bundle] [ensure_sage_from_bundle_or_build] No bundle found — building Sage from source…" >&2
+  echo "  [ensure_sage_from_bundle_or_build] No bundle found — building Sage from source…" >&2
   install_sage_from_source || return 1
   return 0
 }
@@ -4502,12 +4504,6 @@ setup_ssh() {
     echo "[ssh] Generating SSH host keys..."
     ssh-keygen -A
   fi
-
-  echo "[ssh] Final perms before starting sshd:"
-  echo "-----------------------------------------------------------"
-  ls -ld /root /root/.ssh || true
-  ls -l /root/.ssh/authorized_keys || true
-  echo "-----------------------------------------------------------"
 
   /usr/sbin/sshd -D -e &
   echo

@@ -178,6 +178,7 @@ elif [[ ! -f "$CFG_LOCAL" ]]; then
 fi
 
 export TELEGRAM_ENABLE=1
+export TELEGRAM_PRE=1
 export TELEGRAM_SEND_BIN=telegram-send          # adjust if different
 
 # --- status env ---
@@ -203,7 +204,6 @@ export PLATEAU_ABS_PER_1K="${TRAIN_STATUS_PLATEAU_ABS_PER_1K:-0.0015}"
 
 export SLOPE_FLAT_PER_1K="${TRAIN_STATUS_SLOPE_FLAT_PER_1K:-0.0015}"
 export SLOPE_BAD_PER_1K="${TRAIN_STATUS_SLOPE_BAD_PER_1K:-0.004}"
-
 
 # optional: make monitor exit automatically when training exits (if you add pid.txt support later)
 # export STOP_WHEN_TRAIN_EXITS=1
