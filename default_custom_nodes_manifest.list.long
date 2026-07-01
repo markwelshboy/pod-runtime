@@ -52,7 +52,7 @@ https://github.com/wallen0322/ComfyUI-Wan22FMLF ComfyUI-Wan22FMLF
 # Other....
 #https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved ComfyUI-AnimateDiff-Evolved
 https://github.com/ltdrdata/ComfyUI-Manager comfyui-manager
-#https://github.com/abdullahceylan/ac-comfyui-queue-manager comfyui-queue-manager
+https://github.com/abdullahceylan/ac-comfyui-queue-manager comfyui-queue-manager
 #https://github.com/hayden-fr/ComfyUI-Model-Manager ComfyUI-Model-Manager
 #https://github.com/willmiao/ComfyUI-Lora-Manager ComfyUI-Lora-Manager
 # LBM Relighting
@@ -61,66 +61,66 @@ https://github.com/kijai/ComfyUI-Florence2 ComfyUI-Florence2
 https://github.com/kijai/ComfyUI-IC-Light ComfyUI-IC-Light
 https://github.com/kijai/ComfyUI-LBMWrapper ComfyUI-LBMWrapper
 # Photoshop-like
-#https://github.com/chflame163/ComfyUI_LayerStyle ComfyUI_LayerStyle
-#https://github.com/Azornes/Comfyui-LayerForge Comfyui-LayerForge
+https://github.com/chflame163/ComfyUI_LayerStyle ComfyUI_LayerStyle
+https://github.com/Azornes/Comfyui-LayerForge Comfyui-LayerForge
 # Swapping Tools
-#https://github.com/city96/ComfyUI-GGUF ComfyUI-GGUF
-#https://github.com/lldacing/ComfyUI_PuLID_Flux_ll ComfyUI_PuLID_Flux_ll 
-#https://github.com/ltdrdata/ComfyUI-Impact-Subpack ComfyUI-Impact-Subpack
-#https://github.com/dchatel/comfyui_facetools comfyui_facetools
-#https://github.com/Layer-norm/comfyui-lama-remover comfyui-lama-remover
-#https://github.com/SeanScripts/ComfyUI-Unload-Model ComfyUI-Unload-Model
-#https://github.com/Eagle-CN/ComfyUI-Addoor ComfyUI-Addoor
+https://github.com/city96/ComfyUI-GGUF ComfyUI-GGUF
+https://github.com/lldacing/ComfyUI_PuLID_Flux_ll ComfyUI_PuLID_Flux_ll 
+https://github.com/ltdrdata/ComfyUI-Impact-Subpack ComfyUI-Impact-Subpack
+https://github.com/dchatel/comfyui_facetools comfyui_facetools
+https://github.com/Layer-norm/comfyui-lama-remover comfyui-lama-remover
+https://github.com/SeanScripts/ComfyUI-Unload-Model ComfyUI-Unload-Model
+https://github.com/Eagle-CN/ComfyUI-Addoor ComfyUI-Addoor
 # SUPIR
-#https://github.com/kijai/ComfyUI-SUPIR ComfyUI-SUPIR
-#https://github.com/o-l-l-i/ComfyUI-Olm-DragCrop ComfyUI-Olm-DragCrop
-#https://github.com/o-l-l-i/ComfyUI-OlmLUT ComfyUI-OlmLUT
-#https://github.com/o-l-l-i/ComfyUI-Olm-ImageAdjust ComfyUI-Olm-ImageAdjust
+https://github.com/kijai/ComfyUI-SUPIR ComfyUI-SUPIR
+https://github.com/o-l-l-i/ComfyUI-Olm-DragCrop ComfyUI-Olm-DragCrop
+https://github.com/o-l-l-i/ComfyUI-OlmLUT ComfyUI-OlmLUT
+https://github.com/o-l-l-i/ComfyUI-Olm-ImageAdjust ComfyUI-Olm-ImageAdjust
 # Seed VR2
-#https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler ComfyUI-SeedVR2_VideoUpscaler
-#https://github.com/moonwhaler/comfyui-seedvr2-tilingupscaler comfyui-seedvr2-tilingupscaler
+https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler ComfyUI-SeedVR2_VideoUpscaler
+https://github.com/moonwhaler/comfyui-seedvr2-tilingupscaler comfyui-seedvr2-tilingupscaler
 #
-#https://github.com/justUmen/Bjornulf_custom_nodes Bjornulf_custom_nodes
-#https://github.com/ltdrdata/ComfyUI-Inspire-Pack ComfyUI-Inspire-Pack
+https://github.com/justUmen/Bjornulf_custom_nodes Bjornulf_custom_nodes
+https://github.com/ltdrdata/ComfyUI-Inspire-Pack ComfyUI-Inspire-Pack
 # QWEN Compositor
 https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch ComfyUI-Inpaint-CropAndStitch
 https://github.com/erosDiffusion/ComfyUI-enricos-nodes ComfyUI-enricos-nodes
 # SDXL HD Photos (Graam)
-#https://github.com/stavsap/comfyui-ollama comfyui-ollama
-#https://github.com/TinyTerra/ComfyUI_tinyterraNodes ComfyUI_tinyterraNodes
-#https://github.com/pamparamm/sd-perturbed-attention sd-perturbed-attention
-#https://github.com/gseth/ControlAltAI-Nodes ControlAltAI-Nodes 
-#https://github.com/vrgamegirl19/comfyui-vrgamedevgirl comfyui-vrgamedevgirl
-#https://github.com/brucew4yn3rp/ComfyUI_VintageEffect ComfyUI_VintageEffect
+https://github.com/stavsap/comfyui-ollama comfyui-ollama
+https://github.com/TinyTerra/ComfyUI_tinyterraNodes ComfyUI_tinyterraNodes
+https://github.com/pamparamm/sd-perturbed-attention sd-perturbed-attention
+https://github.com/gseth/ControlAltAI-Nodes ControlAltAI-Nodes 
+https://github.com/vrgamegirl19/comfyui-vrgamedevgirl comfyui-vrgamedevgirl
+https://github.com/brucew4yn3rp/ComfyUI_VintageEffect ComfyUI_VintageEffect
 # Background Removers
 https://github.com/john-mnz/ComfyUI-Inspyrenet-Rembg ComfyUI-Inspyrenet-Rembg
 # Murphy Stuff
-#https://github.com/GeekyGhost/ComfyUI-GeekyRemB ComfyUI-GeekyRemB
-#https://github.com/alexopus/ComfyUI-Image-Saver ComfyUI-Image-Saver
-#https://github.com/sipherxyz/comfyui-art-venture comfyui-art-venture
-#https://github.com/evanspearman/ComfyMath ComfyMath
-#https://github.com/farizrifqi/ComfyUI-Image-Saver ComfyUI-Image-Saver
-#https://github.com/APZmedia/APZmedia-comfyui-fast-image-save APZmedia-comfyui-fast-image-save
-#https://github.com/kaibioinfo/ComfyUI_AdvancedRefluxControl ComfyUI_AdvancedRefluxControl
-#https://github.com/adieyal/comfyui-dynamicprompts comfyui-dynamicprompts
+https://github.com/GeekyGhost/ComfyUI-GeekyRemB ComfyUI-GeekyRemB
+https://github.com/alexopus/ComfyUI-Image-Saver ComfyUI-Image-Saver
+https://github.com/sipherxyz/comfyui-art-venture comfyui-art-venture
+https://github.com/evanspearman/ComfyMath ComfyMath
+https://github.com/farizrifqi/ComfyUI-Image-Saver ComfyUI-Image-Saver
+https://github.com/APZmedia/APZmedia-comfyui-fast-image-save APZmedia-comfyui-fast-image-save
+https://github.com/kaibioinfo/ComfyUI_AdvancedRefluxControl ComfyUI_AdvancedRefluxControl
+https://github.com/adieyal/comfyui-dynamicprompts comfyui-dynamicprompts
 # Cross hair lines (for alignment)
 https://github.com/SparknightLLC/ComfyUI-CrosshairGuidelines ComfyUI-CrosshairGuidelines
 # 
-#https://github.com/wildminder/ComfyUI-DyPE ComfyUI-DyPE
-#https://github.com/Nourepide/ComfyUI-Allor ComfyUI-Allor
+https://github.com/wildminder/ComfyUI-DyPE ComfyUI-DyPE
+https://github.com/Nourepide/ComfyUI-Allor ComfyUI-Allor
 https://github.com/1038lab/ComfyUI-QwenVL ComfyUI-QwenVL
 # Joycaption, Qwen-VL
-#https://github.com/1038lab/ComfyUI-JoyCaption ComfyUI-JoyCaption
-#https://github.com/IuvenisSapiens/ComfyUI_Qwen3-VL-Instruct ComfyUI_Qwen3-VL-Instruct
+https://github.com/1038lab/ComfyUI-JoyCaption ComfyUI-JoyCaption
+https://github.com/IuvenisSapiens/ComfyUI_Qwen3-VL-Instruct ComfyUI_Qwen3-VL-Instruct
 # James Walker (JW Nodes)
 https://github.com/jamesWalker55/comfyui-various comfyui-various
 # CCSR / SUPIR workflow
-#https://github.com/kijai/ComfyUI-CCSR ComfyUI-CCSR
+https://github.com/kijai/ComfyUI-CCSR ComfyUI-CCSR
 # Other
 https://github.com/yushan777/ComfyUI-Y7Nodes ComfyUI-Y7Nodes
-#https://github.com/Hearmeman24/ComfyUI-LoRAPlotNode ComfyUI-LoRAPlotNode
-#https://github.com/Shiba-2-shiba/ComfyUI_FreeU_V2_advanced ComfyUI_FreeU_V2_advanced
+https://github.com/Hearmeman24/ComfyUI-LoRAPlotNode ComfyUI-LoRAPlotNode
+https://github.com/Shiba-2-shiba/ComfyUI_FreeU_V2_advanced ComfyUI_FreeU_V2_advanced
 https://github.com/Miosp/ComfyUI-FBCNN ComfyUI-FBCNN
-#https://github.com/ChenDarYen/ComfyUI-NAG ComfyUI-NAG
-#https://github.com/icekiub-ai/ComfyUI-IcyHider ComfyUI-IcyHider
-#https://github.com/benjiyaya/Comfyui_InitialB_Util Comfyui_InitialB_Util
+https://github.com/ChenDarYen/ComfyUI-NAG ComfyUI-NAG
+https://github.com/icekiub-ai/ComfyUI-IcyHider ComfyUI-IcyHider
+https://github.com/benjiyaya/Comfyui_InitialB_Util Comfyui_InitialB_Util
