@@ -41,7 +41,8 @@ ACTION="${1:-start}"
 
 export PATH="/opt/venv/bin:${PATH}"
 
-BASE="${COMFY_HOME}"
+STATE="${COMFY_HOME}"
+APP="${COMFY_APP:-${COMFYUI_PATH:-/opt/ComfyUI}}"
 LOGS="${COMFY_LOGS}"
 START_TIMEOUT="${START_TIMEOUT:-120}"
 GPU_PORT_BASE="${GPU_PORT_BASE:-8288}"
@@ -91,9 +92,9 @@ mask_to_bits_5() {
 
 # ---- comfy process discovery ----
 find_comfy_pids() {
-  # Match python processes running "${COMFY_HOME}/main.py" with listen+port args.
+  # Match python processes running "${COMFY_APP}/main.py" with listen+port args.
   ps -eo pid=,args= \
-    | awk -v base="${BASE}" '
+    | awk -v base="${APP}" '
         $0 ~ "python" && $0 ~ (base "/main.py") && $0 ~ "--listen" && $0 ~ "--port" { print $1 }
       ' \
     | tr '\n' ' ' || true
@@ -168,25 +169,35 @@ start_one() {
     tmux kill-session -t "${sess}" || true
   fi
 
+  if [[ ! -f "${APP}/main.py" ]]; then
+    echo "ERROR: ComfyUI app main.py not found: ${APP}/main.py" >&2
+    return 1
+  fi
+
   tmux new-session -d -s "${sess}" \
-    "CUDA_VISIBLE_DEVICES=${gvar} PYTHONUNBUFFERED=1 \
-     python \"${BASE}/main.py\" --listen --port ${port} \
+    "cd \"${APP}\" && CUDA_VISIBLE_DEVICES=${gvar} PYTHONUNBUFFERED=1 \
+     python \"${APP}/main.py\" --listen --port ${port} \
        ${sage_attention} \
        --output-directory \"${out}\" --temp-directory \"${cache}\" --preview-method latent2rgb \
        >> \"${LOGS}/comfyui-${port}.log\" 2>&1"
 }
 
 start_8188() {
-  mkdir -p "${BASE}/output" "${BASE}/cache" "${LOGS}"
+  mkdir -p "${STATE}/output" "${STATE}/cache" "${LOGS}"
 
   if tmux has-session -t "comfy-8188" >/dev/null 2>&1; then
     tmux kill-session -t "comfy-8188" || true
   fi
 
+  if [[ ! -f "${APP}/main.py" ]]; then
+    echo "ERROR: ComfyUI app main.py not found: ${APP}/main.py" >&2
+    return 1
+  fi
+
   tmux new-session -d -s comfy-8188 \
-    "PYTHONUNBUFFERED=1 \
-     python \"${BASE}/main.py\" --listen --port 8188 ${sage_attention} \
-       --output-directory \"${BASE}/output\" --temp-directory \"${BASE}/cache\" --preview-method latent2rgb \
+    "cd \"${APP}\" && PYTHONUNBUFFERED=1 \
+     python \"${APP}/main.py\" --listen --port 8188 ${sage_attention} \
+       --output-directory \"${STATE}/output\" --temp-directory \"${STATE}/cache\" --preview-method latent2rgb \
        >> \"${LOGS}/comfyui-8188.log\" 2>&1"
 }
 
@@ -208,7 +219,7 @@ do_start() {
   # Required: 8188
   if wait_http 8188 "${START_TIMEOUT}"; then
     start_mask="$(mask_set_bit "${start_mask}" 0)"
-    health_log "comfy-8188" 8188 "unset" "${BASE}/output" "${BASE}/cache"
+    health_log "comfy-8188" 8188 "unset" "${STATE}/output" "${STATE}/cache"
   else
     echo "ERROR: comfy-8188 did not come up on :8188 after ${START_TIMEOUT}s"
     echo "       Check: ${LOGS}/comfyui-8188.log"
@@ -222,10 +233,10 @@ do_start() {
   # gpu0=8288, gpu1=8388, gpu2=8488, gpu3=8588
   if [[ "${gpu_to_spawn}" -ge 1 ]]; then
     echo "INFO: starting comfy-8288 (GPU0)..."
-    start_one comfy-8288 8288 0 "${BASE}/output_gpu0" "${BASE}/cache_gpu0"
+    start_one comfy-8288 8288 0 "${STATE}/output_gpu0" "${STATE}/cache_gpu0"
     if wait_http 8288 25; then
       start_mask="$(mask_set_bit "${start_mask}" 1)"
-      health_log "comfy-8288" 8288 0 "${BASE}/output_gpu0" "${BASE}/cache_gpu0"
+      health_log "comfy-8288" 8288 0 "${STATE}/output_gpu0" "${STATE}/cache_gpu0"
     else
       echo "WARN: comfy-8288 not reachable yet; check ${LOGS}/comfyui-8288.log"
     fi
@@ -233,10 +244,10 @@ do_start() {
 
   if [[ "${gpu_to_spawn}" -ge 2 ]]; then
     echo "INFO: starting comfy-8388 (GPU1)..."
-    start_one comfy-8388 8388 1 "${BASE}/output_gpu1" "${BASE}/cache_gpu1"
+    start_one comfy-8388 8388 1 "${STATE}/output_gpu1" "${STATE}/cache_gpu1"
     if wait_http 8388 25; then
       start_mask="$(mask_set_bit "${start_mask}" 2)"
-      health_log "comfy-8388" 8388 1 "${BASE}/output_gpu1" "${BASE}/cache_gpu1"
+      health_log "comfy-8388" 8388 1 "${STATE}/output_gpu1" "${STATE}/cache_gpu1"
     else
       echo "WARN: comfy-8388 not reachable yet; check ${LOGS}/comfyui-8388.log"
     fi
@@ -244,10 +255,10 @@ do_start() {
 
   if [[ "${gpu_to_spawn}" -ge 3 ]]; then
     echo "INFO: starting comfy-8488 (GPU2)..."
-    start_one comfy-8488 8488 2 "${BASE}/output_gpu2" "${BASE}/cache_gpu2"
+    start_one comfy-8488 8488 2 "${STATE}/output_gpu2" "${STATE}/cache_gpu2"
     if wait_http 8488 25; then
       start_mask="$(mask_set_bit "${start_mask}" 3)"
-      health_log "comfy-8488" 8488 2 "${BASE}/output_gpu2" "${BASE}/cache_gpu2"
+      health_log "comfy-8488" 8488 2 "${STATE}/output_gpu2" "${STATE}/cache_gpu2"
     else
       echo "WARN: comfy-8488 not reachable yet; check ${LOGS}/comfyui-8488.log"
     fi
@@ -255,10 +266,10 @@ do_start() {
 
   if [[ "${gpu_to_spawn}" -ge 4 ]]; then
     echo "INFO: starting comfy-8588 (GPU3)..."
-    start_one comfy-8588 8588 3 "${BASE}/output_gpu3" "${BASE}/cache_gpu3"
+    start_one comfy-8588 8588 3 "${STATE}/output_gpu3" "${STATE}/cache_gpu3"
     if wait_http 8588 25; then
       start_mask="$(mask_set_bit "${start_mask}" 4)"
-      health_log "comfy-8588" 8588 3 "${BASE}/output_gpu3" "${BASE}/cache_gpu3"
+      health_log "comfy-8588" 8588 3 "${STATE}/output_gpu3" "${STATE}/cache_gpu3"
     else
       echo "WARN: comfy-8588 not reachable yet; check ${LOGS}/comfyui-8588.log"
     fi

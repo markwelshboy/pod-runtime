@@ -215,6 +215,55 @@ ensure_comfy_dirs() {
     "$COMFY_HOME/user/default/workflows"
 }
 
+link_comfy_state_into_app() {
+  : "${COMFY_HOME:?COMFY_HOME/COMFY_STATE must be set}"
+
+  local app="${COMFY_APP:-${COMFYUI_PATH:-/opt/ComfyUI}}"
+  local state="${COMFY_HOME}"
+
+  export COMFY_APP="$app"
+  export COMFYUI_PATH="$app"
+
+  mkdir -p \
+    "$state/custom_nodes" \
+    "$state/models" \
+    "$state/input" \
+    "$state/output" \
+    "$state/user" \
+    "$state/cache" \
+    "${COMFY_LOGS:-/workspace/logs}"
+
+  # Legacy-image fallback: if /opt/ComfyUI is absent but the old
+  # /workspace/ComfyUI app tree exists, keep working without deleting state.
+  if [[ ! -f "$app/main.py" ]]; then
+    if [[ -f "$state/main.py" ]]; then
+      echo "[comfy-paths] COMFY_APP missing; using legacy app tree: $state" >&2
+      export COMFY_APP="$state"
+      export COMFYUI_PATH="$state"
+      ln -sfn "$state" /ComfyUI
+      return 0
+    fi
+
+    echo "[comfy-paths] WARN: COMFY_APP does not contain main.py yet: $app" >&2
+    echo "[comfy-paths]       The image should bake ComfyUI into /opt/ComfyUI." >&2
+  fi
+
+  # Make app-root state dirs resolve to persistent workspace state.
+  # Existing app dirs are copied once into state before being replaced.
+  for d in custom_nodes models input output user cache; do
+    if [[ -e "$app/$d" && ! -L "$app/$d" ]]; then
+      rsync -a --ignore-existing "$app/$d/" "$state/$d/" 2>/dev/null || true
+      rm -rf "$app/$d"
+    fi
+    ln -sfn "$state/$d" "$app/$d"
+  done
+
+  ln -sfn "$app" /ComfyUI
+
+  echo "[comfy-paths] COMFY_APP=$app"
+  echo "[comfy-paths] COMFY_STATE=$state"
+}
+
 # ------------------------- #
 #  Workflows / Icons import #
 # ------------------------- #
@@ -312,7 +361,7 @@ telegram_send() {
 # --------------------------------------------------
 pod_models_summary() {
   # usage: pod_models_summary [MODELS_DIR]
-  local models_dir="${1:-/workspace/ComfyUI/models}"
+  local models_dir="${1:-${MODELS_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/models}}"
 
   if [[ ! -d "$models_dir" ]]; then
     echo "📦 Models summary: directory not found: $models_dir"
@@ -351,7 +400,7 @@ pod_models_summary() {
 # Compact pod usage summary for telegram/logging
 # --------------------------------------------------
 pod_usage_summary() {
-  local models_dir="${1:-/workspace/ComfyUI/models}"
+  local models_dir="${1:-${MODELS_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/models}}"
 
   local host now uptime_human
   host="$(hostname)"
@@ -426,7 +475,7 @@ EOF
 
   {
     printf "[%s] disk_watch starting on %s\n" "$(date -Is)" "$(hostname)"
-    pod_models_summary "/workspace/ComfyUI/models"
+    pod_models_summary "${MODELS_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/models}"
   } >>"$sink" 2>/dev/null || true
 
   (
@@ -616,20 +665,28 @@ pod_nag_stop() {
 # ComfyUI core management
 # ======================================================================
 
-# ensure_comfy: Install or hard-reset ComfyUI at COMFY_HOME
+# ensure_comfy: Install or hard-reset image-owned ComfyUI app code.
+# Never rm -rf COMFY_HOME: that is runtime/persistent state.
 ensure_comfy() {
-  if [[ -d "$COMFY_HOME/.git" && -f "$COMFY_HOME/main.py" ]]; then
-    git -C "$COMFY_HOME" fetch --depth=1 origin || true
-    git -C "$COMFY_HOME" reset --hard origin/master 2>/dev/null \
-      || git -C "$COMFY_HOME" reset --hard origin/main 2>/dev/null || true
+  local app="${COMFY_APP:-${COMFYUI_PATH:-/opt/ComfyUI}}"
+  export COMFY_APP="$app"
+  export COMFYUI_PATH="$app"
+
+  if [[ -d "$app/.git" && -f "$app/main.py" ]]; then
+    git -C "$app" fetch --depth=1 origin || true
+    git -C "$app" reset --hard origin/master 2>/dev/null \
+      || git -C "$app" reset --hard origin/main 2>/dev/null || true
+  elif [[ -f "$app/main.py" ]]; then
+    echo "[ensure_comfy] Existing image app tree found at $app"
   else
-    rm -rf "$COMFY_HOME"
-    git clone --depth=1 "$COMFY_REPO_URL" "$COMFY_HOME"
+    rm -rf "$app"
+    git clone --depth=1 "$COMFY_REPO_URL" "$app"
   fi
 
   "$PIP_BIN" install -U pip wheel setuptools
-  [ -f "$COMFY_HOME/requirements.txt" ] && "$PIP_BIN" install -r "$COMFY_HOME/requirements.txt" || true
-  ln -sfn "$COMFY_HOME" /ComfyUI
+  [ -f "$app/requirements.txt" ] && "$PIP_BIN" install -r "$app/requirements.txt" || true
+
+  link_comfy_state_into_app
 }
 
 # ======================================================================
@@ -1473,7 +1530,7 @@ hf_fetch_compatible_sage_bundle() {
 
 hf_bundles_summary() {
   local key="${1:-}"               # optional: current torch_sage_key
-  local cache="${CACHE_DIR:-/workspace/ComfyUI/cache}"
+  local cache="${CACHE_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/cache}"
 
   mkdir -p "$cache"
 

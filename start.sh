@@ -125,6 +125,7 @@ install_root_shell_dotfiles || true
 # make sure dirs exist (Comfy home, models, logs, etc.)
 
 ensure_comfy_dirs
+link_comfy_state_into_app
 
 #------------------------------------------------------------------------
 section 0 "Prepare Session Logging"
@@ -348,7 +349,7 @@ fi
 
 section 10.2 "ComfyUI Launch..."
 
-cd "${COMFY_HOME:-/workspace/ComfyUI}"
+cd "${COMFY_APP:-/opt/ComfyUI}"
 
 echo ""
 echo "▶️  Starting ComfyUI"

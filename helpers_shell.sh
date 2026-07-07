@@ -354,7 +354,7 @@ download_civitai() {
   # Behavior toggles
   local sanitize="${CIVITAI_SANITIZE:-0}"   # 1 => replace spaces with underscores
   local list_only="${CIVITAI_LIST_ONLY:-0}" # 1 => just list candidate files, no download
-  local COMFY="${COMFY:-/workspace/ComfyUI}"  
+  local COMFY="${COMFY:-${COMFY_STATE:-${COMFY_HOME:-/workspace/ComfyUI}}}"  
 
   need_apt curl || {
     echo "ERROR: curl is required but could not be installed"
