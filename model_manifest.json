@@ -1003,6 +1003,68 @@
         "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors",
         "path": "{SEEDVR2_DIR}/ema_vae_fp16.safetensors"
       }
+    ],
+    "download_krea2": [
+      {
+        "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/krea2_turbo_fp8_scaled.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_raw_bf16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/krea2_raw_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_bf16.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/qwen3vl_4b_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/text_encoders/qwen/qwen3VL4BAbliteratedComfyui_v10.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/qwen3VL4BAbliteratedComfyui_v10.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_fp32.safetensors",
+        "path": "{VAE_DIR}/Wan2_1_VAE_fp32.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/spacepxl/Wan2.1-VAE-upscale2x/resolve/main/Wan2.1_VAE_upscale2x_imageonly_real_v1.safetensors",
+        "path": "{VAE_DIR}/Wan2.1_VAE_upscale2x_imageonly_real_v1.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/circlestone-labs/Anima/resolve/main/split_files/vae/qwen_image_vae.safetensors",
+        "path": "{VAE_DIR}/qwen_image_vae.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/loras/krea2_turbo_lora_rank_64_bf16.safetensors",
+        "path": "{LORAS_DIR}/krea2_turbo_lora_rank_64_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/KNPV3_1.safetensors",
+        "path": "{LORAS_DIR}/KNPV3_1.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/Krea2-realism-V2.safetensors",
+        "path": "{LORAS_DIR}/Krea2-realism-V2.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/Krea2_HMNSFW_AIO.safetensors",
+        "path": "{LORAS_DIR}/Krea2_HMNSFW_AIO.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/krea2filterbypass.safetensors",
+        "path": "{LORAS_DIR}/krea2filterbypass.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/training/krea2_lora.tar",
+        "path": "{LORAS_DIR}/krea2_lora.tar"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/snofs_krea_v1_1.safetensors",
+        "path": "{LORAS_DIR}/snofs_krea_v1_1.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/MysticXXX_KREA2_v2.safetensors",
+        "path": "{LORAS_DIR}/MysticXXX_KREA2_v2.safetensors"
+      }
     ]
   }
 }
