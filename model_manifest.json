@@ -1064,6 +1064,22 @@
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/MysticXXX_KREA2_v2.safetensors",
         "path": "{LORAS_DIR}/MysticXXX_KREA2_v2.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/Krea2_0x7_NSFW.safetensors",
+        "path": "{LORAS_DIR}/Krea2_0x7_NSFW.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/PhotoReal_BetterNudes_Krea2.safetensors",
+        "path": "{LORAS_DIR}/PhotoReal_BetterNudes_Krea2.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/penis_size_krea2_loraholic.safetensors",
+        "path": "{LORAS_DIR}/penis_size_krea2_loraholic.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/onglass-krea2_v2.safetensors",
+        "path": "{LORAS_DIR}/onglass-krea2_v2.safetensors"
       }
     ]
   }
