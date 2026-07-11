@@ -119,7 +119,7 @@ case ":$PATH:" in
   *) export PATH="/workspace:$repo_root:$repo_root/scripts:$PATH" ;;
 esac
 
-export HF_HUB_ENABLE_HF_TRANSFER=1
+export HF_XET_HIGH_PERFORMANCE=1
 export HUGGINGFACE_HUB_TOKEN=$HF_TOKEN
 
 # Try to align this interactive shell with the bootstrap/autorun environment
