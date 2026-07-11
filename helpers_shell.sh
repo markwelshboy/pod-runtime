@@ -91,7 +91,7 @@ try:
 except Exception as e:
   print("huggingface_hub: ERROR:", e)
 
-print("HF_HUB_ENABLE_HF_TRANSFER:", os.environ.get("HF_HUB_ENABLE_HF_TRANSFER"))
+print("HF_XET_HIGH_PERFORMANCE:", os.environ.get("HF_XET_HIGH_PERFORMANCE"))
 
 try:
   import hf_transfer
@@ -1549,7 +1549,7 @@ hf_download_from_manifest_non_parallel() {
     IFS=$'\t' read -r repo_id rev repo_file <<<"$parsed"
 
     # Encourage hf_transfer if available
-    export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
+    export HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-1}"
 
     # temp download dir (keeps your model dirs clean even when repo_file has subfolders)
     tmpdir="$(mktemp -d -p "$dir" ".hf_tmp_${out}.XXXXXX")" || return 1
