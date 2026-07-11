@@ -1080,6 +1080,10 @@
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/onglass-krea2_v2.safetensors",
         "path": "{LORAS_DIR}/onglass-krea2_v2.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/conradlocke/krea2-identity-edit/resolve/main/krea2_identity_edit_v1_1.safetensors",
+        "path": "{LORAS_DIR}/krea2_identity_edit_v1_1.safetensors"
       }
     ]
   }
