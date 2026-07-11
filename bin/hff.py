@@ -655,8 +655,8 @@ def snap_id_from_name(name: str) -> str:
 def cmd_snapshot_create(args) -> None:
     tok = need_token()
 
-    if os.environ.get("HF_HUB_ENABLE_HF_TRANSFER") is None:
-        os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+    if os.environ.get("HF_XET_HIGH_PERFORMANCE") is None:
+        os.environ["HF_XET_HIGH_PERFORMANCE"] = "1"
 
     if not args.name:
         die("snapshot create: --name is required")
@@ -751,8 +751,8 @@ def cmd_snapshot_show(args) -> None:
 
 def cmd_snapshot_get(args) -> None:
     tok = need_token()
-    if os.environ.get("HF_HUB_ENABLE_HF_TRANSFER") is None:
-        os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+    if os.environ.get("HF_XET_HIGH_PERFORMANCE") is None:
+        os.environ["HF_XET_HIGH_PERFORMANCE"] = "1"
 
     if not args.id:
         die("snapshot get: id required")
@@ -845,7 +845,7 @@ def cmd_doctor(args) -> None:
         "hff_venv_env": venv,
         "hf_token_set": bool(tok),
         "env": {
-            "HF_HUB_ENABLE_HF_TRANSFER": os.environ.get("HF_HUB_ENABLE_HF_TRANSFER"),
+            "HF_XET_HIGH_PERFORMANCE": os.environ.get("HF_XET_HIGH_PERFORMANCE"),
             "HUGGINGFACE_HUB_TOKEN_set": bool(os.environ.get("HUGGINGFACE_HUB_TOKEN")),
             "HF_HOME": os.environ.get("HF_HOME"),
             "HF_HUB_CACHE": os.environ.get("HF_HUB_CACHE"),
@@ -897,7 +897,7 @@ def cmd_doctor(args) -> None:
     print("HF_TOKEN set:", report["hf_token_set"])
     print("huggingface_hub:", report["packages"].get("huggingface_hub"))
     print("hf_transfer:", report["packages"].get("hf_transfer"))
-    print("HF_HUB_ENABLE_HF_TRANSFER:", report["env"].get("HF_HUB_ENABLE_HF_TRANSFER"))
+    print("HF_XET_HIGH_PERFORMANCE:", report["env"].get("HF_XET_HIGH_PERFORMANCE"))
     print("HUGGINGFACE_HUB_TOKEN set:", report["env"].get("HUGGINGFACE_HUB_TOKEN_set"))
     print("whoami:", report["hub_smoke"].get("whoami"))
     print("repo access:", report["hub_smoke"].get("repo_access"))
