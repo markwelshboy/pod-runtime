@@ -1084,6 +1084,10 @@
       {
         "url": "https://huggingface.co/conradlocke/krea2-identity-edit/resolve/main/krea2_identity_edit_v1_1.safetensors",
         "path": "{LORAS_DIR}/krea2_identity_edit_v1_1.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/realism_engine_krea2_v3.1.safetensors",
+        "path": "{LORAS_DIR}/realism_engine_krea2_v3.1.safetensors"
       }
     ]
   }
