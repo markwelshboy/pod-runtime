@@ -5037,7 +5037,7 @@ hf_transfer_verify() {
   python3 - <<'EOF'
 import os
 
-print("HF_HUB_ENABLE_HF_TRANSFER:", os.environ.get("HF_HUB_ENABLE_HF_TRANSFER") == "1")
+print("HF_XET_HIGH_PERFORMANCE:", os.environ.get("HF_XET_HIGH_PERFORMANCE") == "1")
 
 try:
     import huggingface_hub
@@ -5063,8 +5063,8 @@ hf_transfer_tune() {
   # Map our custom HF_* knobs into the official hub / hf_transfer env vars.
 
   # Ensure fast backend is enabled if we want it
-  : "${HF_HUB_ENABLE_HF_TRANSFER:=1}"
-  export HF_HUB_ENABLE_HF_TRANSFER
+  : "${HF_XET_HIGH_PERFORMANCE:=1}"
+  export HF_XET_HIGH_PERFORMANCE
 
   # Map your concurrency knobs → hub-style envs
   # HF_MCONN = parallel connections / workers
@@ -5173,8 +5173,8 @@ hfauth() {
   export HF_USERNAME
 
   # One-time tip about hf_transfer
-  if [[ -z "${HFGET_TIP_SHOWN:-}" && -z "${HF_HUB_ENABLE_HF_TRANSFER:-}" ]]; then
-    _hf_info "hfget tip: set HF_HUB_ENABLE_HF_TRANSFER=1 (and install 'hf_transfer') for faster downloads."
+  if [[ -z "${HFGET_TIP_SHOWN:-}" && -z "${HF_XET_HIGH_PERFORMANCE:-}" ]]; then
+    _hf_info "hfget tip: set HF_XET_HIGH_PERFORMANCE=1 (and install 'hf_transfer') for faster downloads."
     HFGET_TIP_SHOWN=1
   fi
 
@@ -5570,7 +5570,7 @@ Env:
   HF_TOKEN                 Token for private repos (also used by curl HEAD).
   HUGGINGFACE_HUB_TOKEN    Will default to HF_TOKEN if unset.
   HF_USERNAME              Logical username (default: markwelshboyx).
-  HF_HUB_ENABLE_HF_TRANSFER=1 enables faster Rust backend if 'hf_transfer' is installed.
+  HF_XET_HIGH_PERFORMANCE=1 enables faster Rust backend if 'hf_transfer' is installed.
   NO_COLOR / HFGET_NO_COLOR disable colored output.
   HFGET_FLATTEN_MODE       Flatten mode override (matching|none|all).
 EOF
@@ -5914,7 +5914,7 @@ hf_sync_repo() {
   mkdir -p "$local_dir"
 
   # Prefer hf_transfer if installed; don't fail if not.
-  export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
+  export HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-1}"
 
   # Build include args (if no patterns, pull everything)
   local -a inc=()
@@ -6033,7 +6033,7 @@ init_repo() {
       local revision="${HF_REVISION:-}"          # optional: branch/tag/commit
 
       # Enable hf_transfer if present; do not fail if it's not available.
-      export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
+      export HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-1}"
 
       # Prefer 'hf' CLI if present; fallback to 'huggingface-cli'
       local HF_CMD="hf"
