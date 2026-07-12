@@ -47,6 +47,11 @@ def normalize_path(p: str) -> str:
     return p.strip("/")
 
 
+def has_trailing_slash(path: str) -> bool:
+    """Return whether the caller explicitly supplied a directory-style path."""
+    return (path or "").strip().replace("\\", "/").endswith("/")
+
+
 def parent_dir(path: str) -> str:
     p = normalize_path(path)
     if "/" not in p:
@@ -65,10 +70,15 @@ def ensure_dir_ops(existing: Set[str], dir_path: str) -> List[object]:
     d = normalize_path(dir_path)
     if not d:
         return ops
+
+    # A Hub directory exists implicitly when any file is already beneath it.
+    prefix = f"{d}/"
+    if any(path.startswith(prefix) for path in existing):
+        return ops
+
     keep = f"{d}/.gitkeep"
-    if keep not in existing:
-        ops.append(_make_add_op(keep, b""))
-        existing.add(keep)
+    ops.append(_make_add_op(keep, b""))
+    existing.add(keep)
     return ops
 
 
@@ -280,8 +290,8 @@ def cmd_rm(args) -> None:
     if has_glob(p):
         targets = match_glob(files, p)
 
-    # Prefix mode
-    elif p.endswith("/"):
+    # Prefix mode. Preserve directory intent before normalize_path strips '/'.
+    elif has_trailing_slash(raw):
         pref = p.rstrip("/") + "/"
         targets = [f for f in files if f.startswith(pref)]
 
@@ -386,7 +396,7 @@ def cmd_mv(args) -> None:
     all_files = sorted(files_set)
 
     is_glob = has_glob(src_raw)
-    is_prefix = src_raw.endswith("/") or src.endswith("/")
+    is_prefix = has_trailing_slash(src_raw)
     # If src doesn't exist as a file, but there are children under it, treat it as a prefix move.
     if (not is_glob) and (not is_prefix) and (src not in files_set):
         pref = src.rstrip("/") + "/"
@@ -453,9 +463,9 @@ def cmd_mv(args) -> None:
         print(f"{dst_prefix}  ({moved_count} files)")
         return
 
-    # Single-file move
-    if dst.endswith("/"):
-        dst = dst + Path(src).name
+    # Single-file move. Preserve directory intent before normalize_path strips '/'.
+    if has_trailing_slash(dst_raw):
+        dst = f"{dst}/{Path(src).name}"
 
     if src not in files_set:
         die(f"mv: src not found: {src}", 1)
@@ -468,42 +478,63 @@ def cmd_mv(args) -> None:
     print(final)
 
 
+def _expand_local_put_paths(raw_inputs: Iterable[str]) -> List[Path]:
+    """Expand quoted globs and accept shell-expanded file lists."""
+    paths: List[Path] = []
+
+    for raw in raw_inputs:
+        if has_glob(raw):
+            matches = sorted(p for p in Path(".").glob(raw) if p.is_file())
+            if not matches:
+                die(f"put: no files matched: {raw}", 1)
+            paths.extend(matches)
+            continue
+
+        p = Path(raw).expanduser()
+        if not p.exists() or not p.is_file():
+            die(f"put: local file not found: {p}", 1)
+        paths.append(p)
+
+    # Avoid uploading the same file twice when input globs overlap.
+    unique: List[Path] = []
+    seen: Set[str] = set()
+    for path in paths:
+        key = str(path.resolve())
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
+
+
 def cmd_put(args) -> None:
     tok = need_token()
     a = api(tok)
     files = set(list_files(a, args.repo, args.type))
 
-    # -------- local glob expansion --------
-    raw = args.local
-    paths: List[Path] = []
+    # argparse returns a list so both of these work:
+    #   hff put '*.pt' training/
+    #   hff put a.pt b.pt training/   (including shell-expanded globs)
+    raw_inputs = args.local if isinstance(args.local, list) else [args.local]
+    paths = _expand_local_put_paths(raw_inputs)
 
-    if has_glob(raw):
-        # Expand locally (shell-like, but inside Python)
-        base = Path(".")
-        matches = list(base.glob(raw))
-        paths = [p for p in matches if p.is_file()]
-        if not paths:
-            die(f"put: no files matched: {raw}", 1)
-    else:
-        p = Path(raw).expanduser()
-        if not p.exists() or not p.is_file():
-            die(f"put: local file not found: {p}", 1)
-        paths = [p]
-
-    # -------- destination handling --------
-    dst_raw = normalize_path(args.dst)
+    # Preserve directory intent before normalize_path strips a trailing slash.
+    dst_arg = (args.dst or "").strip()
+    dst_is_dir = has_trailing_slash(dst_arg)
+    dst_raw = normalize_path(dst_arg)
     if not dst_raw:
         die("put: dst required")
 
     multi = len(paths) > 1
 
-    # If multiple files, dst must be a directory
-    if multi and not dst_raw.endswith("/"):
-        die("put: destination must be a directory when uploading multiple files", 1)
+    # Multiple files require an explicit directory destination.
+    if multi and not dst_is_dir:
+        die("put: destination must end with / when uploading multiple files", 1)
 
-    # Ensure directory once
-    target_dir = dst_raw.rstrip("/") if dst_raw.endswith("/") else parent_dir(dst_raw)
+    if dst_is_dir and dst_raw in files:
+        die(f"put: destination is an existing file, not a directory: {dst_raw}", 1)
 
+    # Ensure directory once.
+    target_dir = dst_raw if dst_is_dir else parent_dir(dst_raw)
     if target_dir:
         ops = ensure_dir_ops(files, target_dir)
         if ops:
@@ -518,8 +549,8 @@ def cmd_put(args) -> None:
     uploaded = []
 
     for local in paths:
-        if dst_raw.endswith("/"):
-            dst = dst_raw.rstrip("/") + "/" + local.name
+        if dst_is_dir:
+            dst = f"{dst_raw}/{local.name}"
         else:
             # single-file mode
             dst = dst_raw
@@ -542,6 +573,7 @@ def cmd_put(args) -> None:
         print(f"ok ({len(uploaded)} files)")
     else:
         print("ok")
+
 
 def cmd_get(args) -> None:
     tok = need_token()
@@ -578,7 +610,7 @@ def cmd_get(args) -> None:
 
     else:
         pref = src.rstrip("/") + "/"
-        if src_raw.endswith("/") or src.endswith("/") or (src not in files_set and any(f.startswith(pref) for f in files)):
+        if has_trailing_slash(src_raw) or (src not in files_set and any(f.startswith(pref) for f in files)):
             base_prefix = pref
             targets = [f for f in files if f.startswith(pref)]
             if not targets:
@@ -593,7 +625,7 @@ def cmd_get(args) -> None:
     out_raw = (args.out or "").strip()
     if multi:
         out_dir = Path(out_raw or ".").expanduser()
-        if out_raw and (not out_raw.endswith("/")) and (out_dir.exists() and not out_dir.is_dir()):
+        if out_raw and (not has_trailing_slash(out_raw)) and (out_dir.exists() and not out_dir.is_dir()):
             die("get: out must be a directory for multiple files", 1)
         out_dir.mkdir(parents=True, exist_ok=True)
     else:
@@ -936,7 +968,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(fn=cmd_rm)
 
     sp = sub.add_parser("put")
-    sp.add_argument("local")
+    sp.add_argument("local", nargs="+", help="local file(s) or quoted glob")
     sp.add_argument("dst")
     sp.add_argument("-m", "--message", default="")
     sp.set_defaults(fn=cmd_put)
