@@ -118,11 +118,18 @@ install_user_hff() {
 
 # -------- main wrapper --------
 hff() {
-  # Preserve caller's errexit; prevent failures from nuking interactive sessions
+  # Preserve the caller's shell-option state.
   local __had_e=0
-  case $- in *e*) __had_e=1 ;; esac
+  local __had_u=0
+  local __had_pipefail=0
+
+  [[ $- == *e* ]] && __had_e=1
+  [[ $- == *u* ]] && __had_u=1
+  shopt -qo pipefail && __had_pipefail=1
+
   set +e
-  set -uo pipefail
+  set -u
+  set -o pipefail
 
   _hff_usage() {
     cat <<'EOF'
@@ -213,11 +220,27 @@ EOF
       ;;
   esac
 
-  # Restore errexit if it was set in the caller
-  if [[ "$__had_e" -eq 1 ]]; then
-    set -e
+  # Restore the caller's shell-option state.
+  if (( __had_pipefail )); then
+    set -o pipefail
+  else
+    set +o pipefail
   fi
+
+  if (( __had_u )); then
+    set -u
+  else
+    set +u
+  fi
+
+  if (( __had_e )); then
+    set -e
+  else
+    set +e
+  fi
+
   return "$rc"
+
 }
 
 
