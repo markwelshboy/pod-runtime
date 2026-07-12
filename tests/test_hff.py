@@ -68,7 +68,7 @@ class FakeApi:
 class HffPathTests(unittest.TestCase):
     def test_trailing_slash_is_preserved_as_intent(self):
         self.assertTrue(hff.has_trailing_slash("training/"))
-        self.assertTrue(hff.has_trailing_slash(r"training\"))
+        self.assertTrue(hff.has_trailing_slash("training\\"))
         self.assertFalse(hff.has_trailing_slash("training"))
         self.assertEqual(hff.normalize_path("/training/"), "training")
 
