@@ -1,0 +1,6671 @@
+#!/usr/bin/env bash
+# ======================================================================
+# helpers.sh — Golden edition
+#   - No hardcoded /workspace paths (respects COMFY_HOME/CACHE_DIR/etc.)
+#   - Minimal, consistent Hugging Face vars (HF_REPO_ID, HF_REPO_TYPE, HF_TOKEN, CN_BRANCH)
+#   - Clear function groups with docs
+#   - Safe, idempotent, parallel node installation
+#   - Bundle pull-or-build logic keyed by CUSTOM_NODES_BUNDLE_TAG + PINS
+# ======================================================================
+
+# ----------------------------------------------------------------------
+# Guard: avoid double-sourcing
+# ----------------------------------------------------------------------
+#if [[ -n "${HELPERS_SH_LOADED:-}" ]]; then
+#  return 0 2>/dev/null || exit 0
+#fi
+#HELPERS_SH_LOADED=0
+shopt -s extglob
+
+# ----------------------------------------------------------------------
+# Expected environment (usually set in .env)
+# ----------------------------------------------------------------------
+# Required (paths):
+#   COMFY_HOME           - e.g. /workspace/ComfyUI
+#   CUSTOM_DIR           - usually "$COMFY_HOME/custom_nodes"
+#   CACHE_DIR            - e.g. "$COMFY_HOME/cache"
+#   CUSTOM_LOG_DIR       - e.g. "$COMFY_HOME/logs/custom_nodes"
+#   BUNDLES_DIR          - e.g. "$COMFY_HOME/bundles"
+# Required (python):
+#   PY, PIP              - venv python/pip
+# Optional (misc tooling):
+#   COMFY_REPO_URL       - ComfyUI repo URL (default comfyanonymous/ComfyUI)
+#   GIT_DEPTH            - default 1
+#   MAX_CUSTOM_NODE_JOBS - default 6..8
+# Hugging Face:
+#   HF_REPO_ID           - e.g. user/comfyui-bundles
+#   HF_REPO_TYPE         - dataset | model (default dataset)
+#   HF_TOKEN             - auth token
+#   CN_BRANCH            - default main
+#   HF_API_BASE          - default https://huggingface.co
+#   CUSTOM_NODES_BUNDLE_TAG           - logical “set” name (e.g. WAN2122_Baseline)
+# Pins/signature:
+#   PINS                 - computed by pins_signature() if not set
+
+# Provide reasonable fallbacks if .env forgot any
+: "${COMFY_REPO_URL:=https://github.com/comfyanonymous/ComfyUI}"
+: "${GIT_DEPTH:=1}"
+: "${MAX_CUSTOM_NODE_JOBS:=8}"
+: "${HF_API_BASE:=https://huggingface.co}"
+: "${CN_BRANCH:=main}"
+: "${CACHE_DIR:=${COMFY_HOME:-/tmp}/cache}"
+: "${CUSTOM_LOG_DIR:=${COMFY_HOME:-/tmp}/logs/custom_nodes}"
+: "${BUNDLES_DIR:=${COMFY_HOME:-/tmp}/bundles}"
+
+PY_BIN="${PY:-/opt/venv/bin/python}"
+PIP_BIN="${PIP:-/opt/venv/bin/pip}"
+
+# --- load companion "shell" helpers (portable, minimal) ---
+if [[ -z "${__PODRUNTIME_SHELL_LOADED:-}" ]]; then
+
+  # Resolve directory of this file even when sourced
+  _pr_this="${BASH_SOURCE[0]:-$0}"
+  _pr_dir="$(cd -- "$(dirname -- "$_pr_this")" && pwd -P)"
+
+  if [[ -f "$_pr_dir/helpers_shell.sh" ]]; then
+    # shellcheck disable=SC1090
+    echo "$_pr_dir/Loading helpers_shell.sh"
+    source "$_pr_dir/helpers_shell.sh"
+  fi
+
+  unset _pr_this _pr_dir
+  __PODRUNTIME_SHELL_LOADED=1
+
+fi
+
+install_system_hff() {
+  ensure_hf_tools_venv || return 1
+  install_hff_py || return 1
+  hf_tools_verify
+}
+
+# ---------- .env loader (optional) ----------
+helpers_load_dotenv() {
+  local file="${1:-.env}"
+  [ -f "$file" ] || return 0
+  # export all non-comment lines
+  set -a
+  # shellcheck disable=SC1090
+  . "$file"
+  set +a
+}
+# ---------- root dotfiles installer ----------
+install_root_shell_dotfiles() {
+  local _pr_this="${BASH_SOURCE[0]:-$0}"
+  local repo_root="$(cd -- "$(dirname -- "$_pr_this")" && pwd -P)"
+  local target_home="/root"
+  local ts; ts="$(date +%Y%m%d_%H%M%S)"
+
+  # Resolve directory of this file even when sourced
+
+  mkdir -p "$target_home"
+
+  # Backups (if files already exist)
+  for f in .bashrc .bash_aliases .bash_functions .bash_prompt .git-qol.sh; do
+    if [[ -f "${target_home}/${f}" ]]; then
+      cp -a "${target_home}/${f}" "${target_home}/${f}.bak.${ts}"
+    fi
+  done
+
+  # Render .bashrc with precise placeholder substitution (atomic)
+  local src_bashrc="${repo_root}/.bashrc"
+  local tmp; tmp="$(mktemp "${target_home}/.bashrc.tmp.XXXXXX")"
+
+  awk -v rr="$repo_root" '
+    BEGIN {done=0}
+    /^[[:space:]]*REPO_ROOT=<CHANGEME>[[:space:]]*$/ {
+      print "REPO_ROOT=" rr
+      done=1
+      next
+    }
+    {print}
+    END {
+      if (!done) {
+        # If you want strict mode, uncomment:
+        print "ERROR: REPO_ROOT=<CHANGEME> placeholder not found" > "/dev/stderr"
+        exit 2
+      }
+    }
+  ' "$src_bashrc" > "$tmp"
+
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "${target_home}/.bashrc"
+
+  # Copy the others
+  install -m 0644 "${repo_root}/.bash_aliases"   "${target_home}/.bash_aliases"
+  install -m 0644 "${repo_root}/.bash_functions" "${target_home}/.bash_functions"
+  install -m 0644 "${repo_root}/.bash_prompt"    "${target_home}/.bash_prompt"
+  install -m 0644 "${repo_root}/.git-qol.sh"     "${target_home}/.git-qol.sh"
+
+  echo "[dotfiles] Installed bash dotfiles into ${target_home} (repo_root=${repo_root})"
+}
+
+# ------------------------- #
+#  Logging & guard helpers  #
+# ------------------------- #
+
+# log MSG
+log(){ printf "[%(%F %T)T] %s\n" -1 "$*"; }
+
+# die MSG
+die(){ echo "FATAL: $*" >&2; exit 1; }
+
+# ensure CMD exists or die
+need(){ command -v "$1" >/dev/null 2>&1 || die "Missing tool: $1"; }
+
+# -------------------------- #
+#  System package helpers    #
+# -------------------------- #
+
+ensure_base_deps() {
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y --no-install-recommends              \
+    aria2 ffmpeg                                          \
+    ninja-build build-essential cmake gcc g++             \
+    libgl1 libglib2.0-0 pkg-config                        \
+    python3.12 python3.12-venv python3.12-dev python3-pip \
+    jq git-lfs                                            \
+    ca-certificates unzip tmux gawk nano coreutils        \
+    net-tools ncurses-base bash-completion
+  git lfs install --system || true
+
+}
+
+# -------------------------- #
+#  Path + directory helpers  #
+# -------------------------- #
+
+ensure_comfy_dirs() {
+  
+  #-- Core dirs
+  mkdir -p \
+    "${COMFY_HOME:?}" \
+    "${CUSTOM_DIR:?}" \
+    "${CUSTOM_LOG_DIR:?}" \
+    "${OUTPUT_DIR:?}" \
+    "${CACHE_DIR:?}" \
+    "${BUNDLES_DIR:?}" \
+    "${COMFY_LOGS:?}"
+
+  #-- Model directories
+  mkdir -p \
+    "${MODELS_DIR:?}" \
+    "${CHECKPOINTS_DIR:?}" \
+    "${DIFFUSION_MODELS_DIR:?}" \
+    "${TEXT_ENCODERS_DIR:?}" \
+    "${CLIP_VISION_DIR:?}" \
+    "${VAE_DIR:?}" \
+    "${LORAS_DIR:?}" \
+    "${DETECTION_DIR:?}" \
+    "${CTRLNET_DIR:?}" \
+    "${CTRLNET_UNION_DIR:?}" \
+    "${ULTRALYTICS_DIR:?}" \
+    "${SEEDVR2_DIR:?}" \
+    "${UPSCALE_DIR:?}"
+
+  #-- Model directories
+  mkdir -p \
+    "${ULTRALYTICS_DIR}/bbox" \
+    "${ULTRALYTICS_DIR}/segs" \
+    "${ULTRALYTICS_DIR}/extras"
+
+  #-- Extras
+  mkdir -p \
+    "$COMFY_HOME/user/default/workflows"
+}
+
+link_comfy_state_into_app() {
+  : "${COMFY_HOME:?COMFY_HOME/COMFY_STATE must be set}"
+
+  local app="${COMFY_APP:-${COMFYUI_PATH:-/opt/ComfyUI}}"
+  local state="${COMFY_HOME}"
+
+  export COMFY_APP="$app"
+  export COMFYUI_PATH="$app"
+
+  mkdir -p \
+    "$state/custom_nodes" \
+    "$state/models" \
+    "$state/input" \
+    "$state/output" \
+    "$state/user" \
+    "$state/cache" \
+    "${COMFY_LOGS:-/workspace/logs}"
+
+  # Legacy-image fallback: if /opt/ComfyUI is absent but the old
+  # /workspace/ComfyUI app tree exists, keep working without deleting state.
+  if [[ ! -f "$app/main.py" ]]; then
+    if [[ -f "$state/main.py" ]]; then
+      echo "[comfy-paths] COMFY_APP missing; using legacy app tree: $state" >&2
+      export COMFY_APP="$state"
+      export COMFYUI_PATH="$state"
+      ln -sfn "$state" /ComfyUI
+      return 0
+    fi
+
+    echo "[comfy-paths] WARN: COMFY_APP does not contain main.py yet: $app" >&2
+    echo "[comfy-paths]       The image should bake ComfyUI into /opt/ComfyUI." >&2
+  fi
+
+  # Make app-root state dirs resolve to persistent workspace state.
+  # Existing app dirs are copied once into state before being replaced.
+  for d in custom_nodes models input output user cache; do
+    if [[ -e "$app/$d" && ! -L "$app/$d" ]]; then
+      rsync -a --ignore-existing "$app/$d/" "$state/$d/" 2>/dev/null || true
+      rm -rf "$app/$d"
+    fi
+    ln -sfn "$state/$d" "$app/$d"
+  done
+
+  ln -sfn "$app" /ComfyUI
+
+  echo "[comfy-paths] COMFY_APP=$app"
+  echo "[comfy-paths] COMFY_STATE=$state"
+}
+
+# ------------------------- #
+#  Workflows / Icons import #
+# ------------------------- #
+copy_hearmeman_assets_if_any() {
+  local repo="${HEARMEMAN_REPO_URL:-}"
+  if [[ -z "$repo" ]]; then
+    return 0
+  fi
+
+  local tmp="${CACHE_DIR}/.hearmeman.$$"
+  rm -rf "$tmp"
+
+  echo "[hearmeman] Syncing assets from: ${repo}"
+  echo "[hearmeman] Temp clone dir:      ${tmp}"
+
+  if ! git clone "$repo" "$tmp" >/dev/null 2>&1; then
+    echo "[hearmeman] ❌ Failed to clone repo; skipping asset sync." >&2
+    rm -rf "$tmp"
+    return 0
+  fi
+
+  # ---- Workflows ----
+  local wf_src=""
+  if [[ -d "$tmp/src/workflows" ]]; then
+    wf_src="$tmp/src/workflows"
+  elif [[ -d "$tmp/workflows" ]]; then
+    wf_src="$tmp/workflows"
+  fi
+
+  if [[ -n "$wf_src" ]]; then
+    local wf_dst="${COMFY_HOME}/workflows"
+    echo "[hearmeman] Workflows source: ${wf_src}"
+    echo "[hearmeman] Workflows dest:   ${wf_dst}"
+    mkdir -p "$wf_dst"
+    cp -rf "${wf_src}/"* "$wf_dst"/ 2>/dev/null || true
+  else
+    echo "[hearmeman] No workflows found under src/workflows or workflows." >&2
+  fi
+
+  # ---- Assets ----
+  local assets_src=""
+  if [[ -d "$tmp/src/assets" ]]; then
+    assets_src="$tmp/src/assets"
+  elif [[ -d "$tmp/assets" ]]; then
+    assets_src="$tmp/assets"
+  fi
+
+  if [[ -n "$assets_src" ]]; then
+    local assets_dst="${COMFY_HOME}/assets"
+    echo "[hearmeman] Assets source: ${assets_src}"
+    echo "[hearmeman] Assets dest:   ${assets_dst}"
+    mkdir -p "$assets_dst"
+    cp -rf "${assets_src}/"* "$assets_dst"/ 2>/dev/null || true
+  else
+    echo "[hearmeman] No assets found under src/assets or assets." >&2
+  fi
+
+  rm -rf "$tmp"
+  echo "[hearmeman] Asset sync complete."
+}
+
+# ======================================================================
+# Generic utilities
+# ======================================================================
+
+# tg: Telegram notify (best-effort)
+tg() {
+  if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+    curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+      -d "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=$1" >/dev/null || true
+  fi
+}
+
+telegram_send() {
+  # usage: telegram_send "message"
+  local msg="$1"
+
+  # Require both to send; otherwise no-op
+  [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]] || return 0
+
+  command -v curl >/dev/null 2>&1 || return 0
+
+  # Best effort; never fail caller
+  curl -sS --max-time 10 \
+    -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+    -d "chat_id=${TELEGRAM_CHAT_ID}" \
+    --data-urlencode "text=${msg}" \
+    -d "disable_web_page_preview=true" \
+    -d "parse_mode=HTML" \
+    >/dev/null 2>&1 || true
+}
+
+# --------------------------------------------------
+# Pretty summary of /workspace/ComfyUI/models
+# --------------------------------------------------
+pod_models_summary() {
+  # usage: pod_models_summary [MODELS_DIR]
+  local models_dir="${1:-${MODELS_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/models}}"
+
+  if [[ ! -d "$models_dir" ]]; then
+    echo "📦 Models summary: directory not found: $models_dir"
+    return 1
+  fi
+
+  local total
+  total="$(du -sh "$models_dir" 2>/dev/null | awk '{print $1}')"
+
+  echo "╭─ 📦 ComfyUI models on $(hostname) (total: ${total:-?})"
+
+  local found=0
+  while IFS= read -r line; do
+    found=1
+    local size path name
+    size="${line%%$'\t'*}"
+    path="${line#*$'\t'}"
+    name="${path#$models_dir/}"
+    printf "│  %-22s %8s\n" "$name" "$size"
+  done < <(
+    find "$models_dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null \
+      | xargs -0 du -sh 2>/dev/null \
+      | sort -h \
+      | awk 'BEGIN{OFS="\t"} {print $1, $2}'
+  )
+
+  if [[ "$found" -eq 0 ]]; then
+    echo "│  (no model subdirectories found)"
+  fi
+
+  echo "╰─"
+}
+
+
+# --------------------------------------------------
+# Compact pod usage summary for telegram/logging
+# --------------------------------------------------
+pod_usage_summary() {
+  local models_dir="${1:-${MODELS_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/models}}"
+
+  local host now uptime_human
+  host="$(hostname)"
+  now="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+  uptime_human="$(uptime -p 2>/dev/null | sed 's/^up //')"
+
+  local root_use root_avail
+  local ws_use ws_avail
+  local models_total
+
+  root_use="$(df -hP / 2>/dev/null | awk 'NR==2{print $5}')"
+  root_avail="$(df -hP / 2>/dev/null | awk 'NR==2{print $4}')"
+
+  ws_use="$(df -hP /workspace 2>/dev/null | awk 'NR==2{print $5}')"
+  ws_avail="$(df -hP /workspace 2>/dev/null | awk 'NR==2{print $4}')"
+
+  if [[ -d "$models_dir" ]]; then
+    models_total="$(du -sh "$models_dir" 2>/dev/null | awk '{print $1}')"
+  else
+    models_total="n/a"
+  fi
+
+  cat <<EOF
+Host:         ${host}
+Time:         ${now}
+Uptime:       ${uptime_human:-unknown}
+root:         ${root_use:-?} used, ${root_avail:-?} free
+workspace:    ${ws_use:-?} used, ${ws_avail:-?} free
+Models total: ${models_total}
+EOF
+}
+
+
+# --------------------------------------------------
+# Disk watcher with usage summary in telegram messages
+# --------------------------------------------------
+disk_watch_start() {
+  # usage: disk_watch_start [--path /] [--warn 85] [--crit 92] [--interval 20] [--log /workspace/logs/disk_watch.log]
+  local path="/"
+  local warn="${POD_DISK_WARN:-85}"
+  local crit="${POD_DISK_CRIT:-92}"
+  local interval="${POD_DISK_INTERVAL:-10}"
+  local log=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --path) path="$2"; shift 2 ;;
+      --warn) warn="$2"; shift 2 ;;
+      --crit) crit="$2"; shift 2 ;;
+      --interval) interval="$2"; shift 2 ;;
+      --log) log="$2"; shift 2 ;;
+      --help|-h)
+        cat <<EOF
+disk_watch_start [--path /] [--warn 85] [--crit 92] [--interval 20] [--log FILE]
+
+Defaults can be set via env:
+  POD_DISK_WARN, POD_DISK_CRIT, POD_DISK_INTERVAL
+Telegram env (optional):
+  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+EOF
+        return 0
+        ;;
+      *) echo "disk_watch_start: unknown option: $1" >&2; return 2 ;;
+    esac
+  done
+
+  local sink="/dev/stdout"
+  if [[ -n "$log" ]]; then
+    mkdir -p "$(dirname "$log")" 2>/dev/null || true
+    sink="$log"
+  fi
+
+  {
+    printf "[%s] disk_watch starting on %s\n" "$(date -Is)" "$(hostname)"
+    pod_models_summary "${MODELS_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/models}"
+  } >>"$sink" 2>/dev/null || true
+
+  (
+    local last_level="ok"
+
+    telegram_send "📦 disk_watch started
+<pre>
+$(pod_usage_summary)
+/watch path:  ${path}
+/warn:        ${warn}%  /crit:        ${crit}%
+/interval:    ${interval}s
+</pre>"
+
+    while true; do
+      local use avail mounted
+      use="$(df -P "$path" 2>/dev/null | awk 'NR==2{gsub("%","",$5); print $5}')"
+      avail="$(df -hP "$path" 2>/dev/null | awk 'NR==2{print $4}')"
+      mounted="$(df -P "$path" 2>/dev/null | awk 'NR==2{print $6}')"
+
+      if [[ -z "${use:-}" ]]; then
+        printf "[%s] disk_watch WARN: df failed for path=%s\n" "$(date -Is)" "$path" >>"$sink"
+        telegram_send "⚠️ disk_watch df failed for path=${path}
+<pre>
+$(pod_usage_summary)</pre>"
+        sleep "$interval"
+        continue
+      fi
+
+      local level="ok"
+      if [[ "$use" -ge "$crit" ]]; then level="CRIT"
+      elif [[ "$use" -ge "$warn" ]]; then level="WARN"
+      fi
+
+      if [[ "$level" != "$last_level" ]]; then
+        local line
+        line=$(printf "[%s] disk_watch %s: %s%% used (avail %s) on %s (mount %s)\n" \
+          "$(date -Is)" "$level" "$use" "$avail" "$path" "${mounted:-?}")
+
+        printf "%s" "$line" >>"$sink"
+
+        if [[ "$level" == "WARN" ]]; then
+          telegram_send "⚠️ Disk Warning
+<pre>
+path:         ${path}
+mount:        ${mounted}
+used:         ${use}%
+avail:        ${avail}
+
+$(pod_usage_summary)</pre>"
+        elif [[ "$level" == "CRIT" ]]; then
+          telegram_send "🛑 Disk CRITICAL
+<pre>
+path:         ${path}
+mount:        ${mounted}
+used:         ${use}%
+avail:        ${avail}
+
+$(pod_usage_summary)</pre>"
+        elif [[ "$level" == "ok" ]]; then
+          telegram_send "✅ Disk back to OK
+<pre>
+path:         ${path}
+mount:        ${mounted}
+used:         ${use}%
+avail:        ${avail}
+
+$(pod_usage_summary)</pre>"
+        fi
+
+        last_level="$level"
+      fi
+
+      sleep "$interval"
+    done
+  ) &
+
+  local pid=$!
+  echo "$pid" > /tmp/disk_watch.pid
+  echo "[disk_watch] started (pid=$pid) path=$path warn=$warn crit=$crit interval=${interval}s log=${log:-stdout}"
+}
+
+
+# --------------------------------------------------
+# Periodic "pod still up" nagger
+# --------------------------------------------------
+pod_nag() {
+  # usage:
+  #   pod_nag [--interval 3600] [--log FILE] [--message "custom text"]
+  #
+  # env defaults:
+  #   POD_NAG_INTERVAL=3600
+
+  local interval="${POD_NAG_INTERVAL:-3600}"
+  local log=""
+  local message=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --interval) interval="$2"; shift 2 ;;
+      --log) log="$2"; shift 2 ;;
+      --message) message="$2"; shift 2 ;;
+      --help|-h)
+        cat <<EOF
+pod_nag [--interval 3600] [--log FILE] [--message "TEXT"]
+
+Defaults can be set via env:
+  POD_NAG_INTERVAL
+
+Telegram env (required for actual messages):
+  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+EOF
+        return 0
+        ;;
+      *) echo "pod_nag: unknown option: $1" >&2; return 2 ;;
+    esac
+  done
+
+  local sink="/dev/stdout"
+  if [[ -n "$log" ]]; then
+    mkdir -p "$(dirname "$log")" 2>/dev/null || true
+    sink="$log"
+  fi
+
+  (
+    printf "[%s] pod_nag started on %s (interval=%ss)\n" "$(date -Is)" "$(hostname)" "$interval" >>"$sink"
+
+    telegram_send "🔔 pod_nag started
+<pre>
+$(pod_usage_summary)
+interval: ${interval}s</pre>"
+
+    while true; do
+      local msg
+      if [[ -n "$message" ]]; then
+        msg="🔔 ${message}
+<pre>
+$(pod_usage_summary)
+
+Remember to kill it if you're done.</pre>"
+      else
+        msg="💸 Pod still up
+<pre>
+$(pod_usage_summary)
+
+Remember to kill it if you're done.</pre>"
+      fi
+
+      telegram_send "$msg"
+      printf "[%s] pod_nag heartbeat sent\n" "$(date -Is)" >>"$sink"
+
+      sleep "$interval"
+    done
+  ) &
+
+  local pid=$!
+  echo "$pid" > /tmp/pod_nag.pid
+  echo "[pod_nag] started (pid=$pid) interval=${interval}s log=${log:-stdout}"
+}
+
+disk_watch_stop() {
+  local pid=""
+  if [[ -f /tmp/disk_watch.pid ]]; then pid="$(cat /tmp/disk_watch.pid)"; fi
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    rm -f /tmp/disk_watch.pid
+    echo "[disk_watch] stopped (pid=$pid)"
+    telegram_send "🧹 disk_watch stopped on $(hostname) (pid=$pid)"
+  else
+    echo "[disk_watch] not running"
+  fi
+}
+
+pod_nag_stop() {
+  local pid=""
+  if [[ -f /tmp/pod_nag.pid ]]; then pid="$(cat /tmp/pod_nag.pid)"; fi
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    rm -f /tmp/pod_nag.pid
+    echo "[pod_nag] stopped (pid=$pid)"
+    telegram_send "🧹 pod_nag stopped on $(hostname) (pid=$pid)"
+  else
+    echo "[pod_nag] not running"
+  fi
+}
+
+# ======================================================================
+# ComfyUI core management
+# ======================================================================
+
+# ensure_comfy: Install or hard-reset image-owned ComfyUI app code.
+# Never rm -rf COMFY_HOME: that is runtime/persistent state.
+ensure_comfy() {
+  local app="${COMFY_APP:-${COMFYUI_PATH:-/opt/ComfyUI}}"
+  export COMFY_APP="$app"
+  export COMFYUI_PATH="$app"
+
+  if [[ -d "$app/.git" && -f "$app/main.py" ]]; then
+    git -C "$app" fetch --depth=1 origin || true
+    git -C "$app" reset --hard origin/master 2>/dev/null \
+      || git -C "$app" reset --hard origin/main 2>/dev/null || true
+  elif [[ -f "$app/main.py" ]]; then
+    echo "[ensure_comfy] Existing image app tree found at $app"
+  else
+    rm -rf "$app"
+    git clone --depth=1 "$COMFY_REPO_URL" "$app"
+  fi
+
+  "$PIP_BIN" install -U pip wheel setuptools
+  [ -f "$app/requirements.txt" ] && "$PIP_BIN" install -r "$app/requirements.txt" || true
+
+  link_comfy_state_into_app
+}
+
+# ======================================================================
+# OpenCV Cleanup / "Pin" Numeric Stack
+# ======================================================================
+
+# Remove stray OpenCV wheels and cv2 dirs to avoid namespace collisions.
+cleanup_opencv_namespace() {
+  echo "[numeric-cleanup] Cleaning up legacy OpenCV wheels and cv2 namespace…" >&2
+
+  # 1) Uninstall common OpenCV wheels quietly (ignore errors)
+  env -u PIP_REQUIRE_HASHES -u PIP_BUILD_CONSTRAINT \
+    "$PIP" uninstall -y \
+      opencv-python \
+      opencv-python-headless \
+      opencv-contrib-python \
+      opencv-contrib-python-headless >/dev/null 2>&1 || true
+
+  # 2) Remove dangling cv2 dirs/files from site-packages
+  "$PY" - <<'PY'
+import sys, os, glob, shutil
+
+site = [p for p in sys.path if p.endswith("site-packages")]
+if not site:
+    print("[numeric-cleanup] No site-packages found; skipping cv2 cleanup.")
+else:
+    site = site[0]
+    paths = [os.path.join(site, "cv2")] + glob.glob(os.path.join(site, "cv2*"))
+    for p in paths:
+        try:
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
+                print("[numeric-cleanup] Removed dir:", p)
+            elif os.path.isfile(p):
+                os.remove(p)
+                print("[numeric-cleanup] Removed file:", p)
+        except Exception as e:
+            print("[numeric-cleanup] Skip:", p, "->", e)
+PY
+}
+
+# Install and verify the pinned numeric stack (numpy / cupy / opencv).
+# Uses NUMPY_VER / CUPY_VER / OPENCV_VER from .env as single source of truth.
+lock_in_numeric_stack() {
+  echo "[numeric-stack] Pinning numeric stack…" >&2
+  echo "[numeric-stack]  NUMPY_VER  = ${NUMPY_VER:-<unset>}" >&2
+  echo "[numeric-stack]  CUPY_VER   = ${CUPY_VER:-<unset>}" >&2
+  echo "[numeric-stack]  OPENCV_VER = ${OPENCV_VER:-<unset>}" >&2
+  echo ""
+  echo "[numeric-stack] pins_signature: $(pins_signature 2>/dev/null || echo '<n/a>')" >&2
+
+  # Safety: make sure we actually have pins
+  if [[ -z "${NUMPY_VER:-}" || -z "${CUPY_VER:-}" || -z "${OPENCV_VER:-}" ]]; then
+    echo "[numeric-stack] FATAL: NUMPY_VER/CUPY_VER/OPENCV_VER must be set in .env" >&2
+    return 1
+  fi
+
+  # We *want* these to be authoritative, so ignore any global constraints/hashes.
+  env -u PIP_REQUIRE_HASHES -u PIP_BUILD_CONSTRAINT \
+    "$PIP" install -U \
+      "$NUMPY_VER" \
+      "$CUPY_VER" \
+      "$OPENCV_VER"
+
+  # Quick sanity check and version report
+  "$PY" - <<'PY'
+import sys
+
+print("[numeric-stack] Python:", sys.version.split()[0])
+
+try:
+    import numpy
+    print("[numeric-stack] numpy :", numpy.__version__)
+except Exception as e:
+    print("[numeric-stack] numpy ERROR:", repr(e))
+
+try:
+    import cupy
+    print("[numeric-stack] cupy  :", cupy.__version__)
+except Exception as e:
+    print("[numeric-stack] cupy ERROR:", repr(e))
+
+try:
+    import cv2
+    v = getattr(cv2, "__version__", None)
+    if v is None and hasattr(cv2, "cv2"):
+        v = getattr(cv2.cv2, "__version__", "<unknown>")
+    print("[numeric-stack] opencv:", v)
+except Exception as e:
+    print("[numeric-stack] opencv ERROR:", repr(e))
+PY
+}
+
+# ======================================================================
+# Custom node installation (parallel + cache)
+# ======================================================================
+
+# pins_signature: Build an identifier from numpy/cupy/opencv versions
+pins_signature() {
+  "$PY_BIN" - <<'PY'
+import importlib, re
+def v(mod, attr="__version__"):
+    try:
+        m = importlib.import_module(mod)
+        return getattr(m, attr, "0.0.0")
+    except Exception:
+        return "0.0.0"
+
+np = v("numpy")
+cp = v("cupy")
+try:
+    import cv2 as _cv
+    cv = getattr(_cv, "__version__", "0.0.0")
+    if not isinstance(cv, str):
+        cv = "0.0.0"
+except Exception:
+    cv = "0.0.0"
+
+norm = lambda s: re.sub(r'[^0-9\.]+','-',s).replace('.','d')
+print(f"np{norm(np)}_cupy{norm(cp)}_cv{norm(cv)}")
+PY
+}
+
+# python_abi_tag: returns e.g. "312" for CPython 3.12
+python_abi_tag() {
+  "$PY" - << 'PY'
+import sys
+print(f"{sys.version_info.major}{sys.version_info.minor}")
+PY
+}
+
+# pip_cache_key: combine ABI + pins_signature
+pip_cache_key() {
+  local abi sig
+  abi="$(python_abi_tag)"
+  sig="$(pins_signature)"
+  echo "py${abi}_${sig}"
+}
+
+# bundle_ts: Sorting-friendly timestamp
+bundle_ts() { date +%Y%m%d-%H%M; }
+
+# bundle_base: Canonical bundle base name (without extension)
+#   $1 tag, $2 pins, [$3 ts]
+bundle_base() {
+  local tag="${1:?tag}" pins="${2:?pins}" ts="${3:-$(bundle_ts)}"
+  echo "custom_nodes_bundle_${tag}_${pins}_${ts}"
+}
+
+# Name helpers
+manifest_name()   { echo "custom_nodes_manifest_${1:?tag}.json"; }
+reqs_name()       { echo "consolidated_requirements_${1:?tag}.txt"; }
+sha_name()        { echo "${1}.sha256"; }
+
+# repo_dir_name: Stable dir name from repo URL
+repo_dir_name() { basename "${1%.git}"; }
+
+# needs_recursive: mark repos that need --recursive based on env config
+# CUSTOM_NODES_RECURSIVE_REPOS is a space-separated list of substrings.
+needs_recursive() {
+  local repo_name="$1"
+  local patterns="${CUSTOM_NODES_RECURSIVE_REPOS:-}"
+
+  for pat in $patterns; do
+    [[ -n "$pat" && "$repo_name" == *"$pat"* ]] && {
+      echo "true"
+      return 0
+    }
+  done
+
+  echo "false"
+}
+
+# clone_or_pull: shallow clone or fast-forward reset
+# Usage (old / compatible):
+#   clone_or_pull <repo> <dst> true|false
+#
+# New / extended:
+#   clone_or_pull <repo> <dst> [true|false] [extra git clone args...]
+#
+# Examples:
+#   clone_or_pull URL dir true (equivalent to git pull --recursive ...)
+#   clone_or_pull URL dir --recursive --branch dev
+#   clone_or_pull URL dir true --branch dev
+clone_or_pull() {
+  local repo="$1" dst="$2"
+  shift 2
+
+  local recursive_flag=""        # "true" or "false" if provided
+  local args=()
+
+  # Backward-compat: third arg "true"/"false" = recursive flag
+  if [[ "$#" -gt 0 && ( "$1" == "true" || "$1" == "false" ) ]]; then
+    recursive_flag="$1"
+    shift
+  fi
+
+  if (( "$#" > 0 )); then
+    args=("$@")                  # extra git clone args from manifest
+  fi
+
+  if [[ -d "$dst/.git" ]]; then
+    # Existing repo → fast-forward-ish update
+    echo "[clone-or-pull] Custom Node $dst exists. Updating."
+    git -C "$dst" fetch --all --prune --tags ${GIT_DEPTH:+--depth "$GIT_DEPTH"} || true
+    git -C "$dst" reset --hard origin/main 2>/dev/null \
+      || git -C "$dst" reset --hard origin/master 2>/dev/null || true
+  else
+    mkdir -p "$(dirname "$dst")"
+
+    local clone_cmd=(git clone)
+
+    # Add depth if configured and not already specified
+    if [[ -n "${GIT_DEPTH:-}" ]]; then
+      local has_depth=0
+      for a in "${args[@]}"; do
+        if [[ "$a" == "--depth" ]]; then
+          has_depth=1
+          break
+        fi
+      done
+      if (( has_depth == 0 )); then
+        clone_cmd+=(--depth "$GIT_DEPTH")
+      fi
+    fi
+
+    # Handle recursive_flag if set AND not already in args
+    if [[ "$recursive_flag" == "true" ]]; then
+      local has_rec=0
+      for a in "${args[@]}"; do
+        if [[ "$a" == "--recursive" || "$a" == "--recurse-submodules" ]]; then
+          has_rec=1
+          break
+        fi
+      done
+      if (( has_rec == 0 )); then
+        clone_cmd+=(--recursive)
+      fi
+    fi
+
+    # Append any extra args from manifest, then repo + dst
+    clone_cmd+=("${args[@]}" "$repo" "$dst")
+    
+    echo "[clone-or-pull] Performing: ${clone_cmd[@]}"
+    "${clone_cmd[@]}"
+  fi
+}
+
+# build_node: per-node requirements + install.py (logs to CUSTOM_LOG_DIR)
+#build_node() {
+#  local dst="${1:?dst}"
+#  local name log
+#  name="$(basename "$dst")"
+#  log="${CUSTOM_LOG_DIR}/${name}.log"
+#  {
+#    echo "==> [$name] $(date -Is) start"
+#    if [[ -f "$dst/requirements.txt" ]]; then
+#      if [[ -f "/opt/constraints.txt" ]]; then
+#       "$PIP_BIN" install -c /opt/constraints.txt -r "$dst/requirements.txt" || true
+#      else
+#        "$PIP_BIN" install -r "$dst/requirements.txt" || true
+#      fi
+#    fi
+#    if [[ -f "$dst/install.py" ]]; then
+#      "$PY_BIN" "$dst/install.py" || true
+#    fi
+#    echo "==> [$name] $(date -Is) done"
+#  } >"$log" 2>&1
+#}
+
+# build_node: per-node requirements + install.py (logs to CUSTOM_LOG_DIR)
+build_node() {
+  local dst="${1:?dst}"
+  local name log
+  name="$(basename "$dst")"
+  log="${CUSTOM_LOG_DIR}/${name}.log"
+
+  mkdir -p "${CUSTOM_LOG_DIR}"
+
+  {
+    echo "==> [$name] $(date -Is) start"
+    echo "dst=$dst"
+    echo "PY_BIN=${PY_BIN:-python}"
+    echo "PIP_BIN=${PIP_BIN:-pip}"
+
+    # ---- Constraints (export for everything, including install.py) ----
+    if [[ -f "/opt/constraints.txt" ]]; then
+      export PIP_CONSTRAINT="/opt/constraints.txt"
+      export PIP_BUILD_CONSTRAINT="/opt/constraints.txt"
+      echo "PIP_BUILD_CONSTRAINT set"
+      echo "PIP_CONSTRAINT set"
+      echo "constraints=/opt/constraints.txt"
+    else
+      #unset PIP_CONSTRAINT PIP_BUILD_CONSTRAINT || true
+      echo "constraints=none"
+    fi
+
+    local rc_req=0 rc_py=0
+
+    # ---- requirements.txt ----
+    if [[ -f "$dst/requirements.txt" ]]; then
+      echo "--- pip install -r requirements.txt ---"
+      # Prefer not to churn existing packages unnecessarily
+      if [[ -f "/opt/constraints.txt" ]]; then
+        "$PIP_BIN" install \
+          --upgrade-strategy only-if-needed \
+          -c "$PIP_CONSTRAINT" \
+          -r "$dst/requirements.txt" || rc_req=$?
+      else
+        "$PIP_BIN" install \
+          --upgrade-strategy only-if-needed \
+          -r "$dst/requirements.txt" || rc_req=$?
+      fi
+      echo "requirements_rc=$rc_req"
+    else
+      echo "(no requirements.txt)"
+    fi
+
+    # ---- install.py ----
+    if [[ -f "$dst/install.py" ]]; then
+      echo "--- python install.py ---"
+      "$PY_BIN" "$dst/install.py" || rc_py=$?
+      echo "install_py_rc=$rc_py"
+    else
+      echo "(no install.py)"
+    fi
+
+    # ---- Summary ----
+    if [[ $rc_req -ne 0 || $rc_py -ne 0 ]]; then
+      echo "==> [$name] RESULT=FAIL requirements_rc=$rc_req install_py_rc=$rc_py"
+      # Optional: write a global failures list if you want
+      if [[ -n "${CUSTOM_LOG_DIR:-}" ]]; then
+        echo "$name requirements_rc=$rc_req install_py_rc=$rc_py" >> "${CUSTOM_LOG_DIR}/_failures.txt" || true
+      fi
+    else
+      echo "==> [$name] RESULT=OK"
+    fi
+
+    echo "==> [$name] $(date -Is) done"
+  } >"$log" 2>&1
+}
+
+# resolve_nodes_list: Resolve source of truth for repo URLs into an array name
+#   Usage: local -a nodes; resolve_nodes_list nodes
+# resolve_nodes_list OUT_ARRAY_NAME
+resolve_nodes_list() {
+  local out_name="${1:-}"
+  local -a out=()
+  if [[ -n "${CUSTOM_NODE_LIST_FILE:-}" && -s "${CUSTOM_NODE_LIST_FILE:-}" ]]; then
+    mapfile -t out < <(grep -vE '^\s*(#|$)' "$CUSTOM_NODE_LIST_FILE")
+  elif [[ -n "${CUSTOM_NODE_LIST:-}" ]]; then
+    # shellcheck disable=SC2206
+    out=(${CUSTOM_NODE_LIST})
+  else
+    out=("${DEFAULT_NODES[@]}")
+  fi
+
+  # Return via nameref or print
+  if [[ -n "$out_name" ]]; then
+    local -n ref="$out_name"
+    ref=("${out[@]}")
+  else
+    printf '%s\n' "${out[@]}"
+  fi
+}
+
+# rewrite_custom_nodes_requirements:
+#   - in:  original consolidated requirements (from HF)
+#   - out: rewritten file we actually feed to pip
+# Uses CUSTOM_NODES_REQ_REWRITE_*="pkg|replacement" from .env.
+rewrite_custom_nodes_requirements() {
+  local in="$1"
+  local out="$2"
+
+  if [[ ! -f "$in" ]]; then
+    echo "[custom-nodes] [rewrite_custom_nodes_requirements]: input missing: $in" >&2
+    return 1
+  fi
+
+  cp -f "$in" "$out"
+
+  # Walk all env vars prefixed with CUSTOM_NODES_REQ_REWRITE_
+  local var spec pkg repl
+  for var in ${!CUSTOM_NODES_REQ_REWRITE_@}; do
+    spec="${!var}"
+    [[ -z "$spec" ]] && continue
+
+    IFS='|' read -r pkg repl <<<"$spec"
+    pkg="${pkg// /}"   # strip spaces
+    [[ -z "$pkg" ]] && continue
+
+    # Drop any line whose first token matches pkg
+    sed -i -E "/^${pkg}(\s|$)/d" "$out"
+
+    # If replacement begins with "#", we just drop it and move on
+    if [[ "$repl" == "#"* || -z "$repl" ]]; then
+      echo "[custom-nodes] [rewrite_custom_nodes_requirements]: REMOVED '${pkg}' with no replacement (rule: ${var})"
+      continue
+    fi
+
+    # Append replacement line at end
+    echo "$repl" >>"$out"
+    echo "[custom-nodes] [rewrite_custom_nodes_requirements]: REPLACED '${pkg}' -> '${repl}' (rule: ${var})"
+  done
+}
+
+# install_custom_nodes:
+#   - Optional arg: manifest source (file path or URL)
+#   - If no arg, falls back to CUSTOM_NODES_MANIFEST_URL
+#   - Manifest format (plain text, one entry per line):
+#       <git_url> <target_dir> [optional git clone args...]
+#     Lines starting with # or empty are ignored.
+#   - Uses clone_or_pull/build_node as the core, in parallel up to MAX_CUSTOM_NODE_JOBS.
+install_custom_nodes() {
+  _helpers_need curl
+
+  local src="${1:-${CUSTOM_NODES_MANIFEST_URL:-}}"
+
+  if [[ -z "$src" ]]; then
+    echo "[custom-nodes] No manifest source and CUSTOM_NODES_MANIFEST_URL not set; nothing to install." >&2
+    return 0
+  fi
+
+  local man tmp=""
+  if [[ -f "$src" ]]; then
+    man="$src"
+  else
+    man="$(mktemp -p "${CACHE_DIR:-/tmp}" custom_nodes_manifest.XXXXXX)"
+    tmp="$man"
+    if ! curl -fsSL "$src" -o "$man"; then
+      echo "[custom-nodes] Failed to fetch manifest: $src" >&2
+      [[ -n "$tmp" ]] && rm -f "$tmp"
+      return 1
+    fi
+  fi
+
+  local custom_dir="${CUSTOM_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/custom_nodes}"
+  local log_dir="${CUSTOM_LOG_DIR:-${COMFY_LOGS:-/workspace/logs}/custom_nodes}"
+  mkdir -p "$custom_dir" "$log_dir"
+
+  local max_jobs="${MAX_CUSTOM_NODE_JOBS:-8}"
+  local job_count=0
+  local failed=0
+
+  echo "[custom-nodes] Using manifest: $src"
+  echo "[custom-nodes] Installing custom nodes into: $custom_dir"
+  echo "[custom-nodes] Using concurrency: ${max_jobs}. Change with MAX_CUSTOM_NODE_JOBS env var."
+  cd "$custom_dir"
+
+  local line url dst rest
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+    url=""
+    dst=""
+    rest=""
+    # shellcheck disable=SC2086
+    read -r url dst rest <<<"$line"
+
+    if [[ -z "$url" || -z "$dst" ]]; then
+      echo "[custom-nodes] Skipping malformed line: $line" >&2
+      continue
+    fi
+
+    local -a extra=()
+    if [[ -n "${rest:-}" ]]; then
+      # shellcheck disable=SC2206
+      extra=($rest)
+    fi
+
+    (
+      local name
+      name="$(basename "$dst")"
+
+      echo "[custom-nodes] → $dst  (from $url ${extra[*]:+${extra[*]}})"
+
+      clone_or_pull "$url" "$dst" "${extra[@]}"
+
+      if ! build_node "$dst"; then
+        echo "[custom-nodes] ❌ Install ERROR $name (see ${log_dir}/${name}.log)" >&2
+        exit 1
+      fi
+
+      echo "[custom-nodes] ✅ Completed install for: $name" >&2
+    ) &
+
+    ((job_count++))
+    if (( job_count >= max_jobs )); then
+      # wait -n: wait for *one* job to finish, track failures
+      if ! wait -n; then
+        failed=1
+      fi
+      ((job_count--))
+    fi
+  done <"$man"
+
+  # Wait for remaining jobs
+  while (( job_count > 0 )); do
+    if ! wait -n; then
+      failed=1
+    fi
+    ((job_count--))
+  done
+
+  [[ -n "$tmp" ]] && rm -f "$tmp"
+
+  if (( failed != 0 )); then
+    echo "[custom-nodes] Completed with one or more errors." >&2
+    echo ""
+    return 1
+  fi
+
+  echo "[custom-nodes] Manifest install completed successfully."
+  echo ""
+  return 0
+}
+
+# install_custom_nodes_set: bounded parallel installer (wait -n throttle, no FIFOs)
+#   Usage: install_custom_nodes_set NODES_ARRAY_NAME
+install_custom_nodes_set() {
+  local src_name="${1:-}"
+  local -a NODES_LIST
+  if [[ -n "$src_name" ]]; then
+    local -n _src="$src_name"
+    NODES_LIST=("${_src[@]}")
+  else
+    resolve_nodes_list NODES_LIST
+  fi
+
+  echo "[custom-nodes] Installing custom nodes. Processing ${#NODES_LIST[@]} node(s)"
+  mkdir -p "${CUSTOM_DIR:?}" "${CUSTOM_LOG_DIR:?}"
+
+  # Concurrency
+  local max_jobs="${MAX_CUSTOM_NODE_JOBS:-8}"
+  if ! [[ "$max_jobs" =~ ^[0-9]+$ ]] || (( max_jobs < 1 )); then max_jobs=8; fi
+  echo "[custom-nodes] Using concurrency: ${max_jobs}. Change with MAX_CUSTOM_NODE_JOBS env var."
+
+  # Harden git so it never prompts (prompts can look like a 'hang')
+  export GIT_TERMINAL_PROMPT=0
+  export GIT_ASKPASS=/bin/echo
+
+  local running=0
+  local errs=0
+  local -a pids=()
+
+  for repo in "${NODES_LIST[@]}"; do
+    [[ -n "$repo" ]] || continue
+    [[ "$repo" =~ ^# ]] && continue
+
+    # If we're at the limit, wait for one job to finish
+    if (( running >= max_jobs )); then
+      if ! wait -n; then errs=$((errs+1)); fi
+      running=$((running-1))
+    fi
+
+    (
+      set -e
+      name="$(repo_dir_name "$repo")"
+      dst="$CUSTOM_DIR/$name"
+      rec="$(needs_recursive "$repo")"
+
+      echo "[custom-nodes] Starting install: $name → $dst"
+      mkdir -p "$dst"
+
+      clone_or_pull "$repo" "$dst" "$rec"
+
+      if ! build_node "$dst"; then
+        echo "[custom-nodes] ❌ Install ERROR $name (see ${CUSTOM_LOG_DIR}/${name}.log)" >&2
+        exit 1
+      fi
+
+      echo "[custom-nodes] ✅ Completed install for: $name" >&2
+    ) &
+
+    pids+=("$!")
+    running=$((running+1))
+  done
+
+  echo "[custom-nodes] Waiting for parallel node installs to complete…" >&2
+  # Wait for remaining jobs
+  while (( running > 0 )); do
+    if ! wait -n; then errs=$((errs+1)); fi
+    running=$((running-1))
+  done
+
+  if (( errs > 0 )); then
+    echo "[custom-nodes] ❌ Completed with ${errs} error(s). Check logs: $CUSTOM_LOG_DIR" >&2
+    return 2
+  else
+    echo "[custom-nodes] ✅ All nodes installed successfully." >&2
+  fi
+}
+
+# ======================================================================
+# HF Bundling (create/push/pull)
+# ======================================================================
+
+hf_ensure_local_repo() {
+  # HF_LOCAL_REPO is treated as a ROOT for multiple repos now
+  local root="${HF_LOCAL_REPO:-${CACHE_DIR}/.hf_repo}"
+  local url repo_name repo display_url
+
+  url="$(hf_remote_url 2>/dev/null || true)"
+  if [[ -z "$url" ]]; then
+    echo "  [hf-ensure-local-repo] hf_ensure_local_repos: hf_remote_url unresolved" >&2
+    return 1
+  fi
+
+  # Derive a stable repo name from the URL:
+  # e.g. https://.../datasets/markwelshboyx/hearmemanAI-comfyUI-workflows.git
+  #    -> hearmemanAI-comfyUI-workflows
+  repo_name="$(printf '%s\n' "$url" | sed -E 's#.*/([^/]+)(\.git)?$#\1#')"
+  repo="${root%/}/${repo_name}"
+
+  # Redact token just for logging:
+  display_url="$(printf '%s\n' "$url" | sed -E 's#(https://oauth2:)[^@]*@#\1***@#')"
+  echo "  [hf-ensure-local-repo] Master repo url=${display_url}" >&2
+  echo "  [hf-ensure-local-repo] Using root=${root}" >&2
+  echo "  [hf-ensure-local-repo] Using local repo=${repo}" >&2
+
+  mkdir -p "$root"
+
+  if [[ -d "$repo/.git" ]]; then
+    echo "  [hf-ensure-local-repo] Refreshing repo $repo" >&2
+    git -C "$repo" fetch --depth=1 origin main >/dev/null 2>&1 || true
+    git -C "$repo" reset --hard origin/main >/dev/null 2>&1 || true
+  else
+    echo "  [hf-ensure-local-repo] Cloning HF repo into $repo…" >&2
+    mkdir -p "$repo"
+    # Allow non-interactive; rely on token baked into URL
+    if ! GIT_TERMINAL_PROMPT=0 git clone --depth=1 "$url" "$repo" >/dev/null 2>&1; then
+      echo "  [hf-ensure-local-repo] ❌ Failed to clone HF repo into $repo" >&2
+      return 1
+    fi
+  fi
+
+  printf '%s\n' "$repo"
+}
+
+# hf_remote_url: builds authenticated HTTPS remote for model/dataset repos
+hf_remote_url() {
+  : "${HF_TOKEN:?missing HF_TOKEN}" "${HF_REPO_ID:?missing HF_REPO_ID}"
+  local base="${HF_API_BASE:-https://huggingface.co}"
+  local type="${HF_REPO_TYPE:-dataset}"   # dataset or model
+  local id="${HF_REPO_ID}"
+  echo "https://oauth2:${HF_TOKEN}@${base#https://}/${type}s/${id}.git"
+}
+
+# hf_fetch_nodes_list: optionally fetch a custom_nodes.txt index from HF
+#   echoes local path or empty if not present
+hf_fetch_nodes_list() {
+  local out="${CACHE_DIR}/custom_nodes.txt"
+  mkdir -p "$CACHE_DIR"
+  local url="${HF_API_BASE}/${HF_REPO_ID}/resolve/${CN_BRANCH}/custom_nodes.txt"
+  if curl -fsSL -H "Authorization: Bearer ${HF_TOKEN:-}" "$url" -o "$out"; then
+    echo "$out"
+  else
+    echo ""
+  fi
+}
+
+# hf_push_files: stage tgz/sha/manifest/requirements into bundles/meta/requirements
+hf_push_files() {
+  local msg="${1:-update bundles}"; shift || true
+  local files=( "$@" )
+  local tmp="${CACHE_DIR}/.hf_push.$$"
+  rm -rf "$tmp"
+
+  git clone "$(hf_remote_url)" "$tmp"
+  ( cd "$tmp"
+    # use huggingface-cli (comes from huggingface-hub[cli])
+    huggingface-cli lfs-enable-largefiles .      
+    git checkout "$CN_BRANCH" 2>/dev/null || git checkout -b "$CN_BRANCH"
+    mkdir -p bundles meta requirements
+    for f in "${files[@]}"; do
+      case "$f" in
+        *.tgz|*.sha256) cp -f "$f" bundles/ ;;
+        *.json)         cp -f "$f" meta/ ;;
+        *.txt)          cp -f "$f" requirements/ ;;
+        *)              cp -f "$f" bundles/ ;;
+      esac
+    done
+    git lfs track "bundles/*.tgz"
+    git add .gitattributes bundles meta requirements
+    git commit -m "$msg" || true
+    git push origin "$CN_BRANCH"
+  )
+  rm -rf "$tmp"
+}
+
+# ================================================================
+# Hugging Face dataset name helpers
+# ================================================================
+# Expect HF_REPO_ID like: markwelshboyx/hearmemanAI-comfyUI-workflows
+# or can fall back to parsing HF_REMOTE_URL if defined
+
+hf_dataset_namespace() {
+  # Primary: HF_REPO_ID="namespace/name"
+  if [[ -n "${HF_REPO_ID:-}" ]]; then
+    echo "${HF_REPO_ID%%/*}"
+    return 0
+  fi
+
+  # Fallback: if you ever add HF_REPO as an alias
+  if [[ -n "${HF_REPO:-}" ]]; then
+    echo "${HF_REPO%%/*}"
+    return 0
+  fi
+
+  # Fallback: try parsing HF_REMOTE_URL if it exists
+  if [[ -n "${HF_REMOTE_URL:-}" ]]; then
+    local url ns
+    url="${HF_REMOTE_URL%.git}"
+    url="${url#https://}"
+    ns="$(printf '%s\n' "$url" | awk -F/ '{print $(NF-1)}')"
+    [[ -n "$ns" ]] && { echo "$ns"; return 0; }
+  fi
+
+  echo "unknown_ns"
+}
+
+hf_dataset_name() {
+  if [[ -n "${HF_REPO_ID:-}" ]]; then
+    echo "${HF_REPO_ID##*/}"
+    return 0
+  fi
+
+  if [[ -n "${HF_REPO:-}" ]]; then
+    echo "${HF_REPO##*/}"
+    return 0
+  fi
+
+  if [[ -n "${HF_REMOTE_URL:-}" ]]; then
+    local url name
+    url="${HF_REMOTE_URL%.git}"
+    name="$(printf '%s\n' "$url" | awk -F/ '{print $NF}')"
+    [[ -n "$name" ]] && { echo "$name"; return 0; }
+  fi
+
+  echo "unknown_name"
+}
+
+_hf_api_base() {
+  local base="${HF_API_BASE:-https://huggingface.co}"
+  local type="${HF_REPO_TYPE:-dataset}"   # datasets or models
+  local id="${HF_REPO_ID:-}"
+
+  if [[ -z "$id" ]]; then
+    # last resort, reconstruct from namespace+name
+    id="$(hf_dataset_namespace)/$(hf_dataset_name)"
+  fi
+
+  echo "${base}/api/${type}s/${id}"
+}
+
+#---------------------------------------------------------------
+#
+#
+# Torch and SageAttention helpers
+#
+#
+#---------------------------------------------------------------
+
+# Decide if a given custom-node bundle filename is "compatible"
+# with the current environment (bundle tag + pins).
+_custom_node_bundle_compatible() {
+  local fname="${1:?bundle filename}"
+
+  # Tag: e.g. Wan2_1__Wan2_2__CUDA_12_8
+  local tag="${CUSTOM_NODES_BUNDLE_TAG:-${BUNDLE_TAG:-}}"
+
+  # Pins: numeric stack signature; prefer PIN_SIG, else compute via pins_signature()
+  local signature=""
+  if command -v pins_signature >/dev/null 2>&1; then
+    signature="$(pins_signature 2>/dev/null || true)"
+  fi
+  local pins="${PIN_SIG:-$signature}"
+
+  # Require tag substring if we have one
+  if [[ -n "$tag" && "$fname" != *"$tag"* ]]; then
+    return 1
+  fi
+
+  # Require pins substring if we have them
+  if [[ -n "$pins" && "$fname" != *"$pins"* ]]; then
+    return 1
+  fi
+
+  return 0
+}
+
+hf_fetch_compatible_sage_bundle() {
+  local key="${1:?SAGE_KEY}"
+  
+  echo "[sage-bundle] hf_fetch_latest_custom_nodes_bundle: Attempting to find a compatible bundle for key=${key}." >&2
+
+  local repo cuda_tag
+  repo="$(hf_ensure_local_repo)" || {
+    echo "[sage-bundle] hf_fetch_latest_custom_nodes_bundle: no local repo." >&2
+    return 1
+  }
+
+
+  # Extract cuXXX_sm_YY part from our key (if present)
+  cuda_tag="$(printf '%s\n' "$key" | sed -E 's/.*_(cu[0-9]+_sm_[0-9]+)$/\1/' || true)"
+  if [[ -z "$cuda_tag" ]]; then
+    echo "[sage-bundle] Cannot derive CUDA/arch suffix from key=${key}; skipping compatible search." >&2
+    return 1
+  fi
+
+  local f base k compat_list
+  compat_list=()
+
+  if compgen -G "${repo}/bundles/torch_sage_bundle_*.tgz" >/dev/null 2>&1; then
+    for f in "${repo}"/bundles/torch_sage_bundle_*.tgz; do
+      [[ -e "$f" ]] || continue
+      base="$(basename "$f" .tgz)"
+      k="${base#torch_sage_bundle_}"
+      [[ "$k" == *"${cuda_tag}" ]] || continue
+      compat_list+=("$k")
+    done
+  fi
+
+  if (( ${#compat_list[@]} == 0 )); then
+    echo "[sage-bundle] No compatible Sage bundles found for CUDA/arch=${cuda_tag}." >&2
+    return 1
+  fi
+
+  # Choose latest (lexicographically max) compatible key
+  IFS=$'\n' compat_list_sorted=($(printf '%s\n' "${compat_list[@]}" | sort))
+  unset IFS
+  local best_key="${compat_list_sorted[-1]}"
+  local best_file="torch_sage_bundle_${best_key}.tgz"
+  echo "[sage-bundle] Reusing compatible Sage bundle: ${best_file}" >&2
+
+  mkdir -p "$CACHE_DIR"
+  cp "${repo}/bundles/$best_file" "$CACHE_DIR/"
+  echo "${CACHE_DIR}/${best_file}"
+}
+
+hf_bundles_summary() {
+  local key="${1:-}"               # optional: current torch_sage_key
+  local cache="${CACHE_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/cache}"
+
+  mkdir -p "$cache"
+
+  local repo
+  repo="$(hf_ensure_local_repo)" || {
+    echo "[sage-bundle] hf_fetch_latest_custom_nodes_bundle: no local repo." >&2
+    return 1
+  }
+
+  echo "Bundles (local repo) : inspecting…"
+
+  local bundle_dir="${repo}/bundles"
+  if [[ ! -d "$bundle_dir" ]]; then
+    echo "  Bundles dir  : (none)"
+    return 0
+  fi
+
+  # Count all .tgz bundles
+  local total
+  total="$(find "$bundle_dir" -maxdepth 1 -type f -name '*.tgz' | wc -l | tr -d ' ')"
+  echo "  Total .tgz   : ${total}"
+
+  # Count custom_nodes vs torch_sage
+  local cn_count sage_count
+  cn_count="$(find "$bundle_dir" -maxdepth 1 -type f -name 'custom_nodes_bundle_*.tgz' | wc -l | tr -d ' ')"
+  sage_count="$(find "$bundle_dir" -maxdepth 1 -type f -name 'torch_sage_bundle_*.tgz'   | wc -l | tr -d ' ')"
+  echo "  custom_nodes : ${cn_count}"
+  echo "  torch_sage   : ${sage_count}"
+
+  # If a key was provided, check for that specific bundle
+  if [[ -n "$key" ]]; then
+    local patt="torch_sage_bundle_${key}.tgz"
+    if [[ -f "${bundle_dir}/${patt}" ]]; then
+      echo "  This key     : ✅ ${patt}"
+    else
+      echo "  This key     : ❌ no torch_sage bundle for ${key}"
+    fi
+  fi
+}
+
+hf_repo_info() {
+  local ns name type url
+  ns="$(hf_dataset_namespace)"
+  name="$(hf_dataset_name)"
+  type="${HF_REPO_TYPE:-dataset}"
+  url="https://huggingface.co/${type}s/${ns}/${name}"
+
+  echo "=================================================="
+  echo "🤖 Hugging Face Repo Info"
+  echo "Repo handle    : ${ns}/${name}"
+  echo "Repo type      : ${type}"
+  echo "Repo URL       : ${url}"
+  echo -n "Auth check     : "
+
+  if [[ -n "${HF_TOKEN:-}" ]]; then
+    if curl -fsSL -H "Authorization: Bearer ${HF_TOKEN}" \
+         "https://huggingface.co/api/${type}s/${ns}/${name}" \
+         >/dev/null 2>&1; then
+      echo "✅ OK (token accepted)"
+    else
+      echo "⚠️ token present, but repo not reachable / 404"
+    fi
+  else
+    echo "❌ no HF_TOKEN defined"
+  fi
+
+  # Use canonical shell helper for the key
+  local key=""
+  if command -v torch_sage_key >/dev/null 2>&1; then
+    key="$(torch_sage_key 2>/dev/null || true)"
+  fi
+  if [[ -n "$key" ]]; then
+    echo "Torch key      : ${key}"
+  fi
+
+  echo "=================================================="
+}
+
+# Return 0 if a LOCAL file exists for given basename in $CACHE_DIR
+_have_local() {
+  local base="$1"
+  [[ -f "${CACHE_DIR}/${base}" ]]
+}
+
+# Return 0 if the HF repo contains the path (lightweight index scan)
+_have_remote() {
+  local relpath="$1"  # e.g. bundles/torch_sage_bundle_<KEY>.tgz
+  local ns="$(hf_dataset_namespace)"
+  local name="$(hf_dataset_name)"
+  curl -fsSL -H "Authorization: Bearer ${HF_TOKEN}" \
+    "https://huggingface.co/api/datasets/${ns}/${name}/tree/main?recursive=1" \
+    | grep -q "\"path\":\"${relpath}\""
+}
+
+# Derive current keys/basenames
+_sage_bundle_basename() {
+  local key; key="$(torch_sage_key)"
+  echo "torch_sage_bundle_${key}.tgz"
+}
+
+_custom_nodes_bundle_basename() {
+  local tag pins
+  tag="${CUSTOM_NODES_BUNDLE_TAG:?missing CUSTOM_NODES_BUNDLE_TAG}"     # e.g. Wan2_1__Wan2_2__CUDA_12_8
+  pins="$(pins_signature)"                    # your existing helper
+  echo "custom_nodes_bundle_${tag}_${pins}_*.tgz"
+}
+
+# Show a concise yes/no with optional detail
+__yn() { [[ "$1" -eq 0 ]] && echo "YES" || echo "no"; }
+
+env_status() {
+  echo "=================================================="
+  echo "GPU Name       : ${GPU_NAME:-unknown} (${GPU_COUNT:-?} GPU[s])"
+  echo "GPU Arch       : ${GPU_ARCH:-unknown}"
+  echo "Torch Channel  : ${TORCH_CHANNEL:-auto}"
+  echo "Torch CUDA Tag : ${TORCH_CUDA:-cu128}"
+  echo "Torch Stable   : ${TORCH_STABLE_VER:-?}"
+  echo "Torch Nightly  : ${TORCH_NIGHTLY_VER:-auto}"
+  echo -n "Torch Version  : "
+  $PY - <<'PY'
+import torch
+print(f"{torch.__version__}  (CUDA {torch.version.cuda})")
+PY
+
+  local sage_key; sage_key="$(torch_sage_key)"
+  local sage_base; sage_base="$(_sage_bundle_basename)"
+  local nodes_glob; nodes_glob="$(_custom_nodes_bundle_basename)"
+
+  echo "Sage Key       : ${sage_key}"
+  echo "Cache Dir      : ${CACHE_DIR}"
+
+  # Local checks
+  local have_sage_local=1 have_nodes_local=1
+  if compgen -G "${CACHE_DIR}/${sage_base}" > /dev/null; then have_sage_local=0; fi
+  if compgen -G "${CACHE_DIR}/${nodes_glob}" > /dev/null; then have_nodes_local=0; fi
+
+  # Remote checks (skip if no HF token)
+  local have_sage_remote=1 have_nodes_remote=1
+  if [[ -n "${HF_TOKEN:-}" ]]; then
+    _have_remote "bundles/${sage_base}"; have_sage_remote=$?
+    # We don’t know the exact timestamped filename for nodes, so match by prefix via API list:
+    # quick and dirty: if any path starts with that tag+pins (ignoring timestamp), call it present
+    local ns name; ns="$(hf_dataset_namespace)"; name="$(hf_dataset_name)"
+    local prefix="bundles/${nodes_glob%\*}"  # strip *.tgz
+    if curl -fsSL -H "Authorization: Bearer ${HF_TOKEN}" \
+         "https://huggingface.co/api/datasets/${ns}/${name}/tree/main?recursive=1" \
+         | grep -q "\"path\":\"${prefix}"; then
+      have_nodes_remote=0
+    fi
+  fi
+
+  printf "Sage bundle (local)  : %s\n" "$(__yn $have_sage_local)"
+  printf "Sage bundle (remote) : %s   %s\n" "$(__yn $have_sage_remote)" \
+         "$( [[ $have_sage_remote -eq 0 ]] && echo "(bundles/${sage_base})" )"
+  printf "Nodes bundle (local) : %s\n" "$(__yn $have_nodes_local)"
+  printf "Nodes bundle (remote): %s   %s\n" "$(__yn $have_nodes_remote)" \
+         "$( [[ $have_nodes_remote -eq 0 ]] && echo "(bundles/${nodes_glob})" )"
+
+  # Quick import sanity
+  echo -n "Import torch/sage     : "
+  $PY - <<'PY'
+ok = True
+try:
+  import torch
+except Exception as e:
+  ok = False
+try:
+  import sageattention as sa
+except Exception as e:
+  ok = False
+print("OK" if ok else "issues")
+PY
+  echo "=================================================="
+}
+
+# ================================================================
+# Torch channel auto-detect + latest nightly discovery
+# ================================================================
+
+# Fetch latest nightly version for the selected CUDA stream (e.g. 2.10.0.dev20251112)
+# Uses the torch sub-index: .../whl/nightly/<cuda>/torch/
+get_latest_torch_nightly_ver() {
+  local url="https://download.pytorch.org/whl/nightly/${TORCH_CUDA}/torch/"
+  local py_abi="cp$(python3 -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
+
+  local ver
+  ver="$(
+    curl -fsSL "$url" \
+      | grep -oE "torch-[0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]{8}\+${TORCH_CUDA}-${py_abi}-${py_abi}" \
+      | sed -E "s/^torch-([0-9]+\.[0-9]+\.[0-9]+\.dev[0-9]{8})\+${TORCH_CUDA}.*/\1/" \
+      | sort -V | tail -1
+  )" || true
+
+  [[ -n "$ver" ]] && echo "$ver" || echo ""
+}
+
+get_latest_torch_stable_ver() {
+  local cuda="${TORCH_CUDA:-cu128}"
+  local url="https://download.pytorch.org/whl/${cuda}/torch/"
+  local py_abi
+  py_abi="$("$PY" - << 'PY'
+import sys
+print(f"cp{sys.version_info.major}{sys.version_info.minor}")
+PY
+  )" || py_abi="cp312"
+
+  # Extract all torch-X+cuYYY-cpZZZ wheels and pick the highest X
+  curl -fsSL "$url" 2>/dev/null \
+    | grep -oE "torch-[0-9]+\.[0-9]+\.[0-9]+\+${cuda}-${py_abi}" \
+    | sed -E "s/^torch-([0-9]+\.[0-9]+\.[0-9]+)\+${cuda}-${py_abi}$/\1/" \
+    | sort -V | tail -1
+}
+
+compute_effective_from_nightly() {
+  # $1: nightly ver like 2.10.0.dev20251113
+  local nightly="$1"
+  local base="${nightly%%.dev*}"    # 2.10.0
+
+  case "${TORCH_CHANNEL:-nightly}" in
+    weekly)
+      # Weekly tag: e.g. 2025w46 (UTC week)
+      local week_tag
+      week_tag="$(date -u +%Yw%V)"
+      echo "${base}.dev${week_tag}"
+      ;;
+    *)
+      # nightly (or anything else) → keep exact nightly
+      echo "${nightly}"
+      ;;
+  esac
+}
+
+# Return 0 if a stable torch wheel for this CUDA stream seems present on the PyTorch index.
+# Uses the torch sub-index: .../whl/<cuda>/torch/
+stable_torch_available() {
+  local url="https://download.pytorch.org/whl/${TORCH_CUDA}/torch/"
+  local py_abi="cp$(python3 -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
+  curl -fsSL "$url" \
+    | grep -q "torch-${TORCH_STABLE_VER}\+${TORCH_CUDA}-${py_abi}-${py_abi}"
+}
+
+# Decide which Torch channel to use and record *how* we got there.
+# Inputs (same as before):
+#   TORCH_CUDA        e.g. cu128
+#   TORCH_STABLE_VER  e.g. 2.10.0
+#   TORCH_NIGHTLY_VER optional; auto-filled if needed
+#   TORCH_CHANNEL     optional; user override: stable|nightly
+#
+# Uses helpers you already have:
+#   stable_torch_available
+#   get_latest_torch_nightly_ver
+#
+# Sets:
+#   TORCH_CHANNEL              ("stable"|"weekly"|"nightly")
+#   TORCH_CHANNEL_EFFECTIVE    (same as above)
+#   TORCH_CHANNEL_SOURCE       ("user"|"auto")
+#   TORCH_VERSION_EFFECTIVE    (the actual version string we’ll install)
+auto_channel_detect() {
+  # User explicitly set channel: respect it.
+  if [[ -n "${TORCH_CHANNEL:-}" ]]; then
+    echo "[torch] Channel preset via env: ${TORCH_CHANNEL}"
+
+    case "${TORCH_CHANNEL}" in
+      nightly|weekly)
+        # Need a nightly baseline to know what to install.
+        if [[ -z "${TORCH_NIGHTLY_VER:-}" ]]; then
+          echo "[torch] [${TORCH_CHANNEL}] Probing index: https://download.pytorch.org/whl/nightly/${TORCH_CUDA}/torch/ (ABI=$(python3 - <<'PY'
+import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")
+PY
+))"
+          local nv
+          nv="$(get_latest_torch_nightly_ver)"
+          if [[ -z "$nv" ]]; then
+            echo "[torch] [${TORCH_CHANNEL}] WARNING: could not determine latest nightly from index."
+            echo "[torch] [${TORCH_CHANNEL}] Falling back to TORCH_STABLE_VER=${TORCH_STABLE_VER}"
+            export TORCH_NIGHTLY_VER="${TORCH_STABLE_VER}"
+          else
+            export TORCH_NIGHTLY_VER="$nv"
+            echo "[torch] [${TORCH_CHANNEL}] Latest nightly from index: ${TORCH_NIGHTLY_VER} (+${TORCH_CUDA})"
+          fi
+        fi
+        # TORCH_VERSION_EFFECTIVE is what drives bundle keys.
+        export TORCH_VERSION_EFFECTIVE="$(compute_effective_from_nightly "${TORCH_NIGHTLY_VER}")"
+        echo "[torch] [user] Using ${TORCH_CHANNEL} effective version: ${TORCH_VERSION_EFFECTIVE} (+${TORCH_CUDA})"
+        ;;
+      stable)
+        # Stable: TORCH_VERSION_EFFECTIVE is just the stable tag
+        export TORCH_VERSION_EFFECTIVE="${TORCH_STABLE_VER}"
+        echo "[torch] [user] Using stable: ${TORCH_VERSION_EFFECTIVE} (+${TORCH_CUDA})"
+        ;;
+      *)
+        echo "[torch] Unknown TORCH_CHANNEL=${TORCH_CHANNEL}, defaulting to nightly-like behavior."
+        export TORCH_CHANNEL="nightly"
+        auto_channel_detect
+        ;;
+    esac
+    return 0
+  fi
+
+  # Auto mode: prefer stable if visible; otherwise nightly
+  echo "[torch] Auto-detecting channel for CUDA=${TORCH_CUDA}, stable=${TORCH_STABLE_VER}…"
+  if stable_torch_available; then
+    export TORCH_CHANNEL="stable"
+    export TORCH_VERSION_EFFECTIVE="${TORCH_STABLE_VER}"
+    echo "[torch] ✅ Stable is available on index — selecting stable"
+  else
+    export TORCH_CHANNEL="nightly"
+    echo "[torch] ⚠️ Stable wheel not found on index — selecting nightly"
+    local nv
+    nv="$(get_latest_torch_nightly_ver)"
+    if [[ -z "$nv" ]]; then
+      echo "[torch] [nightly] WARNING: could not determine latest nightly from index."
+      echo "[torch] [nightly] Falling back to TORCH_STABLE_VER=${TORCH_STABLE_VER}"
+      export TORCH_NIGHTLY_VER="${TORCH_STABLE_VER}"
+      export TORCH_VERSION_EFFECTIVE="${TORCH_STABLE_VER}"
+    else
+      export TORCH_NIGHTLY_VER="$nv"
+      export TORCH_VERSION_EFFECTIVE="$(compute_effective_from_nightly "${TORCH_NIGHTLY_VER}")"
+      echo "[torch] [nightly] Latest nightly from index: ${TORCH_NIGHTLY_VER} (+${TORCH_CUDA}), effective=${TORCH_VERSION_EFFECTIVE}"
+    fi
+  fi
+}
+
+print_bundle_matrix() {
+  local chan="${TORCH_CHANNEL:-auto}"
+  local chan_src="auto"
+  [[ -n "${TORCH_CHANNEL:-}" ]] && chan_src="user"
+
+  # Current torch+smi combo → Sage key
+  local torch_key
+  if ! torch_key="$(torch_sage_key 2>/dev/null)"; then
+    torch_key="unknown"
+  fi
+
+  echo "Torch Channel: ${chan} (${chan_src})"
+  echo "Torch Key:    ${torch_key}"
+
+  # Derive CUDA+arch suffix for "compatible" bundles: cuXXX_sm_YY
+  local cuda_tag=""
+  if [[ "$torch_key" == pycp* ]]; then
+    # extract "cu128_sm_89" from pycp312_torch…_cu128_sm_89
+    cuda_tag="$(printf '%s\n' "$torch_key" | sed -E 's/.*_(cu[0-9]+_sm_[0-9]+)$/\1/' || true)"
+  fi
+
+  # Read local HF repo to inspect bundles
+  local repo
+  repo="$(hf_ensure_local_repo)" || {
+    echo "[sage-bundle] hf_fetch_latest_custom_nodes_bundle: no local repo." >&2
+    return 1
+  }
+  local total_sage=0 compat_sage=0 exact_match=0
+  local sage_lines=()
+  local total_cn=0 compat_cn=0
+  local cn_lines=()
+
+  #
+  # ---- Sage bundles ----
+  #
+  if compgen -G "${repo}/bundles/torch_sage_bundle_*.tgz" >/dev/null 2>&1; then
+    local f base key_part ver label
+    for f in "${repo}"/bundles/torch_sage_bundle_*.tgz; do
+      [[ -e "$f" ]] || continue
+      ((total_sage++))
+      base="$(basename "$f" .tgz)"
+      key_part="${base#torch_sage_bundle_}"
+
+      # Extract the torch version segment between "torch" and "_cu"
+      ver="$(printf '%s\n' "$key_part" \
+            | sed -E 's/^pycp[0-9]+_torch([^_]+)_cu[0-9]+_sm_.+$/\1/' || true)"
+      label="Stable"
+      [[ "$ver" == *dev* ]] && label="Nightly"
+
+      local compat="no"
+      if [[ -n "$cuda_tag" && "$key_part" == *"${cuda_tag}"* ]]; then
+        compat="yes"
+        ((compat_sage++))
+      fi
+
+      local mark=""
+      if [[ "$key_part" == "$torch_key" ]]; then
+        exact_match=1
+        mark=" (Selected)"
+      fi
+
+      # Only list compatible ones in the detail section
+      if [[ "$compat" == "yes" ]]; then
+        sage_lines+=("  (${label}) ${key_part}${mark}")
+      fi
+    done
+  fi
+
+  #
+  # ---- Custom node bundles ----
+  #
+  if compgen -G "${repo}/bundles/custom_nodes_bundle_*.tgz" >/dev/null 2>&1; then
+    local g gbase compat display_tag
+    for g in "${repo}"/bundles/custom_nodes_bundle_*.tgz; do
+      [[ -e "$g" ]] || continue
+      ((total_cn++))
+      gbase="$(basename "$g")"
+
+      if _custom_node_bundle_compatible "$gbase"; then
+        ((compat_cn++))
+
+        # Compact display tag:
+        # - Prefer CUSTOM_NODES_BUNDLE_TAG / BUNDLE_TAG if set
+        # - Else strip prefix/suffix
+        if [[ -n "${CUSTOM_NODES_BUNDLE_TAG:-}" ]]; then
+          display_tag="${CUSTOM_NODES_BUNDLE_TAG}"
+        elif [[ -n "${BUNDLE_TAG:-}" ]]; then
+          display_tag="${BUNDLE_TAG}"
+        else
+          display_tag="${gbase#custom_nodes_bundle_}"
+          display_tag="${display_tag%.tgz}"
+        fi
+
+        cn_lines+=("  ${display_tag} (compatible)")
+      fi
+    done
+  fi
+
+  #
+  # ---- Compute Sage Path description ----
+  #
+  local sage_path
+  if (( exact_match == 1 )); then
+    sage_path="Pull from HF (bundle restore — exact key match)"
+  elif (( compat_sage > 0 )); then
+    if [[ -n "$cuda_tag" ]]; then
+      sage_path="Build from source (no exact bundle; ${compat_sage} compatible for ${cuda_tag})"
+    else
+      sage_path="Build from source (no exact bundle; ${compat_sage} compatible by CUDA/arch)"
+    fi
+  else
+    sage_path="Build from source (no compatible Sage bundles yet)"
+  fi
+
+  #
+  # ---- Custom-nodes path description ----
+  #
+  local cn_path
+  if (( compat_cn > 0 )); then
+    cn_path="Pull from HF (bundle restore)"
+  elif (( total_cn > 0 )); then
+    cn_path="Build from source (no matching custom-node bundle)"
+  else
+    cn_path="Build from source (no custom-node bundles found)"
+  fi
+
+  #
+  # ---- Print Sage bundle summary ----
+  #
+  echo "Sage bundles: ${total_sage} (total), ${compat_sage} (compatible)"
+  if (( compat_sage > 0 )); then
+    printf '%s\n' "${sage_lines[@]}"
+  fi
+  echo "Sage Path: ${sage_path}"
+  echo ""
+
+  #
+  # ---- Print Custom-node bundle summary ----
+  #
+  echo "Custom Node bundles: ${total_cn} (total), ${compat_cn} (compatible)"
+  if (( compat_cn > 0 )); then
+    printf '%s\n' "${cn_lines[@]}"
+  fi
+  echo "Custom Node Path: ${cn_path}"
+  echo ""
+}
+
+install_torch() {
+  echo "[torch] Installing Torch (${TORCH_CHANNEL})..." >&2
+
+  local url ver
+
+  case "${TORCH_CHANNEL}" in
+    stable)
+      # Stable: explicit version pin (we know 2.9.1 works for cu128/cp312)
+      url="https://download.pytorch.org/whl/${TORCH_CUDA}"
+      ver="${TORCH_VERSION_EFFECTIVE:-${TORCH_STABLE_VER}}+${TORCH_CUDA}"
+
+      env -u PIP_REQUIRE_HASHES -u PIP_BUILD_CONSTRAINT \
+        $PIP install --no-cache-dir \
+          "torch==${ver}" torchvision torchaudio \
+          --index-url "$url"
+      ;;
+
+    weekly|nightly)
+      # Weekly/Nightly: let pip resolve a compatible trio from the nightly index.
+      # We do NOT pin torch==… here to avoid resolver conflicts like you just hit.
+      url="https://download.pytorch.org/whl/nightly/${TORCH_CUDA}"
+
+      env -u PIP_REQUIRE_HASHES -u PIP_BUILD_CONSTRAINT \
+        $PIP install --pre --no-cache-dir \
+          torch torchvision torchaudio \
+          --index-url "$url"
+      ;;
+
+    *)
+      echo "[install-torch] FATAL: Unknown TORCH_CHANNEL=${TORCH_CHANNEL}" >&2
+      return 1
+      ;;
+  esac
+
+  # After install, record the actual torch version and print it
+  local actual
+  actual="$($PY - <<'PY'
+import torch, sys
+v = torch.__version__
+print(v)
+PY
+)" || actual="unknown"
+
+  if [[ "$actual" != "unknown" ]]; then
+    # strip any '+cuXXX' suffix for the "core" version
+    local base="${actual%%+*}"
+    export TORCH_VERSION_EFFECTIVE="$base"
+    # For non-stable, keep TORCH_NIGHTLY_VER in sync with what we actually installed
+    if [[ "${TORCH_CHANNEL}" != "stable" ]]; then
+      export TORCH_NIGHTLY_VER="$base"
+    fi
+  fi
+
+  echo "[install-torch] Installed torch: ${actual}"
+
+  $PY - <<'PY'
+import torch
+print(f"[install-torch] Torch full version : {torch.__version__}")
+print(f"[install-torch] Torch CUDA version : {torch.version.cuda}")
+PY
+}
+
+show_torch_sage_env_summary() {
+  echo "=================================================="
+  echo "Torch Channel  : ${TORCH_CHANNEL}"
+  echo "Torch CUDA     : ${TORCH_CUDA}"
+  echo "Torch Version  : $($PY -c 'import torch;print(torch.__version__)')"
+  echo "GPU Arch       : ${GPU_ARCH}"
+  echo "Sage Key       : $(torch_sage_key)"
+  echo "=================================================="
+}
+
+# ================================================================
+# Smarter Sage key generation (weekly-bucketed nightly builds)
+# ================================================================
+torch_sage_key() {
+  "$PY" - << 'PY'
+import sys, os, torch
+
+abi = f"cp{sys.version_info.major}{sys.version_info.minor}"
+
+# Prefer an "effective" version (for weekly/stable aliasing),
+# fall back to the actual torch.__version__ if not set.
+eff = os.environ.get("TORCH_VERSION_EFFECTIVE", "").strip()
+if not eff:
+    eff = torch.__version__
+
+base_ver = eff.split('+', 1)[0].replace('+', '_')
+
+cu_raw = (torch.version.cuda or "").replace('.', '')
+cu = f"cu{cu_raw}" if cu_raw else "cu_unknown"
+
+arch = (os.environ.get("GPU_ARCH") or "").strip().lower()
+if arch.startswith("sm"):
+    arch = arch.replace("sm", "").lstrip("_- ")
+arch = f"sm_{arch}" if arch else "sm_unknown"
+
+print(f"py{abi}_torch{base_ver}_{cu}_{arch}")
+PY
+}
+
+install_sage_from_source() {
+  # CC via torch
+  local CC_TORCH
+  CC_TORCH="$("$PY" - << 'PY'
+import torch
+maj,minr = torch.cuda.get_device_capability(0) if torch.cuda.is_available() else (0,0)
+print(f"{maj}.{minr}")
+PY
+  )"
+  echo "[sage-bundle] [install_sage_from_source] Detected GPU compute capability: ${CC_TORCH}" >&2
+
+  # Toolchain for CUDA 12.x
+  unset CC CXX SAGE_CUDA_ARCH_LIST SAGE_GENCODE CUDA_ARCH_LIST
+  if ! command -v g++-12 >/dev/null; then
+    apt-get update && apt-get install -y gcc-12 g++-12
+  fi
+  export CC=/usr/bin/gcc-12
+  export CXX=/usr/bin/g++-12
+
+  # Arch list
+  case "$CC_TORCH" in
+    12.*) export TORCH_CUDA_ARCH_LIST="12.0;8.9;8.6;8.0" ;;
+    9.*)  export TORCH_CUDA_ARCH_LIST="9.0;8.9;8.6;8.0"  ;;
+    8.9)  export TORCH_CUDA_ARCH_LIST="8.9;8.6;8.0"      ;;
+    8.*)  export TORCH_CUDA_ARCH_LIST="8.6;8.0"          ;;
+    *)    export TORCH_CUDA_ARCH_LIST="8.0"              ;;
+  esac
+  echo "[sage-bundle] [install_sage_from_source] TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}" >&2
+
+  # Clean + build (NO build isolation, so setup can import torch)
+  echo "[sage-bundle] [install_sage_from_source] Cloning SageAttention, repo=https://github.com/thu-ml/SageAttention.git" >&2
+  rm -rf /tmp/SageAttention
+  git clone https://github.com/thu-ml/SageAttention.git /tmp/SageAttention
+
+  if env -u PIP_REQUIRE_HASHES -u PIP_BUILD_CONSTRAINT $PIP install --no-deps --no-build-isolation -e /tmp/SageAttention 2>&1 | tee /workspace/logs/sage_build.log; then
+    echo "[sage-bundle] [install_sage_from_source] SageAttention built OK"
+    return 0
+  else
+    echo "[sage-bundle] [install_sage_from_source] SageAttention build FAILED — see /workspace/logs/sage_build.log" >&2
+    return 1
+  fi
+}
+
+build_sage_bundle() {
+  local key="${1:?SAGE_KEY required}"
+  mkdir -p "$CACHE_DIR"
+  local tarpath="${CACHE_DIR}/torch_sage_bundle_${key}.tgz"
+  
+  echo "  [build_sage_bundle] Building Sage Bundle..." >&2
+
+  SAGE_TARPATH="$tarpath" "$PY" - << 'PY'
+import importlib, os, sysconfig, tarfile, sys
+
+site_dir = sysconfig.get_paths()["purelib"]
+
+# Try candidate module names
+candidates = ["sageattention", "SageAttention", "sage_attention"]
+mod = None
+pkg_name = None
+
+for name in candidates:
+    try:
+        mod = importlib.import_module(name)
+        pkg_name = name
+        break
+    except Exception:
+        continue
+
+if mod is None:
+    raise SystemExit("Could not import any SageAttention module (tried: sageattention, SageAttention, sage_attention)")
+
+pkg_path = os.path.dirname(mod.__file__)
+
+# Find the installed dist-info directory under site-packages (if present)
+base = pkg_name.replace('_', '').lower()
+dist_dir = None
+for entry in os.listdir(site_dir):
+    if entry.lower().startswith(base) and entry.endswith(".dist-info"):
+        dist_dir = os.path.join(site_dir, entry)
+        break
+
+tarpath = os.environ["SAGE_TARPATH"]
+
+with tarfile.open(tarpath, "w:gz") as tf:
+    # Always store the package as "sageattention" (or whatever pkg_name is),
+    # regardless of where it lives on disk (editable installs, /tmp, etc).
+    tf.add(pkg_path, arcname=pkg_name)
+
+    # Store dist-info as just "sageattention-2.2.0.dist-info"
+    if dist_dir and os.path.isdir(dist_dir):
+        tf.add(dist_dir, arcname=os.path.basename(dist_dir))
+PY
+
+  echo "  [build_sage_bundle] Built Sage Attention Bundle → ${tarpath}" >&2
+  echo "$tarpath"
+}
+
+build_sage_bundle_wrapper() {
+  local key="${1:?SAGE_KEY required}"
+  local tarpath="${CACHE_DIR}/torch_sage_bundle_${key}.tgz"
+  echo "  [build_sage_bundle_wrapper] Building Sage Bundle Wrapper" >&2
+
+  SAGE_TARPATH="$tarpath" "$PY" -m pip show torch >/dev/null 2>&1 || {
+    echo "  [build_sage_bundle_wrapper] Torch not installed; cannot build Sage bundle." >&2
+    return 1
+  }
+
+  tarpath="$(build_sage_bundle "$key")" || return 1
+  echo "  [build_sage_bundle_wrapper] Built Sage Bundle Wrapper → ${tarpath}" >&2
+  echo "$tarpath"
+}
+
+push_sage_bundle_if_requested() {
+  if [[ "${PUSH_SAGE_BUNDLE:-0}" != "1" ]]; then
+    echo "[push_sage_bundle_if_requested] PUSH_SAGE_BUNDLE is not set to 1. Returning." >&2
+    return 0
+  fi
+
+  local key tarpath
+  key="$(torch_sage_key)"
+  echo "[push_sage_bundle_if_requested] Pushing Sage bundle to HF for key=${key}…" >&2
+
+  # Hard gate: don't push a bundle if we can't import SageAttention
+  if ! "$PY" - << 'PY'
+import importlib, sys
+mods = ["sageattention", "SageAttention", "sage_attention"]
+for m in mods:
+    try:
+        importlib.import_module(m)
+        print(m)
+        raise SystemExit(0)
+    except Exception:
+        pass
+print("Could not import any SageAttention module (tried: sageattention, SageAttention, sage_attention)", file=sys.stderr)
+raise SystemExit(1)
+PY
+  then
+    echo "[push_sage_bundle_if_requested] ❌ Not pushing Sage bundle — SageAttention is not importable." >&2
+    return 1
+  fi
+
+  tarpath="$(build_sage_bundle_wrapper "$key")" || {
+    echo "[push_sage_bundle_if_requested] Failed to build Sage bundle." >&2
+    return 1
+  }
+
+  hf_push_files "torch_sage bundle ${key}" "$tarpath"
+  echo "[push_sage_bundle_if_requested] Uploaded torch_sage_bundle_${key}.tgz to HF." >&2
+}
+
+hf_fetch_sage_bundle() {
+  local key="${1:?SAGE_KEY}" repo patt local_tgz
+
+  echo "  [hf_fetch_sage_bundle] Ensuring local HF repo exists..." >&2
+  repo="$(hf_ensure_local_repo)" || {
+    echo "  [hf_fetch_sage_bundle] ❌ Could not create local HF repo." >&2
+    return 1
+  }
+  echo "[hf_fetch_sage_bundle] Local repo=${repo}." >&2
+
+  # List available Sage bundles in a nullglob-safe way
+  local matches=()
+  shopt -s nullglob
+  matches=("$repo"/bundles/torch_sage_bundle_*.tgz)
+  shopt -u nullglob
+
+  if ((${#matches[@]} == 0)); then
+    echo "  [hf_fetch_sage_bundle] No Sage bundles found in ${repo}/bundles." >&2
+  else
+    echo "  [hf_fetch_sage_bundle] Available Sage bundles:" >&2
+    for f in "${matches[@]}"; do
+      echo "  - $(basename "$f")" >&2
+    done
+  fi
+
+  patt="${repo}/bundles/torch_sage_bundle_${key}.tgz"
+  echo "  [hf_fetch_sage_bundle] Looking for matching bundle $(basename $patt)." >&2
+
+  if [[ ! -f "$patt" ]]; then
+    echo "  [hf_fetch_sage_bundle] ❌ Exact bundle not found for key=${key}." >&2
+    return 1
+  fi
+
+  mkdir -p "$CACHE_DIR"
+  local_tgz="${CACHE_DIR}/$(basename "$patt")"
+  echo "  [hf_fetch_sage_bundle] Found bundle. Copying → ${local_tgz}." >&2
+  cp -f "$patt" "$local_tgz"
+
+  echo "$local_tgz"
+}
+
+# hf_fetch_pip_cache:
+#   Look for pip_cache/pip_cache_${key}.tgz in HF repo, copy into CACHE_DIR, echo local path.
+hf_fetch_pip_cache() {
+  local key="${1:?pip cache key required}"
+  
+  local repo
+  repo="$(hf_ensure_local_repo)" || {
+    echo "[pip-cache] [hf_fetch_pip_cache]: Could not use local repo." >&2
+    return 1
+  }
+
+  # List available Sage bundles in a nullglob-safe way
+  local matches=()
+  shopt -s nullglob
+  matches=("$repo"/bundles/pip_cache_*.tgz)
+  shopt -u nullglob
+
+  if ((${#matches[@]} == 0)); then
+    echo "[pip-cache] [hf_fetch_pip_cache] No pip_cache bundles found in ${repo}/bundles." >&2
+    return 0
+  else
+    echo "[pip-cache] [hf_fetch_pip_cache] Available pip_cache bundles:" >&2
+    for f in "${matches[@]}"; do
+      echo "  - $(basename "$f")" >&2
+    done
+  fi
+
+  local patt="${repo}/bundles/pip_cache_${key}.tgz"
+  if [[ ! -f "$patt" ]]; then
+    echo "[pip-cache] [hf_fetch_pip_cache] No pip cache bundle found in local repo for key=${key}." >&2
+    return 0
+  fi
+
+  local local_tgz="${CACHE_DIR}/pip_cache_${key}.tgz"
+  mkdir -p "${CACHE_DIR:-/workspace/ComfyUI/cache}"
+  echo "[pip-cache] [hf_fetch_pip_cache] Found bundle. Copying → ${local_tgz}." >&2
+  cp -f "$patt" "$local_tgz"
+
+  echo "$local_tgz"
+}
+
+# push_pip_cache_if_requested:
+#   If PUSH_CUSTOM_NODES_PIP_CACHE=1 and CUSTOM_NODES_PIP_CACHE_DIR is non-empty, tar it and push to HF.
+push_pip_cache_if_requested() {
+  if [[ "${PUSH_CUSTOM_NODES_PIP_CACHE:-0}" != "1" ]]; then
+    return 0
+  fi
+
+  local cache="${CUSTOM_NODES_PIP_CACHE_DIR:-}"
+  if [[ -z "$cache" || ! -d "$cache" ]]; then
+    echo "[pip-cache] [push_pip_cache_if_requested] No CUSTOM_NODES_PIP_CACHE_DIR set; nothing to push." >&2
+    return 0
+  fi
+
+  if [[ -z "$(ls -A "$cache" 2>/dev/null)" ]]; then
+    echo "[pip-cache] [push_pip_cache_if_requested] CUSTOM_NODES_PIP_CACHE_DIR is empty; skipping push." >&2
+    return 0
+  fi
+
+  local key tgz
+  key="$(pip_cache_key)"
+  tgz="${CACHE_DIR}/pip_cache_${key}.tgz"
+
+  echo "[pip-cache] [push_pip_cache_if_requested] Creating pip cache archive ${tgz}..." >&2
+  tar -czf "$tgz" -C "$cache" . || {
+    echo "[pip-cache] [push_pip_cache_if_requested] ❌ Failed to tar pip cache." >&2
+    return 1
+  }
+
+  hf_push_files "pip_cache ${key}" "$tgz"
+  echo "[pip-cache] [push_pip_cache_if_requested] Uploaded pip_cache_${key}.tgz" >&2
+}
+
+# ensure_pip_cache_for_custom_nodes:
+#   If USE_PIP_CACHE_FOR_CUSTOM_NODES is set, compute cache dir and restore from HF if present.
+ensure_pip_cache_for_custom_nodes() {
+  if [[ "${USE_PIP_CACHE_FOR_CUSTOM_NODES:-0}" != "1" ]]; then
+    return 0
+  fi
+
+  local key cache
+  key="$(pip_cache_key)"
+  cache="${CACHE_DIR}/pip_custom_${key}"
+
+  mkdir -p "$cache"
+  export CUSTOM_NODES_PIP_CACHE_DIR="$cache"
+  export PIP_CACHE_DIR="$cache"
+
+  echo "[pip-cache] Using PIP_CACHE_DIR=${PIP_CACHE_DIR} (custom nodes only)" >&2
+
+  # If cache is empty, try to hydrate it from HF
+  if [[ -z "$(ls -A "$cache" 2>/dev/null)" ]]; then
+    local tgz
+    echo "[pip-cache] [ensure_pip_cache_for_custom_nodes] Attempting to retrieve from local HF repo, compatible cache for key: $key..." >&2
+    tgz="$(hf_fetch_pip_cache "$key")"
+    if [[ -n "$tgz" && -f "$tgz" ]]; then
+      echo "[pip-cache] [ensure_pip_cache_for_custom_nodes] Restoring pip cache from $(basename "$tgz")..." >&2
+      tar -xzf "$tgz" -C "$cache" || {
+        echo "[pip-cache] [ensure_pip_cache_for_custom_nodes] ⚠️ Failed to extract pip cache archive; continuing without it." >&2
+      }
+      echo "[pip-cache] [ensure_pip_cache_for_custom_nodes] Restored pip cache from tar file." >&2
+    fi
+  fi
+}
+
+restore_sage_from_tar() {
+  local tar="${SAGE_TARPATH:?SAGE_TARPATH not set}"
+
+  local site
+  site="$("$PY" - <<'PY'
+import sys
+for p in sys.path:
+    if p.endswith("site-packages"):
+        print(p)
+        break
+PY
+)"
+  if [[ -z "$site" ]]; then
+    echo "[sage-bundle] [restore_sage_from_tar] ERROR: could not locate site-packages for $PY" >&2
+    return 1
+  fi
+
+  echo "[sage-bundle] [restore_sage_from_tar] Untarring SageAttention from $(basename "$tar") into ${site}…" >&2
+  mkdir -p "$site"
+  tar xzf "$tar" -C "$site"
+
+  "$PY" - <<'PY'
+import sys
+print("[sage-bundle] [restore_sage_from_tar] sys.executable:", sys.executable)
+try:
+    import sageattention
+    print("[sage-bundle] [restore_sage_from_tar] ✅ SAGE imported sucessfully from tar bundle:", sageattention, getattr(sageattention, "__file__", None))
+except Exception as e:
+    print("[sage-bundle] [restore_sage_from_tar] ❌ SAGE IMPORT ERROR:", repr(e))
+PY
+}
+
+ensure_sage_from_bundle_or_build() {
+  local key tarpath
+  key="$(torch_sage_key)"
+
+  # If the user wants a fresh build, skip bundle lookup entirely
+  if [[ "${SAGE_FORCE_REBUILD:-0}" == "1" ]]; then
+    echo "  [ensure_sage_from_bundle_or_build] SAGE_FORCE_REBUILD=1 — skipping bundle restore and rebuilding from source." >&2
+  else
+
+    echo "  [ensure_sage_from_bundle_or_build] Looking for Sage bundle key=${key}…" >&2
+  
+    local pattern="${CACHE_DIR}/torch_sage_bundle_${key}.tgz"
+
+    if [[ -f "$pattern" ]]; then
+      echo "  [ensure_sage_from_bundle_or_build] ✅ Found local Sage bundle in cache: $(basename "$pattern")" >&2
+    else
+      # Exact bundle from HF
+      echo "  [ensure_sage_from_bundle_or_build] No version of bundle (${pattern}) found in local cache=${CACHE_DIR}. Attempting to fetch bundle from HF repo." >&2
+      if tarpath="$(hf_fetch_sage_bundle "$key")"; then
+        :
+      else
+        tarpath=""
+      fi
+
+      # If still nothing, optionally reuse a compatible bundle (same cuXXX_sm_YY)
+      if [[ -z "$tarpath" && "${SAGE_ALLOW_COMPAT_REUSE:-0}" == "1" ]]; then
+        if tarpath="$(hf_fetch_compatible_sage_bundle "$key")"; then
+          :
+        else
+          tarpath=""
+        fi
+      fi
+    fi
+  fi
+
+  if [[ -n "${tarpath:-}" && -f "$tarpath" ]]; then
+    echo "  [ensure_sage_from_bundle_or_build] ✅ Using Sage bundle: $(basename "$tarpath")" >&2
+    SAGE_TARPATH="$tarpath" restore_sage_from_tar
+    return 0
+  fi
+ 
+  echo "  [ensure_sage_from_bundle_or_build] No bundle found — building Sage from source…" >&2
+  install_sage_from_source || return 1
+  return 0
+}
+
+#----------------------------------------------------------------------
+# Custom nodes bundle fetch/build/push/pull
+#----------------------------------------------------------------------
+# hf_fetch_latest_custom_nodes_bundle: pull newest matching bundle for tag+pins into CACHE_DIR
+#   echoes local tgz path or empty
+hf_fetch_latest_custom_nodes_bundle() {
+  local tag="${1:?bundle tag required}"
+  local pins="${2:?pins required}"
+  local repo patt best
+
+  repo="$(hf_ensure_local_repo)" || {
+    echo "[custom-nodes] hf_fetch_latest_custom_nodes_bundle: no local repo" >&2
+    return 1
+  }
+
+  patt="${repo}/bundles/custom_nodes_bundle_${tag}_${pins}_*.tgz"
+
+  if ! compgen -G "$patt" >/dev/null 2>&1; then
+    echo "[custom-nodes] No custom-nodes bundle found for tag=${tag}, pins=${pins}" >&2
+    return 1
+  fi
+
+  # pick “latest” by lexicographic sort on filename (timestamp suffix)
+  best="$(ls -1 $patt | sort | tail -n1)"
+  mkdir -p "$CACHE_DIR"
+  cp -f "$best" "$CACHE_DIR/"
+  echo "${CACHE_DIR}/$(basename "$best")"
+}
+
+# Fetch the consolidated requirements file for a given custom-nodes tag
+# from the HF dataset into CACHE_DIR and echo its local path.
+hf_fetch_custom_nodes_requirements_for_tag() {
+  local tag="${1:?tag required}"
+  local repo req_src req_dst
+
+  repo="$(hf_ensure_local_repo)" || {
+    echo "[custom-nodes] hf_fetch_latest_custom_nodes_bundle: no local repo" >&2
+    return 1
+  }
+
+  # Name is derived exactly like on the push side: requirements/<reqs_name(tag)>
+  local req_src="${repo}/requirements/$(reqs_name "$tag")"
+
+  if [[ ! -f "$req_src" ]]; then
+    echo "[custom-nodes] ⚠️ No consolidated requirements found for tag=${tag} (${req_rel})." >&2
+    return 1
+  fi
+
+  mkdir -p "${CACHE_DIR:-/workspace/ComfyUI/cache}"
+  local req_dst="${CACHE_DIR}/$(basename "$req_src")"
+  cp -f "$req_src" "$req_dst"
+
+  echo "$req_dst"
+}
+
+# Install custom-node requirements tied to a bundle tag.
+# Looks for: requirements/consolidated_requirements_${tag}.txt in your HF repo.
+install_custom_nodes_requirements() {
+  local tag="${1:?bundle tag required}"
+
+  local repo req_src req_work
+  repo="$(hf_ensure_local_repo)" || {
+    echo "[custom-nodes] hf_fetch_latest_custom_nodes_bundle: no local repo" >&2
+    return 1
+  }
+
+  req_src="${repo}/requirements/consolidated_requirements_${tag}.txt"
+  if [[ ! -f "$req_src" ]]; then
+    echo "[custom-nodes] ⚠️ No consolidated requirements found for tag=${tag} at ${req_src}" >&2
+    return 0  # not fatal; we just skip extra reqs
+  fi
+
+  req_work="${CACHE_DIR:-/workspace/ComfyUI/cache}/consolidated_requirements_${tag}.rewritten.txt"
+  rewrite_custom_nodes_requirements "$req_src" "$req_work" || {
+    echo "[custom-nodes] ⚠️ rewrite_custom_nodes_requirements failed; using original file" >&2
+    req_work="$req_src"
+  }
+
+  echo "[custom-nodes] Installing custom-node requirements from ${req_work}..."
+  # Use pip cache for these installs; keep hashes disabled.
+  env -u PIP_REQUIRE_HASHES \
+      PIP_CACHE_DIR="$CUSTOM_NODES_PIP_CACHE_DIR" \
+      "$PIP" install -r "$req_work" || {
+        echo "[custom-nodes] ⚠️ pip install -r ${req_work} failed; see logs above." >&2
+        return 1
+      }
+
+  return 0
+}
+
+# build_custom_nodes_manifest: create JSON manifest of installed nodes
+build_custom_nodes_manifest() {
+  local tag="${1:?tag}" out="${2:?out_json}"
+
+  # Make sure the Python side sees where to write + which tag to use
+  CUSTOM_DIR="${CUSTOM_DIR:?}" \
+  CUSTOM_NODES_BUNDLE_TAG="$tag" \
+  out_json="$out" \
+  "$PY_BIN" - <<'PY'
+import json, os, subprocess
+
+d = os.environ["CUSTOM_DIR"]
+items = []
+
+for name in sorted(os.listdir(d)):
+    p = os.path.join(d, name)
+    # only include git-tracked custom nodes
+    if not os.path.isdir(p) or not os.path.isdir(os.path.join(p, ".git")):
+        continue
+
+    def run(*args):
+        return subprocess.check_output(["git", "-C", p, *args], text=True).strip()
+
+    try:
+        url = run("config", "--get", "remote.origin.url")
+    except Exception:
+        url = ""
+    try:
+        ref = run("rev-parse", "HEAD")
+    except Exception:
+        ref = ""
+    try:
+        br = run("rev-parse", "--abbrev-ref", "HEAD")
+    except Exception:
+        br = ""
+
+    items.append({"name": name, "path": p, "origin": url, "branch": br, "commit": ref})
+
+out = os.environ["out_json"]
+with open(out, "w", encoding="utf-8") as f:
+    json.dump({"tag": os.environ.get("CUSTOM_NODES_BUNDLE_TAG", ""), "nodes": items}, f, indent=2)
+PY
+}
+
+# build_consolidated_reqs: dedupe/strip heavy pins we manage separately
+build_consolidated_reqs() {
+  local tag="${1:?tag}" out="${2:?out_txt}"
+  local tmp; tmp="$(mktemp)"
+  ( shopt -s nullglob
+    for r in "$CUSTOM_DIR"/*/requirements.txt; do
+      echo -e "\n# ---- $(dirname "$r")/requirements.txt ----"
+      cat "$r"
+    done
+  ) > "$tmp"
+
+  # Strip torch/opencv/cupy/numpy/sageattention (we manage them separately),
+  # remove comments/empties, sort unique
+  grep -vE '^(torch|torchvision|torchaudio|opencv(|-python|-contrib-python|-headless)|cupy(|-cuda.*)|numpy)\b' "$tmp" \
+    | grep -vi 'sageattention' \
+    | sed '/^\s*#/d;/^\s*$/d' \
+    | sort -u > "$out" || true
+
+  rm -f "$tmp"
+}
+
+# Build consolidated requirements for a custom-nodes bundle
+# using `pip freeze` as the source of truth.
+#
+# Usage:
+#   build_consolidated_reqs_from_freeze "$CUSTOM_NODES_BUNDLE_TAG" "$reqs_path"
+#
+# It:
+#   - Runs `pip freeze` in the current venv
+#   - Drops numeric stack & torch (we pin them elsewhere)
+#   - Drops infra packages (pip, setuptools, wheel)
+#   - Normalizes / sorts / dedups
+build_consolidated_reqs_from_freeze() {
+  local tag="${1:?tag required}" out="${2:?out_txt required}"
+  local tmp; tmp="$(mktemp)"
+
+  echo "[custom-nodes] [freeze-requirements] Capturing environment via pip freeze for tag=${tag}…" >&2
+
+  # Be defensive about hash/constraint envs
+  if ! env -u PIP_REQUIRE_HASHES -u PIP_BUILD_CONSTRAINT \
+        "$PIP" freeze >"$tmp" 2>/dev/null; then
+    echo "[custom-nodes] [freeze-requirements] pip freeze failed; leaving ${out} untouched" >&2
+    rm -f "$tmp"
+    return 1
+  fi
+
+  # Filter:
+  #  - Drop torch / numeric stack (we control via .env pins)
+  #  - Drop obvious infra tools that don’t belong in node replays
+  #  - Drop SageAttention
+  #
+  # NOTE: keep git+ / @ git URLs etc – they’re already resolved in freeze output.
+  grep -vE '^((torch(|vision|audio))|numpy|cupy(|-cuda.*)|opencv(|-python|-contrib-python|-headless)|nvidia-.*|triton)\b' "$tmp" \
+    | grep -vE '^(pip|setuptools|wheel|pkg-resources)\b' \
+    | grep -vi 'sageattention' \
+    | sed '/^\s*$/d' \
+    | sort -u >"$out" || true
+
+  local count
+  count="$(wc -l <"$out" | tr -d '[:space:]')"
+  echo "[custom-nodes] [freeze-requirements] Wrote ${count} lines to ${out}" >&2
+
+  rm -f "$tmp"
+}
+
+# build_custom_nodes_bundle: pack custom_nodes + metadata into CACHE_DIR, returns tgz path
+build_custom_nodes_bundle() {
+  local tag="${1:?tag}" pins="${2:?pins}" ts="$(bundle_ts)"
+  mkdir -p "$CACHE_DIR"
+  local base; base="$(bundle_base "$tag" "$pins" "$ts")"
+  local tarpath="${CACHE_DIR}/${base}.tgz"
+  local manifest="${CACHE_DIR}/$(manifest_name "$tag")"
+  local reqs="${CACHE_DIR}/$(reqs_name "$tag")"
+  local sha="${CACHE_DIR}/$(sha_name "$base")"
+
+  build_custom_nodes_manifest "$tag" "$manifest"
+  # Consolidated requirements for this tag
+  if command -v build_consolidated_reqs_from_freeze >/dev/null 2>&1; then
+    build_consolidated_reqs_from_freeze "$tag" "$reqs" || build_consolidated_reqs "$tag" "$reqs"
+  else
+    build_consolidated_reqs "$tag" "$reqs"
+  fi
+  tar -C "$(dirname "$CUSTOM_DIR")" -czf "$tarpath" "$(basename "$CUSTOM_DIR")"
+  sha256sum "$tarpath" > "$sha"
+  echo "[custom-nodes] [build_custom_nodes_bundle] Built manifest, reqs, tar, sha256 bundle for HF upload." >&2
+  echo "$tarpath"
+}
+
+# install_custom_nodes_bundle: extract tgz into parent of CUSTOM_DIR; normalize name
+install_custom_nodes_bundle() {
+  local tgz="${1:?tgz}"
+  local parent dir; parent="$(dirname "$CUSTOM_DIR")"; dir="$(basename "$CUSTOM_DIR")"
+  mkdir -p "$parent"
+  tar -C "$parent" -xzf "$tgz"
+  if [[ ! -d "$CUSTOM_DIR" ]]; then
+    local extracted; extracted="$(tar -tzf "$tgz" | head -1 | cut -d/ -f1)"
+    [[ -n "$extracted" ]] && mv -f "$parent/$extracted" "$CUSTOM_DIR"
+  fi
+}
+
+# ensure_custom_nodes_from_bundle_or_build:
+#   If HF has a bundle matching CUSTOM_NODES_BUNDLE_TAG + PINS → install it
+#   Else build from NODES and optionally push a fresh bundle
+ensure_custom_nodes_from_bundle_or_build() {
+  local tag="${CUSTOM_NODES_BUNDLE_TAG:?CUSTOM_NODES_BUNDLE_TAG required}"
+  local pins="${PINS:-$(pins_signature)}"
+
+  mkdir -p "$CACHE_DIR" "$CUSTOM_LOG_DIR"
+  mkdir -p "$(dirname "$CUSTOM_DIR")"
+
+  ensure_pip_cache_for_custom_nodes
+
+  # If the user wants a fresh build, skip bundle lookup entirely
+  if [[ "${CUSTOM_NODES_FORCE_INSTALL:-0}" == "1" ]]; then
+    echo "[custom-nodes] [ensure_custom_nodes_from_bundle_or_build] CUSTOM_NODES_FORCE_INSTALL=1 — skipping custom node bundle restore and rebuilding from source." >&2
+  else
+
+    echo "[custom-nodes] [ensure_custom_nodes_from_bundle_or_build] PINS = $pins"
+    echo "[custom-nodes] [ensure_custom_nodes_from_bundle_or_build] Looking for bundle tag=${tag}, pins=${pins}…"
+
+    local tgz=""
+    tgz="$(hf_fetch_latest_custom_nodes_bundle "$tag" "$pins" 2>/dev/null || true)"
+
+    if [[ -n "$tgz" && -f "$tgz" ]]; then
+      echo "[custom-nodes] [ensure_custom_nodes_from_bundle_or_build] Using HF bundle: $(basename "$tgz")."
+      
+      rm -rf "$CUSTOM_DIR"
+      mkdir -p "$(dirname "$CUSTOM_DIR")"
+      tar -xzf "$tgz" -C "$(dirname "$CUSTOM_DIR")"
+      echo "[custom-nodes] [ensure_custom_nodes_from_bundle_or_build] Restored custom nodes from HF bundle."
+
+      if install_custom_nodes_requirements "$tag"; then
+        push_bundle_if_requested || true
+        push_pip_cache_if_requested || true
+        return 0
+      else
+        echo "[custom-nodes] [ensure_custom_nodes_from_bundle_or_build] ⚠️ Requirements install failed; NOT pushing bundle/cache." >&2
+        return 1
+      fi
+    else
+      echo "[custom-nodes] [ensure_custom_nodes_from_bundle_or_build] No HF bundle available — installing from DEFAULT_NODES…" >&2
+    fi
+  fi
+
+  if install_custom_nodes_set; then
+    push_bundle_if_requested || true
+    push_pip_cache_if_requested || true
+    return 0
+  else
+    echo "[custom-nodes] ⚠️ Custom-node install failed; NOT pushing bundle/cache." >&2
+    return 1
+  fi
+}
+
+# push_bundle_if_requested: convenience wrapper (respects CUSTOM_NODES_BUNDLE_TAG/PINS)
+push_bundle_if_requested() {
+  [[ "${PUSH_CUSTOM_NODES_BUNDLE:-0}" = "1" ]] || return 0
+  local tag="${CUSTOM_NODES_BUNDLE_TAG:?CUSTOM_NODES_BUNDLE_TAG required}"
+  local pins="${PINS:-$(pins_signature)}"
+  local base tarpath manifest reqs sha
+  base="$(bundle_base "$tag" "$pins")"
+  tarpath="$(build_custom_nodes_bundle "$tag" "$pins")"
+  manifest="${CACHE_DIR}/$(manifest_name "$tag")"
+  reqs="${CACHE_DIR}/$(reqs_name "$tag")"
+  sha="${CACHE_DIR}/$(sha_name "$base")"
+  echo "[custom-nodes] Attempting to upload [$base] to HF"
+  hf_push_files "bundle ${base}" "$tarpath" "$sha" "$manifest" "$reqs"
+  echo "[custom-nodes] Uploaded bundle [$base]"
+}
+
+#=======================================================================================
+#
+# ---------- Section 5: ARIA2 BASED HUGGINGFACE DOWNLOADS ----------
+#
+#=======================================================================================
+
+# Defaults (match your daemon)
+: "${ARIA2_HOST:=127.0.0.1}"
+: "${ARIA2_PORT:=6969}"
+: "${ARIA2_SECRET:=KissMeQuick}"
+: "${ARIA2_PROGRESS_INTERVAL:=15}"
+: "${ARIA2_PROGRESS_BAR_WIDTH:=40}"
+: "${COMFY:=/workspace/ComfyUI}"
+: "${COMFY_LOGS:=/workspace/logs}"
+
+mkdir -p "$COMFY_LOGS" "$COMFY/models" >/dev/null 2>&1 || true
+
+_helpers_need() { command -v "$1" >/dev/null || { echo "Missing $1" >&2; exit 1; }; }
+
+# ---- tiny utils ----
+helpers_human_bytes() { # bytes -> human
+  local b=${1:-0} d=0
+  local -a u=(Bytes KB MB GB TB PB)
+
+  while (( b >= 1024 && d < ${#u[@]}-1 )); do
+    b=$(( b / 1024 ))
+    ((d++))
+  done
+
+  printf "%d %s" "$b" "${u[$d]}"
+}
+
+#=======================================================================
+#===
+#=== Common utils for manifest-based and CIVITAI-based downloading
+#===
+#=======================================================================
+
+# start_aria2_daemon: launch aria2c daemon if not already running
+aria2_start_daemon() {
+  : "${ARIA2_HOST:=127.0.0.1}"
+  : "${ARIA2_PORT:=6969}"
+  : "${ARIA2_SECRET:=KissMeQuick}"
+
+  # already up?
+  if curl -fsS "http://${ARIA2_HOST}:${ARIA2_PORT}/jsonrpc" \
+       -H 'Content-Type: application/json' \
+       --data '{"jsonrpc":"2.0","id":"v","method":"aria2.getVersion","params":["token:'"$ARIA2_SECRET"'"]}' \
+       >/dev/null 2>&1; then
+    return 0
+  fi
+  
+  set +m
+  # quiet background, no shell job id printed
+  nohup aria2c --no-conf \
+    --enable-rpc --rpc-secret="$ARIA2_SECRET" \
+    --rpc-listen-port="$ARIA2_PORT" --rpc-listen-all=false \
+    --daemon=true \
+    --check-certificate=true --min-tls-version=TLSv1.2 \
+    --max-concurrent-downloads="${ARIA2_MAX_CONC:-8}" \
+    --continue=true --file-allocation=none \
+    --summary-interval=0 --show-console-readout=false \
+    --console-log-level=warn \
+    --log="${COMFY_LOGS:-/workspace/logs}/aria2.log" --log-level=notice \
+    >/dev/null 2>&1 &
+    disown
+    set -m
+
+  # wait until RPC responds
+  for _ in {1..50}; do
+    sleep 0.1
+    curl -fsS "http://${ARIA2_HOST}:${ARIA2_PORT}/jsonrpc" \
+      -H 'Content-Type: application/json' \
+      --data '{"jsonrpc":"2.0","id":"v","method":"aria2.getVersion","params":["token:'"$ARIA2_SECRET"'"]}' \
+      >/dev/null 2>&1 && return 0
+  done
+  echo "❌ aria2 RPC did not come up" >&2
+  return 1
+}
+
+# --- raw JSON-RPC POST helper (the function your code calls) ---
+helpers_rpc_post() {
+  : "${ARIA2_HOST:=127.0.0.1}" "${ARIA2_PORT:=6969}"
+  curl -sS "http://${ARIA2_HOST}:${ARIA2_PORT}/jsonrpc" \
+       -H 'Content-Type: application/json' \
+       --data-binary "${1:-{}}" \
+       || true
+}
+
+# ---- ping ----
+helpers_rpc_ping() {
+  : "${ARIA2_HOST:=127.0.0.1}" "${ARIA2_PORT:=6969}" "${ARIA2_SECRET:=KissMeQuick}"
+  curl -fsS "http://${ARIA2_HOST}:${ARIA2_PORT}/jsonrpc" \
+       -H 'Content-Type: application/json' \
+       --data '{"jsonrpc":"2.0","id":"v","method":"aria2.getVersion","params":["token:'"$ARIA2_SECRET"'"]}' \
+       >/dev/null 2>&1
+}
+
+# addUri
+helpers_rpc_add_uri() {
+  local url="$1" dir="$2" out="$3" checksum="$4"
+  local tok="token:${ARIA2_SECRET}"
+  local opts
+  opts=$(jq -nc --arg d "$dir" --arg o "$out" '
+    { "dir": $d, "out": $o, "allow-overwrite": "true", "auto-file-renaming": "false" }')
+  # checksum optional
+  if [[ -n "$checksum" ]]; then
+    opts=$(jq -nc --argjson base "$opts" --arg c "$checksum" '$base + {"checksum":$c}')
+  fi
+  local payload
+  payload=$(jq -nc --arg tok "$tok" --arg u "$url" --argjson o "$opts" \
+    '{jsonrpc:"2.0", id:"add", method:"aria2.addUri", params:[$tok, [$u], $o]}')
+  helpers_rpc_post "$payload" | jq -r '.result // empty'
+}
+
+# helpers_rpc <method> <params_json_array>
+# params_json_array should be a JSON array (e.g. [ ["url"], {"dir":"...","out":"..."} ])
+
+helpers_rpc() {
+  local method="$1"; shift
+  local params_json="$1"
+  : "${ARIA2_HOST:=127.0.0.1}" "${ARIA2_PORT:=6969}" "${ARIA2_SECRET:=KissMeQuick}"
+
+  # Build final params = ["token:SECRET", ...original array items...]
+  local payload
+  if [[ -n "$ARIA2_SECRET" ]]; then
+    payload="$(
+      jq -nc \
+         --arg m "$method" \
+         --arg t "token:$ARIA2_SECRET" \
+         --argjson p "$params_json" '
+        {jsonrpc:"2.0", id:"x", method:$m,
+         params: ( [$t] + $p ) }'
+    )"
+  else
+    payload="$(
+      jq -nc --arg m "$method" --argjson p "$params_json" \
+        '{jsonrpc:"2.0", id:"x", method:$m, params:$p}'
+    )"
+  fi
+
+  curl -sS "http://$ARIA2_HOST:$ARIA2_PORT/jsonrpc" \
+       -H 'Content-Type: application/json' \
+       --data-binary "$payload"
+}
+
+aria2_stop_all() {
+  # pause and clear all results (daemon left running)
+  helpers_rpc 'aria2.pauseAll' >/dev/null 2>&1 || true
+  # remove stopped results
+  local gids
+  gids="$(helpers_rpc 'aria2.tellStopped' '[0,10000]' | jq -r '(.result // [])[]?.gid // empty')" || true
+  if [[ -n "$gids" ]]; then
+    while read -r gid; do
+      [[ -z "$gid" ]] && continue
+      helpers_rpc 'aria2.removeDownloadResult' '["'"$gid"'"]' >/dev/null 2>&1 || true
+    done <<<"$gids"
+  fi
+}
+
+# clear results
+aria2_clear_results() {
+  helpers_rpc_ping || return 0
+  helpers_rpc_post '{"jsonrpc":"2.0","id":"pd","method":"aria2.purgeDownloadResult","params":["token:'"$ARIA2_SECRET"'"]}' >/dev/null 2>&1 || true
+}
+
+helpers_have_aria2_rpc() {
+  : "${ARIA2_HOST:=127.0.0.1}"; : "${ARIA2_PORT:=6969}"; : "${ARIA2_SECRET:=KissMeQuick}"
+  curl -fsS "http://$ARIA2_HOST:$ARIA2_PORT/jsonrpc" \
+    -H 'Content-Type: application/json' \
+    --data '{"jsonrpc":"2.0","id":"v","method":"aria2.getVersion","params":["token:'"$ARIA2_SECRET"'"]}' \
+    >/dev/null 2>&1
+}
+
+helpers_queue_empty() {
+  : "${ARIA2_HOST:=127.0.0.1}"; : "${ARIA2_PORT:=6969}"; : "${ARIA2_SECRET:=KissMeQuick}"
+  local body resp a w
+  body="$(jq -cn --arg t "token:$ARIA2_SECRET" \
+    '{jsonrpc:"2.0",id:"A",method:"aria2.tellActive",params:[$t]},
+     {jsonrpc:"2.0",id:"W",method:"aria2.tellWaiting",params:[$t,0,1000]}' )"
+  resp="$(curl -fsS "http://$ARIA2_HOST:$ARIA2_PORT/jsonrpc" -H 'Content-Type: application/json' --data-binary "$body" 2>/dev/null)" || return 0
+  a="$(jq -sr '.[]
+    | select(.id=="A").result
+    | length' <<<"$resp")"
+  w="$(jq -sr '.[]
+    | select(.id=="W").result
+    | length' <<<"$resp")"
+  (( a==0 && w==0 ))
+}
+
+# ---- Foreground progress with trap ----
+aria2_monitor_progress() {
+  local interval="${1:-${ARIA2_PROGRESS_INTERVAL}}" barw="${2:-${ARIA2_PROGRESS_BAR_WIDTH}}" log="${3:-/workspace/logs/aria2_progress.log}"
+  mkdir -p "$(dirname "$log")"
+
+  local _stop=0
+  _loop_trap() {
+    echo "⚠️  Aria2 Downloader Interrupted — pausing queue…" >&2
+    helpers_rpc 'aria2.pauseAll' '[]' >/dev/null 2>&1 || true
+    if [[ "${ARIA2_SHUTDOWN_ON_INT:-0}" == "1" ]]; then
+      echo "⚠️  Shutting down aria2 daemon…" >&2
+      helpers_rpc 'aria2.forceShutdown' '[]' >/dev/null 2>&1 || true
+    fi
+    _stop=1
+  }
+  trap _loop_trap INT TERM
+
+  while :; do
+    aria2_show_download_snapshot | tee -a "$log"
+    if helpers_queue_empty || [[ $_stop -eq 1 ]]; then
+      break
+    fi
+    sleep "$interval"
+  done
+
+  trap - INT TERM
+}
+
+aria2_show_download_snapshot() {
+  : "${ARIA2_HOST:=127.0.0.1}"
+  : "${ARIA2_PORT:=6969}"
+  : "${ARIA2_SECRET:=KissMeQuick}"
+  : "${ARIA2_PROGRESS_MAX:=999}"
+  : "${ARIA2_PROGRESS_BAR_WIDTH:=40}"
+
+  # Be robust even if set -e is globally enabled
+  set +e
+
+  # --- Fetch JSON from aria2 ---
+  local act_json wai_json sto_json
+  act_json="$(helpers_rpc 'aria2.tellActive' '[]' 2>/dev/null || true)"
+  wai_json="$(helpers_rpc 'aria2.tellWaiting' '[0,1000]' 2>/dev/null || true)"
+  sto_json="$(helpers_rpc 'aria2.tellStopped' '[0,1000]' 2>/dev/null || true)"
+
+  # --- Extract arrays ---
+  local act wai sto
+  act="$(jq -c '(.result // [])' <<<"$act_json" 2>/dev/null || echo '[]')"
+  wai="$(jq -c '(.result // [])' <<<"$wai_json" 2>/dev/null || echo '[]')"
+  sto="$(jq -c '(.result // [])' <<<"$sto_json" 2>/dev/null || echo '[]')"
+
+  # --- Counts ---
+  local active_count pending_count completed_count
+  active_count="$(jq -r 'length' <<<"$act" 2>/dev/null || echo 0)"
+  pending_count="$(jq -r 'length' <<<"$wai" 2>/dev/null || echo 0)"
+  completed_count="$(jq -r 'length' <<<"$sto" 2>/dev/null || echo 0)"
+
+  echo ""
+  echo "================================================================================"
+  echo "=== Aria2 Downloader Snapshot @ $(date '+%Y-%m-%d %H:%M:%S')"
+  echo "=== Active: $active_count   Pending: $pending_count   Completed: $completed_count"
+  echo ""
+  echo "=== Max Concurrent Downloads (ARIA2_MAX_CONC)=${ARIA2_MAX_CONC}"
+  echo "================================================================================"
+  echo ""
+
+  # Helper: trim COMFY/COMFY_HOME from a dir
+  local ROOT
+  ROOT="${COMFY:-${COMFY_HOME:-}}"
+
+  # --- Pending (waiting queue) ---
+  echo "Pending (waiting queue)"
+  echo "--------------------------------------------------------------------------------"
+  if (( pending_count == 0 )); then
+    echo "  (none)"
+  else
+    local -a pending_rows pending_rows2
+    local row name dir maxw=0
+
+    mapfile -t pending_rows < <(
+      jq -r '
+        .[]?
+        | (.files[0].path // "") as $p
+        | if $p == "" then empty else
+            ($p | capture("(?<dir>.*)/(?<name>[^/]+)$")) as $m
+            | "\($m.name)\t\($m.dir)"
+          end
+      ' <<<"$wai" 2>/dev/null || true
+    )
+
+    for row in "${pending_rows[@]}"; do
+      IFS=$'\t' read -r name dir <<<"$row"
+      if [[ -n "$ROOT" && "$dir" == "$ROOT/"* ]]; then
+        dir="${dir#$ROOT/}"
+      fi
+      pending_rows2+=( "$name"$'\t'"$dir" )
+      (( ${#name} > maxw )) && maxw=${#name}
+    done
+
+    for row in "${pending_rows2[@]}"; do
+      IFS=$'\t' read -r name dir <<<"$row"
+      printf "  ⏳  - %-*s [%s]\n" "$maxw" "$name" "$dir"
+    done
+  fi
+  echo
+
+  echo "Downloading (active transfers)"
+  echo "--------------------------------------------------------------------------------"
+  if (( active_count == 0 )); then
+    echo "  (none)"
+  else
+    local -a dl_rows
+    local row done tot spd path pct bar_len bar W dir name ROOT
+
+    ROOT="${COMFY:-${COMFY_HOME:-/workspace/ComfyUI}}"
+    W="${ARIA2_PROGRESS_BAR_WIDTH:-40}"
+
+    mapfile -t dl_rows < <(
+      jq -r '
+        .[]?
+        | [.completedLength // "0",
+          .totalLength     // "0",
+          .downloadSpeed   // "0",
+          (.files[0].path  // "")]
+        | @tsv
+      ' <<<"$act" 2>/dev/null || true
+    )
+
+    for row in "${dl_rows[@]}"; do
+      IFS=$'\t' read -r done tot spd path <<<"$row"
+      [[ -z "$path" ]] && continue
+
+      done=$((done+0))
+      tot=$((tot+0))
+      spd=$((spd+0))
+
+      pct=0
+      (( tot > 0 )) && pct=$(( done * 100 / tot ))
+
+      bar_len=$(( W * pct / 100 ))
+      printf -v bar '%*s' "$bar_len" ''
+      bar=${bar// /#}
+      printf -v bar '%-*s' "$W" "$bar"
+
+      dir="${path%/*}"
+      name="${path##*/}"
+
+      if [[ -n "$ROOT" && "$dir" == "$ROOT/"* ]]; then
+        dir="${dir#$ROOT/}"
+      fi
+
+      printf " %3d%% [%-*s] %8s/s (%6s / %6s)  [ %-23s ] <- %s\n" \
+        "$pct" "$W" "$bar" \
+        "$(helpers_human_bytes "$spd")" \
+        "$(helpers_human_bytes "$done")" \
+        "$(helpers_human_bytes "$tot")" \
+        "$dir" "$name"
+    done
+  fi
+  echo
+
+  # Build TSV rows: name<TAB>relpath<TAB>size
+  local completed_tsv
+  completed_tsv="$(
+    jq -r '
+      .[]?
+      | select(.status == "complete")
+      | (.files[0].path // "") as $full
+      | select($full != "")
+      | ($full | split("/") | last) as $name
+      | ($full | split("/") | .[0:-1] | join("/")) as $dir
+      | (.totalLength // "0") as $sz
+      | [$name, $dir, $sz] | @tsv
+    ' <<<"$sto" 2>/dev/null || true
+  )"
+
+  if [[ -z "$completed_tsv" ]]; then
+    echo "Completed (this session)"
+    echo "--------------------------------------------------------------------------------"
+    echo "  (none)"
+    echo "--------------------------------------------------------------------------------"
+  else
+    # turn TSV into array and pretty-print
+    local -a completed_rows
+    IFS=$'\n' read -r -d '' -a completed_rows <<<"$completed_tsv"$'\n'
+    helpers_print_completed_block "${completed_rows[@]}"
+    echo "--------------------------------------------------------------------------------"
+  fi
+
+  # --- Group totals (active + waiting) ---
+  local total_done_active total_size_active total_speed_active
+  local total_done_waiting total_size_waiting
+  local total_done total_size total_speed
+
+  # Sum over active transfers
+  total_done_active="$(
+    jq -r '[.[] | (.completedLength // "0" | tonumber)] | add // 0' \
+      <<<"$act" 2>/dev/null || echo 0
+  )"
+  total_size_active="$(
+    jq -r '[.[] | (.totalLength     // "0" | tonumber)] | add // 0' \
+      <<<"$act" 2>/dev/null || echo 0
+  )"
+  total_speed_active="$(
+    jq -r '[.[] | (.downloadSpeed   // "0" | tonumber)] | add // 0' \
+      <<<"$act" 2>/dev/null || echo 0
+  )"
+
+  # Sum over waiting transfers (speed is always 0)
+  total_done_waiting="$(
+    jq -r '[.[] | (.completedLength // "0" | tonumber)] | add // 0' \
+      <<<"$wai" 2>/dev/null || echo 0
+  )"
+  total_size_waiting="$(
+    jq -r '[.[] | (.totalLength     // "0" | tonumber)] | add // 0' \
+      <<<"$wai" 2>/dev/null || echo 0
+  )"
+
+  # Combine
+  total_done=$(( total_done_active + total_done_waiting ))
+  total_size=$(( total_size_active + total_size_waiting ))
+  total_speed=$(( total_speed_active ))   # waiting has no speed
+
+  echo
+  echo "Group total: speed $(helpers_human_bytes "$total_speed")/s, done $(helpers_human_bytes "$total_done") / $(helpers_human_bytes "$total_size")"
+  echo
+
+  set -e
+}
+
+# Print aligned "Completed (this session)" block from a list of "name<TAB>relpath<TAB>size"
+helpers_print_completed_block() {
+  local lines=("$@")
+  [[ ${#lines[@]} -eq 0 ]] && return 0
+
+  local maxlen=0
+  local name relpath size row
+  # find longest name
+  for row in "${lines[@]}"; do
+    IFS=$'\t' read -r name relpath size <<<"$row"
+    (( ${#name} > maxlen )) && maxlen=${#name}
+  done
+
+  echo "Completed (this session)"
+  echo "--------------------------------------------------------------------------------"
+  for row in "${lines[@]}"; do
+    IFS=$'\t' read -r name relpath size <<<"$row"
+    printf "  ✅ %-*s  %s  (%s)\n" "$maxlen" "$name" "$relpath" "$(helpers_human_bytes $size)"
+  done
+}
+
+aria2_debug_queue_counts() {
+  : "${ARIA2_HOST:=127.0.0.1}"
+  : "${ARIA2_PORT:=6969}"
+  : "${ARIA2_SECRET:=KissMeQuick}"
+
+  local t="token:${ARIA2_SECRET}"
+  local url="http://${ARIA2_HOST}:${ARIA2_PORT}/jsonrpc"
+
+  echo "=== aria2_debug_queue_counts @ $(date '+%Y-%m-%d %H:%M:%S') ==="
+
+  # Active
+  local act_json wai_json sto_json
+  act_json="$(curl -fsS "$url" \
+    -H 'Content-Type: application/json' \
+    --data-binary "$(jq -cn --arg t "$t" '{jsonrpc:"2.0",id:"A",method:"aria2.tellActive",params:[$t]}')" \
+  )" || { echo "  ERROR: tellActive RPC failed"; return 1; }
+
+  wai_json="$(curl -fsS "$url" \
+    -H 'Content-Type: application/json' \
+    --data-binary "$(jq -cn --arg t "$t" '{jsonrpc:"2.0",id:"W",method:"aria2.tellWaiting",params:[$t,0,1000]}')" \
+  )" || { echo "  ERROR: tellWaiting RPC failed"; return 1; }
+
+  sto_json="$(curl -fsS "$url" \
+    -H 'Content-Type: application/json' \
+    --data-binary "$(jq -cn --arg t "$t" '{jsonrpc:"2.0",id:"S",method:"aria2.tellStopped",params:[$t,-1000,1000]}')" \
+  )" || { echo "  ERROR: tellStopped RPC failed"; return 1; }
+
+  # Extract counts straight from .result
+  local active_count waiting_count stopped_count
+  active_count="$(jq -r '(.result // []) | length' <<<"$act_json" 2>/dev/null || echo 0)"
+  waiting_count="$(jq -r '(.result // []) | length' <<<"$wai_json" 2>/dev/null || echo 0)"
+  stopped_count="$(jq -r '(.result // []) | length' <<<"$sto_json" 2>/dev/null || echo 0)"
+
+  echo "  active   (tellActive .result | length):  $active_count"
+  echo "  waiting  (tellWaiting .result | length): $waiting_count"
+  echo "  stopped  (tellStopped .result | length): $stopped_count"
+
+  echo
+  echo "  Sample active names:"
+  jq -r '(.result // [])[] | .files[0].path // .bittorrent.info.name // .gid // "unknown"' \
+    <<<"$act_json" 2>/dev/null | sed 's/^/    - /' | head -10
+
+  echo
+  echo "  Sample waiting names:"
+  jq -r '(.result // [])[] | .files[0].path // .bittorrent.info.name // .gid // "unknown"' \
+    <<<"$wai_json" 2>/dev/null | sed 's/^/    - /' | head -10
+
+  echo
+  echo "  Sample stopped names:"
+  jq -r '(.result // [])[] | .files[0].path // .bittorrent.info.name // .gid // "unknown"' \
+    <<<"$sto_json" 2>/dev/null | sed 's/^/    - /' | head -10
+}
+
+#-----------------------------------------------------------------------
+#--
+#-- Manifest parser helpers --
+#--
+
+# Replace {VAR} tokens using current environment.
+# - If the input parses as JSON, walk string leaves and substitute via jq+env.
+# - Otherwise, do fast pure-Bash substitution on the plain string.
+helpers_resolve_placeholders() {
+  _helpers_need jq
+  local raw="$1"
+
+  # If it's valid JSON, use jq path
+  if printf '%s' "$raw" | jq -e . >/dev/null 2>&1; then
+    jq -nr -r --arg RAW "$raw" '
+      def subst_env($text):
+        reduce (env | to_entries[]) as $e ($text;
+          gsub("\\{" + ($e.key|tostring) + "\\}"; ($e.value|tostring))
+        );
+      def walk_strings(f):
+        if type == "object" then
+          with_entries(.value |= ( . | walk_strings(f) ))
+        elif type == "array" then
+          map( walk_strings(f) )
+        elif type == "string" then
+          f
+        else
+          .
+        end;
+
+      ($RAW | fromjson)                          # safe: we just validated it parses
+      | walk_strings( subst_env(.) )
+      | tojson
+    '
+    return
+  fi
+
+  # Plain string: Bash token replace {NAME} -> $NAME (leaves unknown as-is)
+  local s="$raw" key val
+  # Replace all tokens that look like {VARNAME}
+  while [[ $s =~ \{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
+    key="${BASH_REMATCH[1]}"
+    val="${!key}"                        # indirect expansion
+    # If not set, keep token as-is (comment next line & uncomment the one after if you want them to disappear)
+    [[ -z ${!key+x} ]] && val="{$key}"
+    s="${s//\{$key\}/$val}"
+  done
+  printf '%s\n' "$s"
+}
+
+# Build a JSON object of vars+paths from manifest + UPPERCASE env vars
+helpers_build_vars_json() {
+  _helpers_need jq
+  local man="$1"
+  # Start with vars+paths from the manifest
+  local base
+  base="$(jq -n --slurpfile m "$man" '
+    ($m[0].vars  // {}) as $v |
+    ($m[0].paths // {}) as $p |
+    ($v + $p)
+  ')" || return 1
+
+  # Merge UPPERCASE environment as *strings* (never --argjson)
+  while IFS='=' read -r k v; do
+    [[ "$k" =~ ^[A-Z0-9_]+$ ]] || continue
+    base="$(jq --arg k "$k" --arg v "$v" '. + {($k): $v}' <<<"$base")"
+  done < <(env)
+
+  printf '%s' "$base"
+}
+
+# Enqueue one URL/path pair from manifest
+# - Resolves {PLACEHOLDERS} in 'raw_path' to get the final 'out' filename and 'dir'
+helpers_manifest_enqueue_one() {
+  local url="$1" raw_path="$2"
+  local path dir out resp gid
+  path="$(helpers_resolve_placeholders "$raw_path")" || return 1
+  dir="$(dirname -- "$path")"; out="$(basename -- "$path")"
+  mkdir -p -- "$dir"
+
+  # skip if completed file exists and no partial
+  if [[ -f "$path" && ! -f "$path.aria2" ]]; then
+    echo " - ⏭️ SKIPPING: $out (safetensors file exists)" >&2
+    return 0
+  fi
+
+  local gid
+  gid="$(helpers_rpc_add_uri "$url" "$dir" "$out" "")"
+  if [[ -n "$gid" ]]; then
+    echo " - 📥 Queue: $out" >&2
+    return 0
+  else
+    echo "ERROR adding $url to the queue (addUri: $resp). Could be a bad token, bad URL etc. Please check the logs." >&2
+    return 1
+  fi
+}
+
+#-----------------------------------------------------------------------
+# ---- Process json list for downloads to pull ----
+
+# ---- Manifest Enqueue ----
+aria2_download_from_manifest() {
+  _helpers_need curl; _helpers_need jq; _helpers_need awk
+  helpers_have_aria2_rpc || aria2_start_daemon
+
+  # Optional arg: manifest source; if empty, fall back to MODEL_MANIFEST_URL.
+  # Source can be:
+  #   - local file path (JSON)
+  #   - URL (http/https)
+  local src="${1:-${MODEL_MANIFEST_URL:-}}"
+  if [[ -z "$src" ]]; then
+    echo "aria2_download_from_manifest: no manifest source given and MODEL_MANIFEST_URL is not set." >&2
+    return 1
+  fi
+
+  local MAN tmp=""
+  if [[ -f "$src" ]]; then
+    # Local file
+    MAN="$src"
+  else
+    # Treat as URL and download to temp file
+    MAN="$(mktemp)"
+    tmp="$MAN"
+    if ! curl -fsSL "$src" -o "$MAN"; then
+      echo "aria2_download_from_manifest: failed to fetch manifest: $src" >&2
+      rm -f "$tmp"
+      return 1
+    fi
+  fi
+
+  # build vars map (kept for parity, even if not directly used)
+  local VARS_JSON
+  VARS_JSON="$(helpers_build_vars_json "$MAN")" || {
+    [[ -n "$tmp" ]] && rm -f "$tmp"
+    return 1
+  }
+
+  # find enabled sections
+  local SECTIONS_ALL ENABLED sec dl_var
+  SECTIONS_ALL="$(jq -r '.sections | keys[]' "$MAN")"
+  ENABLED=()
+  while read -r sec; do
+    dl_var="download_${sec}"
+    if [[ "${!sec:-}" == "true" || "${!sec:-}" == "1" || \
+          "${!dl_var:-}" == "true" || "${!dl_var:-}" == "1" ]]; then
+      ENABLED+=("$sec")
+    fi
+  done <<<"$SECTIONS_ALL"
+
+  # Dedupe sections
+  if ((${#ENABLED[@]} == 0)); then
+    echo "aria2_download_from_manifest: no sections enabled in manifest '$src'." >&2
+    echo 0               # <- $any = 0 (nothing enqueued), but NOT an error
+    [[ -n "$tmp" ]] && rm -f "$tmp"
+    return 0
+  fi
+  mapfile -t ENABLED < <(printf '%s\n' "${ENABLED[@]}" | awk '!seen[$0]++')
+
+  local any=0
+
+  for sec in "${ENABLED[@]}"; do
+    echo ">>> Enqueue section: $sec" >&2
+
+    # Build TSV in this shell
+    local tsv
+    tsv="$(
+      jq -r --arg sec "$sec" '
+        def as_obj:
+          if   type=="object" then {url:(.url//""), path:(.path // ((.dir // "") + (if .out then "/" + .out else "" end)))}
+          elif type=="array"  then {url:(.[0]//""), path:(.[1]//"")}
+          elif type=="string" then {url:., path:""}
+          else {url:"", path:""} end;
+        (.sections[$sec] // [])[] | as_obj | select(.url|length>0)
+        | [.url, (if (.path|length)>0 then .path else (.url|sub("^.*/";"")) end)] | @tsv
+      ' "$MAN"
+    )"
+
+    # If this section has no actual URL entries, just continue
+    [[ -z "$tsv" ]] && continue
+
+    # Iterate TSV lines
+    while IFS=$'\t' read -r url raw_path; do
+      # unified enqueue -> records gid via helpers_rpc_add_uri
+      # helpers_manifest_enqueue_one should:
+      #   - print Queue / SKIP messages to stderr
+      #   - return 0 if success/skip, non-zero on error
+      #   - increment any only if something was enqueued
+      if helpers_manifest_enqueue_one "$url" "$raw_path"; then
+        any=1
+      fi
+    done <<<"$tsv"
+
+  done
+
+  [[ -n "$tmp" ]] && rm -f "$tmp"
+
+  # At this point:
+  #   any = 1  -> at least one item enqueued
+  #   any = 0  -> sections enabled but everything was already present/skipped
+  if [[ "$any" == "0" ]]; then
+    echo "aria2_download_from_manifest: nothing new to enqueue (all targets already present) from '$src'." >&2
+  fi
+
+  printf '%s\n' "$any"
+  return 0
+}
+
+#=======================================================================================
+# ---- Main ARIA2 Spawn ----
+#=======================================================================================
+
+aria2_enqueue_and_wait_from_manifest() {
+  local manifest_src="${1:-}"   # optional: URL or local JSON; default MODEL_MANIFEST_URL inside downloader
+
+  aria2_clear_results >/dev/null 2>&1 || true
+  helpers_have_aria2_rpc || aria2_start_daemon
+
+  local trapped=0
+  _cleanup_trap_manifest() {
+    (( trapped )) && return 0
+    trapped=1
+    echo
+    echo "⚠️  Aria2 Downloader Interrupted — stopping queue and cleaning results…"
+    # Nice to show what's left when user interrupts
+    helpers_print_pending_from_aria2 2>/dev/null || true
+    aria2_stop_all    >/dev/null 2>&1 || true
+    aria2_clear_results >/dev/null 2>&1 || true
+    return 130
+  }
+  trap _cleanup_trap_manifest INT TERM
+
+  echo "================================================================================"
+  echo "==="
+  echo "=== Huggingface Model Downloader: Processing queuing @ $(date '+%Y-%m-%d %H:%M:%S') ==="
+  echo "==="
+
+  local any
+  if ! any="$(aria2_download_from_manifest "$manifest_src")"; then
+    echo "aria2_enqueue_and_wait_from_manifest: manifest processing failed." >&2
+    trap - INT TERM
+    return 1
+  fi
+
+  # Downloader *already* printed any "nothing to enqueue" messages.
+  # Here we just decide whether to start the monitor loop.
+  if [[ "$any" == "0" ]] && helpers_queue_empty; then
+    # No new items and queue empty -> nothing to wait for
+    trap - INT TERM
+    return 0
+  fi
+
+  # Otherwise: either we enqueued something, or queue already had items.
+  aria2_monitor_progress \
+    "${ARIA2_PROGRESS_INTERVAL:-15}" \
+    "${ARIA2_PROGRESS_BAR_WIDTH:-40}" \
+    "${COMFY_LOGS:-/workspace/logs}/aria2_progress.log"
+
+  # Show completed block when done
+  helpers_print_completed_from_aria2 2>/dev/null || true
+
+  aria2_clear_results >/dev/null 2>&1 || true
+  trap - INT TERM
+  return 0
+}
+
+#=======================================================================================
+#
+# ---------- Section 6: CivitAI ID downloader helpers ----------
+#
+#=======================================================================================
+
+# Env it uses (override in .env):
+: "${CHECKPOINT_IDS_TO_DOWNLOAD:=}"     # e.g. "12345, 67890, 23422:i2v"
+: "${LORAS_IDS_TO_DOWNLOAD:=}"          # e.g. "abc, def ghi"
+: "${CIVITAI_LOG_DIR:=${COMFY_LOGS:-/workspace/logs}/civitai}"
+: "${CIVITAI_DEBUG:=0}"
+
+#---------------------------------------------------------------------------------------
+
+# =========================
+# CivitAI (clean slate RPC)
+# =========================
+# Env:
+#   CIVITAI_TOKEN                 (required for private/limited files; optional for public)
+#   LORAS_IDS_TO_DOWNLOAD         e.g. "2361379, 234567"
+#   CHECKPOINT_IDS_TO_DOWNLOAD    e.g. "1234567 7654321"
+#   COMFY_HOME                    default: /workspace/ComfyUI
+#   CIVITAI_DEBUG=1               verbose
+#   CIVITAI_PROBE=0|1             1-byte probe before enqueue (default: 1)
+#
+# Requires:
+#   helpers_human_bytes, aria2_start_daemon,
+#   helpers_rpc_add_uri, helpers_have_aria2_rpc, aria2_start_daemon,
+#   aria2_monitor_progress, aria2_clear_results, aria2_stop_all
+
+# Keep ASCII-ish, tool-friendly names that Comfy pickers like.
+# Rules:
+# - strip straight/curly quotes
+# - collapse whitespace -> _
+# - ()[]{} -> __
+# - remove anything not [A-Za-z0-9._-] -> _
+# - collapse multiple _ -> single _
+# - trim leading/trailing _
+# - preserve/normalize extension case
+
+helpers_sanitize_basename() {
+  local in="$1"
+  [[ -z "$in" ]] && { printf "model.safetensors"; return; }
+
+  local base ext name
+  base="$(basename -- "$in")"
+  ext="${base##*.}"
+  name="${base%.*}"
+  # normalize extension to lower
+  ext="${ext,,}"
+
+  # sed-based cleanup
+  name="$(printf '%s' "$name" \
+    | sed -E "s/['‘’]//g; s/[[:space:]]+/_/g; s/[(){}\[\]]+/__/g; s/[^A-Za-z0-9._-]+/_/g; s/_+/_/g; s/^_+|_+$//g")"
+
+  [[ -z "$name" ]] && name="model"
+  printf "%s.%s" "$name" "$ext"
+}
+
+# Ensure uniqueness in a directory (append _1, _2, … if needed)
+helpers_unique_dest() {
+  local dir="$1" base="$2"
+  local path="$dir/$base"
+  local stem="${base%.*}" ext=".${base##*.}"
+  local i=1
+  while [[ -e "$path" ]]; do
+    path="$dir/${stem}_$i$ext"
+    ((i++))
+  done
+  printf "%s" "$path"
+}
+
+helpers_civitai_extract_and_move_zip() {
+  local zip_path="$1" target_dir="$2"
+  [[ -f "$zip_path" ]] || { echo "⚠️  ZIP not found: $zip_path"; return 1; }
+  mkdir -p "$target_dir"
+
+  local tmpdir; tmpdir="$(mktemp -d -p "${target_dir%/*}" civit_zip_XXXXXX)"
+  local moved=0
+
+  # Try unzip quietly; fall back to BusyBox if needed
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -q -o "$zip_path" -d "$tmpdir" || true
+  else
+    busybox unzip -oq "$zip_path" -d "$tmpdir" || true
+  fi
+
+  shopt -s nullglob
+  local f
+  for f in "$tmpdir"/**/*.safetensors "$tmpdir"/*.safetensors; do
+    [[ -e "$f" ]] || continue
+    local bn clean dest
+    bn="$(basename -- "$f")"
+    clean="$(helpers_sanitize_basename "$bn")"
+    dest="$(helpers_unique_dest "$target_dir" "$clean")"
+    mkdir -p "$(dirname "$dest")"
+    mv -f -- "$f" "$dest"
+    echo "📦 Extracted: $(basename -- "$dest")" >&2
+    ((moved++))
+  done
+  shopt -u nullglob
+
+  # Cleanup temp + leave original ZIP (or delete—your call)
+  rm -rf -- "$tmpdir"
+
+  if (( moved == 0 )); then
+    echo "⚠️  No .safetensors found in ZIP: $(basename -- "$zip_path")" >&2
+    # Option A: keep ZIP in place (already in loras dir)
+    # Option B (recommended): park it in an _incoming folder so it’s out of the picker’s way
+    local park_dir="${target_dir%/}/_incoming"
+    mkdir -p "$park_dir"
+    mv -f -- "$zip_path" "$park_dir/" || true
+    echo "➡️  Moved ZIP to: $park_dir/$(basename -- "$zip_path")" >&2
+  else
+    # If at least one .safetensors extracted, remove the ZIP
+    rm -f -- "$zip_path"
+  fi
+}
+
+# Case-insensitive match for *.safetensors
+helpers_zip_has_safetensors() {
+  local zip="$1"
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -Z1 -- "$zip" 2>/dev/null | awk 'tolower($0) ~ /\.safetensors$/ {found=1} END{exit !(found)}'
+  elif command -v bsdtar >/dev/null 2>&1; then
+    bsdtar -tf -- "$zip" 2>/dev/null | awk 'tolower($0) ~ /\.safetensors$/ {found=1} END{exit !(found)}'
+  else
+    echo "⚠️  Need unzip or bsdtar to inspect $zip" >&2
+    return 2
+  fi
+}
+
+# Extract only *.safetensors (case-insensitive) from ZIP into $dest_dir
+helpers_extract_safetensors_from_zip() {
+  local zip="$1" dest_dir="$2"
+  mkdir -p -- "$dest_dir"
+  if command -v unzip >/dev/null 2>&1; then
+    # unzip is case-sensitive; extract with a broad list then prune
+    # Strategy: extract all, then move only *.safetensors (ci via awk), then clean temp
+    local tmpdir; tmpdir="$(mktemp -d)"
+    unzip -oq -- "$zip" -d "$tmpdir" || return 1
+    find "$tmpdir" -type f | awk 'BEGIN{IGNORECASE=1} /\.safetensors$/ {print}' | while read -r f; do
+      mv -f -- "$f" "$dest_dir/"
+    done
+    rm -rf -- "$tmpdir"
+    return 0
+  elif command -v bsdtar >/dev/null 2>&1; then
+    local tmpdir; tmpdir="$(mktemp -d)"
+    bsdtar -xf -- "$zip" -C "$tmpdir" || return 1
+    find "$tmpdir" -type f | awk 'BEGIN{IGNORECASE=1} /\.safetensors$/ {print}' | while read -r f; do
+      mv -f -- "$f" "$dest_dir/"
+    done
+    rm -rf -- "$tmpdir"
+    return 0
+  else
+    echo "⚠️  Need unzip or bsdtar to extract $zip" >&2
+    return 2
+  fi
+}
+
+# Moves ZIPs into _incoming/, extracts safetensors to the parent dir,
+# quarantines ZIPs with no safetensors or suspiciously tiny ones.
+helpers_civitai_postprocess_dir() {
+  local dest_dir="$1"  # e.g., /workspace/ComfyUI/models/loras
+  local incoming="$dest_dir/_incoming"
+  local junk="$incoming/_junk"
+  mkdir -p -- "$incoming" "$junk"
+
+  # scan recent .zip (last 2 hours) OR just all .zip if you prefer:
+  find "$dest_dir" -maxdepth 1 -type f -name '*.zip' -printf '%T@ %p\n' \
+    | sort -nr \
+    | awk '{ $1=""; sub(/^ /,""); print }' \
+    | while read -r zip; do
+        # skip if already in _incoming/_junk (safety)
+        case "$zip" in
+          "$incoming"/*|"$junk"/*) continue ;;
+        esac
+
+        # move into _incoming
+        local moved="$incoming/$(basename "$zip")"
+        mv -f -- "$zip" "$moved" || continue
+
+        # quick size sanity (<= 64 KB → likely metadata-only)
+        local bytes; bytes="$(stat -c %s "$moved" 2>/dev/null || stat -f %z "$moved")"
+        if [[ -n "$bytes" && "$bytes" -le 65536 ]]; then
+          echo "⚠️  $(basename "$moved") is tiny ($bytes B) — no extraction; quarantining." >&2
+          mv -f -- "$moved" "$junk/"
+          continue
+        fi
+
+        if helpers_zip_has_safetensors "$moved"; then
+          if helpers_extract_safetensors_from_zip "$moved" "$dest_dir"; then
+            echo "✅ Extracted safetensors from $(basename "$moved"); removing ZIP." >&2
+            rm -f -- "$moved"
+          else
+            echo "⚠️  Extraction failed for $(basename "$moved"); quarantining." >&2
+            mv -f -- "$moved" "$junk/"
+          fi
+        else
+          echo "⚠️  No .safetensors found in $(basename "$moved"); quarantining." >&2
+          mv -f -- "$moved" "$junk/"
+        fi
+      done
+}
+
+# --- ID parsing: "1,2  3,,4" -> "1 2 3 4" (numbers only), drop placeholders
+helpers_civitai_tokenize_ids() {
+  printf '%s' "$1" \
+    | tr ',\n' '  ' \
+    | tr -s ' ' \
+    | grep -Eo '[0-9]+' \
+    || true
+}
+
+# --- Make a direct VERSION download URL; token goes in query string
+helpers_civitai_make_url() {
+  local ver_id="$1"
+  local tok="${CIVITAI_TOKEN:-}"
+  local url="https://civitai.com/api/download/models/${ver_id}"
+  [[ -n "$tok" ]] && url="${url}?token=${tok}"
+  printf '%s\n' "$url"
+}
+
+# --- Optional light probe (1-byte range GET); set CIVITAI_PROBE=0 to skip
+helpers_civitai_probe_url() {
+  local url="$1"
+  [[ "${CIVITAI_PROBE:-0}" == "0" ]] && return 0
+  curl -fsSL --range 0-0 \
+       -H 'User-Agent: curl/8' -H 'Accept: */*' \
+       --retry 2 --retry-delay 1 \
+       --connect-timeout 6 --max-time 12 \
+       "$url" -o /dev/null
+}
+
+# --- Fetch VERSION json (for filename)
+helpers_civitai_get_version_json() {
+  local ver_id="$1"
+  local hdr=()
+  [[ -n "${CIVITAI_TOKEN:-}" ]] && hdr+=(-H "Authorization: Bearer ${CIVITAI_TOKEN}")
+  curl -fsSL "${hdr[@]}" "https://civitai.com/api/v1/model-versions/${ver_id}"
+}
+
+# --- Choose a filename (prefer *.safetensors; fall back to first file name)
+helpers_civitai_pick_name() {
+  jq -r '
+    (.files // []) as $f
+    | ( $f | map(select((.name // "" | ascii_downcase | endswith(".safetensors")))) ) as $s
+    | ( ($s | if length>0 then . else $f end) | .[0].name // empty )
+  '
+}
+
+# --- Enqueue a single VERSION into aria2 RPC; returns 0 if enqueued
+civitai_download_versionid() {
+  local ver_id="$1" dest_dir="$2"
+  local vjson name url
+
+  vjson="$(helpers_civitai_get_version_json "$ver_id")" || {
+    [[ "$CIVITAI_DEBUG" -eq 1 ]] && echo "❌ v${ver_id}: version JSON fetch failed" >&2
+    return 1
+  }
+
+  name="$(printf '%s' "$vjson" | helpers_civitai_pick_name)"
+  if [[ -z "$name" ]]; then
+    [[ "$CIVITAI_DEBUG" -eq 1 ]] && echo "❌ v${ver_id}: no filename in files[]" >&2
+    return 1
+  fi
+
+  url="$(helpers_civitai_make_url "$ver_id")"
+
+  # Optional 1-byte probe; disable with CIVITAI_PROBE=0
+  if ! helpers_civitai_probe_url "$url"; then
+    [[ "$CIVITAI_DEBUG" -eq 1 ]] && echo "❌ v${ver_id}: URL probe failed" >&2
+    return 1
+  fi
+
+  mkdir -p "$dest_dir"
+
+  # IMPORTANT: 4th param is checksum in your helpers; pass empty string.
+  # Do NOT pass headers here (token is already in the URL).
+  if helpers_rpc_add_uri "$url" "$dest_dir" "$name" ""; then
+    echo "📥 CivitAI v${ver_id}" >&2
+    return 0
+  else
+    echo "❌ v${ver_id}: addUri failed" >&2
+    return 1
+  fi
+}
+
+# aria2_download_civitai_from_environment_vars:
+#   - Uses LORAS_IDS_TO_DOWNLOAD and CHECKPOINT_IDS_TO_DOWNLOAD from env
+#   - Ensures aria2 RPC is running
+#   - Enqueues downloads via civitai_download_versionid
+#   - DOES NOT wait in a loop or monitor progress
+#   - Returns 0 whether or not anything was enqueued; logs what it did.
+aria2_download_civitai_from_environment_vars() {
+
+  helpers_have_aria2_rpc || aria2_start_daemon
+
+  local comfy="${COMFY_HOME:-/workspace/ComfyUI}"
+  local lora_dir="$comfy/models/loras"
+  local ckpt_dir="$comfy/models/checkpoints"
+
+  echo "📦 CivitAI target (LoRAs):       $lora_dir" >&2
+  echo "📦 CivitAI target (Checkpoints): $ckpt_dir" >&2
+
+  local any=0 ids vid
+
+  # -------------------------------
+  # LoRA version IDs
+  # -------------------------------
+  ids="$(helpers_civitai_tokenize_ids "${LORAS_IDS_TO_DOWNLOAD:-}")"
+  if [[ -n "${ids// }" ]]; then
+    [[ "${CIVITAI_DEBUG:-0}" -eq 1 ]] && \
+      echo "→ Parsed $(wc -w <<<"$ids") LoRA id(s): $ids" >&2
+    for vid in $ids; do
+      if civitai_download_versionid "$vid" "$lora_dir"; then
+        any=1
+      fi
+    done
+  else
+    echo "⏭️  No LoRA id(s) parsed from LORAS_IDS_TO_DOWNLOAD." >&2
+  fi
+
+  # -------------------------------
+  # Checkpoint version IDs
+  # -------------------------------
+  ids="$(helpers_civitai_tokenize_ids "${CHECKPOINT_IDS_TO_DOWNLOAD:-}")"
+  if [[ -n "${ids// }" ]]; then
+    [[ "${CIVITAI_DEBUG:-0}" -eq 1 ]] && \
+      echo "→ Parsed $(wc -w <<<"$ids") Checkpoint id(s): $ids" >&2
+    for vid in $ids; do
+      if civitai_download_versionid "$vid" "$ckpt_dir"; then
+        any=1
+      fi
+    done
+  else
+    echo "⏭️  No Checkpoint id(s) parsed from CHECKPOINT_IDS_TO_DOWNLOAD." >&2
+  fi
+
+  if [[ "$any" != "1" ]]; then
+    echo "ℹ️  Nothing to enqueue from CivitAI environment variables." >&2
+  else
+    echo "🚀 CivitAI downloads enqueued via aria2. Use aria2_monitor_progress or aria2_show_download_snapshot to track." >&2
+  fi
+
+  # No waiting, no monitoring, no trap; just return.
+  return 0
+}
+
+# --- Batch: parse env lists, enqueue to correct dirs, run your progress loop
+aria2_enqueue_and_wait_from_civitai() {
+  aria2_clear_results >/dev/null 2>&1 || true
+  helpers_have_aria2_rpc || aria2_start_daemon
+
+  local trapped=0
+  _cleanup_trap_civitai() {
+    (( trapped )) && return 0
+    trapped=1
+    echo; echo "⚠️  Interrupted — stopping queue and cleaning results…" >&2
+    aria2_stop_all >/dev/null 2>&1 || true
+    aria2_clear_results >/dev/null 2>&1 || true
+    return 130
+  }
+  trap _cleanup_trap_civitai INT TERM
+
+  local comfy="${COMFY_HOME:-/workspace/ComfyUI}"
+  local lora_dir="$comfy/models/loras"
+  local ckpt_dir="$comfy/models/checkpoints"
+  echo "📦 Target (LoRAs): $lora_dir" >&2
+  echo "📦 Target (Checkpoints): $ckpt_dir" >&2
+
+  local any=0 ids vid
+
+  # LoRA version IDs
+  ids="$(helpers_civitai_tokenize_ids "${LORAS_IDS_TO_DOWNLOAD:-}")"
+  if [[ -n "${ids// }" ]]; then
+    [[ "$CIVITAI_DEBUG" -eq 1 ]] && echo "→ Parsed $(wc -w <<<"$ids") LoRA id(s): $ids" >&2
+    for vid in $ids; do
+      if civitai_download_versionid "$vid" "$lora_dir"; then any=1; fi
+    done
+  else
+    echo "⏭️ No LoRA id(s) parsed." >&2
+  fi
+
+  # Checkpoint version IDs
+  ids="$(helpers_civitai_tokenize_ids "${CHECKPOINT_IDS_TO_DOWNLOAD:-}")"
+  if [[ -n "${ids// }" ]]; then
+    [[ "$CIVITAI_DEBUG" -eq 1 ]] && echo "→ Parsed $(wc -w <<<"$ids") Checkpoint id(s): $ids" >&2
+    for vid in $ids; do
+      if civitai_download_versionid "$vid" "$ckpt_dir"; then any=1; fi
+    done
+  else
+    echo "⏭️ No Checkpoint id(s) parsed."
+  fi
+
+  if [[ "$any" != "1" ]]; then
+    echo "Nothing to enqueue from CivitAI tokens." >&2
+    trap - INT TERM
+    return 0
+  fi
+
+  # Use your existing nice progress UI
+  aria2_monitor_progress "${ARIA2_PROGRESS_INTERVAL:-30}" "${ARIA2_PROGRESS_BAR_WIDTH:-40}" \
+    "${COMFY_LOGS:-/workspace/logs}/aria2_progress.log"
+
+  aria2_clear_results >/dev/null 2>&1 || true
+  trap - INT TERM
+  return 0
+}
+
+show_env () {
+  # ----- Convenience environment echo -----
+  echo "========================================================================"
+  echo "🧠 ComfyUI Environment Summary — $(date -Is)"
+  echo "========================================================================"
+  echo ""
+  echo " COMFY_HOME:            $COMFY_HOME"
+  echo " Comfy version:         $(probe_comfy_version || echo unknown)"
+  echo ""
+  echo " Custom nodes dir:      $CUSTOM_DIR"
+  echo " Cache dir:             $CACHE_DIR"
+  echo " Logs dir:              $COMFY_LOGS"
+  echo " Output dir:            $OUTPUT_DIR"
+  echo " Bundles dir:           $BUNDLES_DIR"
+  echo " Bundle tag:            $CUSTOM_NODES_BUNDLE_TAG"
+  echo " Workflow dir:          $WORKFLOW_DIR"
+  echo " Model manifest URL:    $MODEL_MANIFEST_URL"
+  echo ""
+  echo " MODELS_DIR:            $MODELS_DIR"
+  echo " DIFFUSION_MODELS_DIR:  $DIFFUSION_MODELS_DIR"
+  echo " TEXT_ENCODERS_DIR:     $TEXT_ENCODERS_DIR"
+  echo " CLIP_VISION_DIR:       $CLIP_VISION_DIR"
+  echo " VAE_DIR:               $VAE_DIR"
+  echo " LORAS_DIR:             $LORAS_DIR"
+  echo " DETECTION_DIR:         $DETECTION_DIR"
+  echo " CTRLNET_DIR:           $CTRLNET_DIR"
+  echo " CTRLNET_UNION_DIR:     $CTRLNET_UNION_DIR"
+  echo " UPSCALE_DIR:           $UPSCALE_DIR"
+  echo " ULTRALYTICS_DIR:       $ULTRALYTICS_DIR"
+  echo ""
+  echo " HF_TOKEN:              $(hf_token_status)"
+  echo " CIVITAI_TOKEN:         $(civitai_token_status)"
+  echo " CHECKPOINT_IDS:        ${CHECKPOINT_IDS_TO_DOWNLOAD:-Empty}"
+  echo " LORAS_IDS:             ${LORAS_IDS_TO_DOWNLOAD:-Empty}"
+  echo ""
+  echo "======================================="
+  echo ""
+  echo ""
+
+}
+
+# ------------------------- #
+#  Workflows / Asset import #
+# ------------------------- #
+copy_hearmeman_files_from_repo_if_any() {
+  local repo="${HEARMEMAN_REPO_URL:-}"
+  if [[ -z "$repo" ]]; then
+    return 0
+  fi
+
+  if [ -z "$repo" ]; then return 0; fi
+  local tmp="${CACHE_DIR}/.hearmeman.$$"
+  rm -rf "$tmp"
+
+  echo "[hearmeman] Syncing files from:  ${repo}"
+  echo "[hearmeman] Temp repo location:  ${tmp}"
+
+  if ! git clone "$repo" "$tmp" >/dev/null 2>&1; then
+    echo "[hearmeman] ❌ Failed to clone repo; skipping repo sync." >&2
+    rm -rf "$tmp"
+    return 0
+  fi
+
+  # ---- Workflows ----
+  local wf_src=""
+  if [[ -d "$tmp/src/workflows" ]]; then
+    wf_src="$tmp/src/workflows"
+  elif [[ -d "$tmp/workflows" ]]; then
+    wf_src="$tmp/workflows"
+  fi
+
+  if [[ -n "$wf_src" ]]; then
+    echo "[hearmeman] Relocating workflows found in repo."
+    local wf_dst="${COMFY_HOME}/workflows"
+    echo "[hearmeman] Workflows source:    ${wf_src}"
+    echo "[hearmeman] Workflows dest:      ${wf_dst}"
+    mkdir -p "$wf_dst"
+    cp -rf "${wf_src}/"* "$wf_dst"/ 2>/dev/null || true
+  else
+    echo "[hearmeman] No workflows found under $repo/src/workflows or $repo/workflows." >&2
+  fi
+  
+  echo ""
+
+  # ---- Assets ----
+  local assets_src=""
+  if [[ -d "$tmp/src/assets" ]]; then
+    assets_src="$tmp/src/assets"
+  elif [[ -d "$tmp/assets" ]]; then
+    assets_src="$tmp/assets"
+  fi
+
+  if [[ -n "$assets_src" ]]; then
+    echo "[hearmeman] Relocating assets found in repo."
+    local assets_dst="${COMFY_HOME}/assets"
+    echo "[hearmeman] Assets source:       ${assets_src}"
+    echo "[hearmeman] Assets dest:         ${assets_dst}"
+    mkdir -p "$assets_dst"
+    cp -rf "${assets_src}/"* "$assets_dst"/ 2>/dev/null || true
+  else
+    echo "[hearmeman] No assets found under $repo/src/assets or $repo/assets." >&2
+  fi
+
+  rm -rf "$tmp"
+  echo ""
+  echo "[hearmeman] Repo sync complete."
+  echo ""
+}
+
+# Probe ComfyUI version for logging
+probe_comfy_version() {
+  local dir="${COMFY_HOME:-/workspace/ComfyUI}"
+  local ver="unknown"
+
+  # Prefer git describe if this is a git clone
+  if [[ -d "$dir/.git" ]] && command -v git >/dev/null 2>&1; then
+    ver="$(git -C "$dir" describe --tags --always 2>/dev/null \
+          || git -C "$dir" rev-parse --short HEAD 2>/dev/null \
+          || echo "unknown")"
+    echo "$ver"
+    return 0
+  fi
+
+  # Fallback: try a version.py next to main.py (not guaranteed to exist)
+  if [[ -f "$dir/version.py" ]]; then
+    ver="$("$PY" - <<'PY'
+import importlib.util, sys, pathlib
+root = pathlib.Path(sys.argv[1])
+vp = root / "version.py"
+spec = importlib.util.spec_from_file_location("comfy_version", vp)
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+print(getattr(m, "__version__", "unknown"))
+PY
+"$dir" 2>/dev/null || echo "unknown")"
+    echo "$ver"
+    return 0
+  fi
+
+  echo "$ver"
+}
+
+show_gpu () {
+  # --- Gather info safely ---
+  local gpustr arch
+  local gpu_cc gpu_label
+
+  gpustr="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 || echo "no-gpu")"
+  gpu_cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || echo "?")"
+  arch="${gpu_cc//./}"   # "12.0" → "120"
+
+  # --- ASCII GPU header ---
+  gpu_label="GPU: ${gpustr}"
+  if [[ -n "$arch" && "$arch" != "?" ]]; then
+    gpu_label+="  (sm_${arch})"
+  fi
+  local width=${#gpu_label}
+  local border
+  border="$(printf '─%.0s' $(seq 1 "$width"))"
+
+  echo "┌─${border}─┐"
+  printf "│ %-${width}s │\n" "$gpu_label"
+  echo "└─${border}─┘"
+}
+
+show_download_environment_variables () {
+
+  compgen -A variable | grep "download_" | while IFS= read -r var_name; do
+    printf " %-39s%s\n" "${var_name}:" "${!var_name}"
+  done
+}
+
+# --------------------------------------------------
+# Pretty boot banner for Vast / RunPod logs
+# --------------------------------------------------
+on_start_comfy_banner() {
+  local logfile="${COMFY_LOGS:-/workspace/logs}/startup_banner.log"
+  mkdir -p "$(dirname "$logfile")"
+
+  # --- Gather info safely ---
+  local pyver torchver cudaver arch comfyver
+
+  pyver="$($PY -c 'import sys; print(".".join(map(str, sys.version_info[:3])))' 2>/dev/null || echo "?")"
+  torchver="$($PY -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "not-importable")"
+  cudaver="$($PY -c 'import torch; print(torch.version.cuda)' 2>/dev/null || echo "?")"
+
+  comfyver=$(probe_comfy_version)
+
+  {
+    echo "============================================================"
+   
+    show_gpu
+
+    echo ""
+    echo "============================================================"
+    echo "   🚀 COMFYUI BOOTSTRAP START (Vast) — $(date -Is)"
+    echo "============================================================"
+    echo ""
+    echo " Image Tag:                             ${IMAGE_TAG:-unknown}"
+    echo " Build Git SHA:                         ${BUILD_GIT_SHA:-unknown}"
+    echo ""
+    echo " Repo Root:                             ${REPO_ROOT:-?}"
+    echo " Runtime Directory:                     ${SCRIPT_DIR:-?}"
+    echo ""
+    echo " Python:                                ${pyver}"
+    echo " Torch:                                 ${torchver}"
+    echo " CUDA (Torch):                          ${cudaver}"
+    echo ""
+    echo " ComfyUI Path:                          ${COMFY_HOME:-/workspace/ComfyUI}"
+    echo " ComfyUI Version:                       ${comfyver}"
+    echo ""
+    echo " Model Manifest:                        ${MODEL_MANIFEST_URL:-unset}"
+    echo " Node Manifest:                         ${CUSTOM_NODES_MANIFEST_URL:-unset}"
+    echo ""
+    echo " ENABLE_MODEL_MANIFEST_DOWNLOAD         ${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}"
+    echo " ENABLE_CIVITAI_DOWNLOAD                ${ENABLE_CIVITAI_DOWNLOAD:-true}"
+    echo " ENABLE_SAGE                            ${ENABLE_SAGE:-true}"
+    echo " INSTALL_EXTRA_CUSTOM_NODES             ${INSTALL_EXTRA_CUSTOM_NODES:-true}"
+    echo " LAUNCH_JUPYTER                         ${LAUNCH_JUPYTER:-false}"
+    echo ""
+    
+    show_download_environment_variables
+
+    echo ""
+    echo " Log Directory:                         ${COMFY_LOGS:-/workspace/logs}"
+    echo ""
+    echo "============================================================"
+    echo ""
+  } | tee "$logfile"
+}
+
+change_latent_preview_method() {
+  # Honour env toggle, but be robust under set -u
+  local do_change="${change_preview_method:-true}"
+  if [[ "$do_change" != "true" ]]; then
+    echo "[preview] Skipping preview method update (change_preview_method != 'true')."
+    return 0
+  fi
+
+  local comfy_home="${COMFY_HOME:-/workspace/ComfyUI}"
+  local root="${CUSTOM_DIR:-${comfy_home}/custom_nodes}"
+  local js="${root}/ComfyUI-VideoHelperSuite/web/js/VHS.core.js"
+
+  echo "[preview] Attempting to enable VHS.LatentPreview + configure ComfyUI-Manager…"
+
+  # --- Patch VHS.core.js if present ---
+  if [[ -f "$js" ]]; then
+    echo "[preview] Found VHS JS at: $js"
+    # If sed fails for any reason, don't kill whole bootstrap
+    if ! sed -i "/id: *'VHS.LatentPreview'/,/defaultValue:/s/defaultValue: false/defaultValue: true/" "$js"; then
+      echo "[preview] ⚠️ Failed to patch $js; leaving as-is." >&2
+    else
+      echo "[preview] Patched VHS.LatentPreview defaultValue → true."
+    fi
+  else
+    echo "[preview] VHS.core.js not found at $js; skipping JS patch."
+  fi
+
+  # --- Configure ComfyUI-Manager config.ini ---
+  local cfg_dir="${comfy_home}/user/default/ComfyUI-Manager"
+  local cfg="${cfg_dir}/config.ini"
+
+  mkdir -p "$cfg_dir"
+
+  if [[ ! -f "$cfg" ]]; then
+    echo "[preview] Creating new ComfyUI-Manager config.ini at: $cfg"
+    cat >"$cfg" <<'INI'
+[default]
+preview_method = auto
+git_exe =
+use_uv = False
+channel_url = https://raw.githubusercontent.com/ltdrdata/ComfyUI-Manager/main
+share_option = all
+bypass_ssl = False
+file_logging = True
+component_policy = workflow
+update_policy = stable-comfyui
+windows_selector_event_loop_policy = False
+model_download_by_agent = False
+downgrade_blacklist =
+security_level = normal
+skip_migration_check = False
+always_lazy_install = False
+network_mode = public
+db_mode = cache
+INI
+  else
+    echo "[preview] config.ini already exists. Updating preview_method → auto…"
+    if ! sed -i 's/^preview_method[[:space:]]*=.*/preview_method = auto/' "$cfg"; then
+      echo "[preview] ⚠️ Failed to update preview_method in $cfg; leaving as-is." >&2
+    fi
+  fi
+
+  echo "[preview] Config file setup complete; default preview method is 'auto'."
+  return 0
+}
+
+copy_workflows_to_comfyui() {
+  local comfy_home="${COMFY_HOME:-/workspace/ComfyUI}"
+  local source_dir="${comfy_home}/workflows"
+  local dest_root="${WORKFLOW_DIR:-${comfy_home}/user/default/workflows}"
+
+  echo "[workflows] Source:      $source_dir"
+  echo "[workflows] Destination: $dest_root"
+
+  # If source doesn’t exist or is empty, nothing to do
+  if [[ ! -d "$source_dir" ]]; then
+    echo "[workflows] No source workflows directory found; skipping."
+    return 0
+  fi
+
+  mkdir -p "$dest_root"
+
+  shopt -s nullglob
+  local moved_any=0
+  for dir in "$source_dir"/*/; do
+    [[ -d "$dir" ]] || continue
+
+    local dir_name dest_dir
+    dir_name="$(basename "$dir")"
+    dest_dir="${dest_root}/${dir_name}"
+
+    if [[ -e "$dest_dir" ]]; then
+      echo "[workflows] Destination already has '$dir_name'. Removing source: $dir"
+      rm -rf -- "$dir"
+    else
+      echo "[workflows] Moving:      $dir → $dest_root"
+      mv -- "$dir" "$dest_root/"
+      moved_any=1
+    fi
+  done
+  shopt -u nullglob
+
+  if (( moved_any == 0 )); then
+    echo "[workflows] No new workflow directories to move."
+  else
+    echo "[workflows] Workflow sync complete."
+  fi
+
+  return 0
+}
+
+snapshot_custom_nodes_state() {
+  local mode="full"
+  local stage=""
+
+  # ----------------------------
+  # Parse arguments:
+  #   snapshot_custom_nodes_state [--summary] [--stage STAGE] [STAGE]
+  # ----------------------------
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --summary)
+        mode="summary"
+        shift
+        ;;
+      --stage)
+        stage="${2:-}"
+        shift 2
+        ;;
+      --stage=*)
+        stage="${1#--stage=}"
+        shift
+        ;;
+      *)
+        # Bare positional becomes the stage/tag if not already set
+        if [[ -z "$stage" ]]; then
+          stage="$1"
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  local root="${CUSTOM_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/custom_nodes}"
+  local logs_root="${COMFY_LOGS:-/workspace/logs}"
+  local out="${logs_root}/custom_nodes.snapshot"
+
+  mkdir -p "$logs_root"
+
+  # Small helper to format the header line
+  local now; now="$(date -Is)"
+  local stage_suffix=""
+  if [[ -n "$stage" ]]; then
+    stage_suffix=" [stage: ${stage}]"
+  fi
+
+  if [[ ! -d "$root" ]]; then
+    local msg="[custom-nodes] Snapshot${stage_suffix}: no custom_nodes dir at ${root}"
+    if [[ "$mode" == "summary" ]]; then
+      echo "$msg" | tee -a "$out"
+    else
+      echo "$msg" | tee -a "$out"
+    fi
+    return 0
+  fi
+
+  # Collect entries once so we can count and iterate
+  local -a dirs=()
+  while IFS= read -r d; do
+    dirs+=("$d")
+  done < <(find "$root" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort)
+
+  local count="${#dirs[@]}"
+
+  if [[ "$mode" == "summary" ]]; then
+    # ----------------------------
+    # Summary mode:
+    #   - One-line summary to screen
+    #   - Full list to the snapshot file only
+    # ----------------------------
+    {
+      echo "============================================================"
+      echo "  Custom Nodes Snapshot @ ${now}${stage_suffix}"
+      echo "  Root: ${root}"
+      echo "  Total nodes: ${count}"
+      echo "============================================================"
+      for d in "${dirs[@]}"; do
+        printf '%s\n' "$(basename "$d")"
+      done
+      echo
+    } >> "$out"
+
+    echo "[custom-nodes] Snapshot${stage_suffix}: ${count} node(s); details: ${out}"
+  else
+    # ----------------------------
+    # Full mode:
+    #   - Detailed git info to BOTH screen and file (via tee)
+    # ----------------------------
+    {
+      echo "============================================================"
+      echo "  Custom Nodes Snapshot @ ${now}${stage_suffix}"
+      echo "  Root: ${root}"
+      echo "============================================================"
+      if [[ "$count" -eq 0 ]]; then
+        echo "(no subdirectories under custom_nodes)"
+      else
+        for d in "${dirs[@]}"; do
+          local name sha branch remote
+          name="$(basename "$d")"
+
+          if [[ -d "$d/.git" ]] && command -v git >/dev/null 2>&1; then
+            sha="$(git -C "$d" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+            branch="$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
+            remote="$(git -C "$d" config --get remote.origin.url 2>/dev/null || echo "unknown")"
+            printf '%-32s  %s  (%s)  [%s]\n' "$name" "$sha" "$branch" "$remote"
+          else
+            printf '%-32s  %s\n' "$name" "<not a git repo>"
+          fi
+        done
+      fi
+      echo
+    } | tee -a "$out"
+  fi
+}
+
+civitai_token_status() {
+  local token="${CIVITAI_TOKEN:-}"
+
+  # 1) Not set
+  if [[ -z "$token" ]]; then
+    printf '%s' "❌ not set"
+    return 1
+  fi
+
+  # 2) Common placeholder patterns
+  if [[ "$token" == "token_here" || "$token" == "CIVITAI_TOKEN" ]]; then
+    printf '%s' "⚠️ placeholder value"
+    return 1
+  fi
+
+  # 3) Ensure curl exists
+  if ! command -v curl >/dev/null 2>&1; then
+    printf '%s' "⚠️ set (curl missing, can't validate)"
+    return 0
+  fi
+
+  # 4) Validate against Civitai
+  local code
+  code="$(curl -fsS --max-time 5 \
+           -o /dev/null -w '%{http_code}' \
+           -H "Authorization: Bearer $token" \
+           "https://civitai.com/api/v1/auth/me" \
+           2>/dev/null || echo "000")"
+
+  case "$code" in
+    200)
+      printf '%s' "✅ valid (auth/me OK)"
+      return 0
+      ;;
+    401)
+      printf '%s' "❌ invalid token (401)"
+      return 1
+      ;;
+    403)
+      printf '%s' "❌ forbidden (403 — wrong scopes?)"
+      return 1
+      ;;
+    000)
+      printf '%s' "⚠️ set (network error)"
+      return 1
+      ;;
+    *)
+      printf '%s' "⚠️ unexpected HTTP $code"
+      return 1
+      ;;
+  esac
+}
+
+# Returns a human-readable HF token status on stdout
+hf_token_status() {
+  # Safe with `set -u`
+  local token="${HF_TOKEN:-}"
+
+  # 1) Not set at all
+  if [[ -z "$token" ]]; then
+    printf '%s' "❌ not set"
+    return 1
+  fi
+
+  # 2) GUI default / placeholder
+  if [[ "$token" == "token_here" ]]; then
+    printf '%s' "⚠️ placeholder (token_here)"
+    return 1
+  fi
+
+  # 3) Can't validate if curl is missing
+  if ! command -v curl >/dev/null 2>&1; then
+    printf '%s' "⚠️ set (curl missing, can't validate)"
+    return 0
+  fi
+
+  # 4) Call HF whoami-v2 to validate
+  local code
+  code="$(curl -fsS --max-time 5 \
+           -o /dev/null -w '%{http_code}' \
+           -H "Authorization: Bearer $token" \
+           "https://huggingface.co/api/whoami-v2" 2>/dev/null || echo "000")"
+
+  case "$code" in
+    200)
+      printf '%s' "✅ valid (whoami-v2 OK)"
+      return 0
+      ;;
+    401|403)
+      printf '%s' "❌ invalid / unauthorized"
+      return 1
+      ;;
+    000)
+      printf '%s' "⚠️ set (network error talking to HF)"
+      return 1
+      ;;
+    *)
+      printf '%s' "⚠️ set (whoami-v2 HTTP $code)"
+      return 1
+      ;;
+  esac
+}
+
+setup_ssh() {
+  local pub="${SSH_PUBLIC_KEY:-${PUBLIC_KEY:-}}"
+
+  if [[ -z "$pub" ]]; then
+    echo "[ssh] No SSH_PUBLIC_KEY/PUBLIC_KEY set; skipping sshd."
+    return 0
+  fi
+
+  if ! command -v sshd >/dev/null 2>&1; then
+    echo "[ssh] openssh-server not installed in image; cannot start sshd."
+    return 0
+  fi
+
+  echo "[ssh] Setting up sshd with provided public key..."
+
+  mkdir -p /var/run/sshd
+  mkdir -p /root/.ssh
+
+  # Force ownership and perms on the full path sshd checks
+  chown root:root /root || true
+  chmod 700 /root || true
+
+  chown root:root /root/.ssh || true
+  chmod 700 /root/.ssh || true
+
+  printf '%s\n' "$pub" > /root/.ssh/authorized_keys
+  chown root:root /root/.ssh/authorized_keys || true
+  chmod 600 /root/.ssh/authorized_keys || true
+
+  # Also fix parent dirs in case the image is odd
+  chown root:root /var /var/run /var/run/sshd 2>/dev/null || true
+  chmod 755 /var /var/run /var/run/sshd 2>/dev/null || true
+
+  if [[ -f /etc/ssh/sshd_config ]]; then
+    sed -ri 's/^#?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
+    sed -ri 's/^#?PermitRootLogin .*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+
+    if grep -q '^#\?PubkeyAuthentication' /etc/ssh/sshd_config; then
+      sed -ri 's/^#?PubkeyAuthentication .*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+    else
+      printf '\nPubkeyAuthentication yes\n' >> /etc/ssh/sshd_config
+    fi
+
+    if grep -q '^#\?AuthorizedKeysFile' /etc/ssh/sshd_config; then
+      sed -ri 's|^#?AuthorizedKeysFile .*|AuthorizedKeysFile .ssh/authorized_keys|' /etc/ssh/sshd_config
+    else
+      printf '\nAuthorizedKeysFile .ssh/authorized_keys\n' >> /etc/ssh/sshd_config
+    fi
+  fi
+
+  if [[ ! -f /etc/ssh/ssh_host_ed25519_key && ! -f /etc/ssh/ssh_host_rsa_key ]]; then
+    echo "[ssh] Generating SSH host keys..."
+    ssh-keygen -A
+  fi
+
+  /usr/sbin/sshd -D -e &
+  echo
+  echo "[ssh] sshd started."
+  sleep 5
+}
+
+# Pretty section header for logs
+# Usage:
+#   section 1 "bootstrap + env"
+#   section 9 "install extra custom nodes"
+section() {
+  local num="${1:-?}"; shift || true
+  local msg="$*"
+
+  # Column width: use $COLUMNS if set, otherwise 120; clamp to >= 80
+  local cols="${COLUMNS:-120}"
+  (( cols < 80 )) && cols=80
+
+  # Build a border line like:  ------------------------------------------------------------
+  local border
+  border="$(printf '%*s' "$cols" '' | tr ' ' '-')"
+
+  # Uppercase the message if present
+  if [[ -n "$msg" ]]; then
+    msg="${msg^^}"
+  fi
+
+  local ts
+  ts="$(date -Is 2>/dev/null || date)"
+
+  echo
+  echo "$border"
+  if [[ -n "$msg" ]]; then
+    printf "# SECTION %s [%s]\n" "$num" "$ts"
+    printf "#   %s\n" "$msg"
+  else
+    printf "# SECTION %s [%s]\n" "$num" "$ts"
+  fi
+  echo "$border"
+  echo
+}
+
+# -------------------------------------------------------------------------------------
+#
+# AI Training environment setup helpers
+#
+#
+# -------------------------------------------------------------------------------------
+
+tlog() { printf '[start.training] %s\n' "$*"; }
+die() { tlog "ERROR: $*"; exit 1; }
+
+ensure_training_dirs() {
+  mkdir -p \
+    "${TRAINING_LOGS:?}"
+
+  mkdir -p \
+    "${TRAINING_MODELS_DIR:?}" \
+    "${TRAINING_DIFFUSION_MODELS_DIR:?}" \
+    "${TRAINING_CKPT_MODELS_DIR:?}" \
+    "${TRAINING_CHECKPOINT_MODELS_DIR:?}" \
+    "${TRAINING_TRANSFORMER_MODELS_DIR:?}" \
+    "${TRAINING_OUTPUT_DIR:?}"
+
+}
+
+ensure_workspace() {
+  if [ ! -d /workspace ]; then
+    mkdir -p /workspace
+  fi
+}
+
+# ------------------------------------------------------------------
+#  Pretty (sub) section logger
+# ------------------------------------------------------------------
+sub_section() {
+  local num="${1:-?}"
+  shift || true
+  local msg="${*}"
+  local title="SUB-SECTION ${num}"
+  [ -n "$msg" ] && title="${title}: ${msg}"
+
+  local line
+  line="$(printf '%*s' 80 '' | tr ' ' '-')"
+
+  printf '\n  %s\n  #\n  # %s\n  #\n  %s\n\n' "$line" "$title" "$line"
+}
+
+# --------------------------------------------------
+# Pretty boot banner for Vast / RunPod logs
+# --------------------------------------------------
+on_start_training_banner() {
+  local logfile="${TRAINING_LOGS:-/workspace/training_logs}/startup_banner.log"
+  mkdir -p "$(dirname "$logfile")"
+
+  # --- Gather info safely ---
+  local pyver torchver cudaver gpustr arch
+  local gpu_cc gpu_label
+
+  pyver="$($PY -c 'import sys; print(".".join(map(str, sys.version_info[:3])))' 2>/dev/null || echo "?")"
+  torchver="$($PY -c 'import torch; print(torch.__version__)' 2>/dev/null || echo "not-importable")"
+  cudaver="$($PY -c 'import torch; print(torch.version.cuda)' 2>/dev/null || echo "?")"
+
+  gpustr="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 || echo "no-gpu")"
+  gpu_cc="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || echo "?")"
+  arch="${gpu_cc//./}"   # "12.0" → "120"
+
+  # --- ASCII GPU header ---
+  gpu_label="GPU: ${gpustr}"
+  if [[ -n "$arch" && "$arch" != "?" ]]; then
+    gpu_label+="  (sm_${arch})"
+  fi
+  local width=${#gpu_label}
+  local border
+  border="$(printf '─%.0s' $(seq 1 "$width"))"
+
+  {
+    echo ""
+    echo "┌─${border}─┐"
+    printf "│ %-${width}s │\n" "$gpu_label"
+    echo "└─${border}─┘"
+    echo ""
+    echo "============================================================"
+    echo "   🚀 AI TRAINING BOOTSTRAP START (Vast) — $(date -Is)"
+    echo "============================================================"
+    echo " Image Tag:          ${IMAGE_TAG:-unknown}"
+    echo " Build Git SHA:      ${BUILD_GIT_SHA:-unknown}"
+    echo ""
+    echo " Repo Root:          ${REPO_ROOT:-?}"
+    echo " Runtime Directory:  ${SCRIPT_DIR:-?}"
+    echo ""
+    echo " Python:             ${pyver}"
+    echo " Torch:              ${torchver}"
+    echo " CUDA (Torch):       ${cudaver}"
+    echo ""
+    echo " Training Manifest:  ${TRAINING_MODEL_MANIFEST_URL:-unset}"
+    echo ""
+    echo " ENABLE_SAGE         ${ENABLE_SAGE:-false}"
+    echo " ENABLE_TRITON       ${ENABLE_TRITON:-false}"
+    echo ""
+    echo " Log Directory:      ${TRAINING_LOGS:-/workspace/training_logs}"
+    echo "============================================================"
+    echo ""
+  } | tee "$logfile"
+}
+
+clone_or_update_repo() {
+  local url="$1" dir="$2" name
+  name="$(basename "$dir")"
+
+  if [ -d "${dir}/.git" ]; then
+    tlog "Updating ${name} in ${dir}..."
+    git -C "${dir}" pull --rebase --autostash || \
+      tlog "Warning: git pull failed for ${name}; using existing checkout."
+  else
+    tlog "Cloning ${name} from ${url} into ${dir}..."
+    rm -rf "${dir}"
+    git clone --depth 1 "${url}" "${dir}"
+  fi
+}
+
+use_venv() {
+  if [ ! -x "${VENV_DIR}/bin/python" ]; then
+    die "Venv not found at ${VENV_DIR}"
+  fi
+  # strip conda from PATH to make venv clearly in charge
+  local PATH_NO_CONDA
+  PATH_NO_CONDA="$(printf '%s\n' "$PATH" | awk -v c="${CONDA_DIR}/bin" -v RS=':' '
+    {
+      if ($0 != c && $0 != "") {
+        out = (out ? out ":" $0 : $0)
+      }
+    }
+    END { print out }
+  ')"
+  export PATH="${VENV_DIR}/bin:${PATH_NO_CONDA}"
+  export PYTHONNOUSERSITE=1
+  tlog "Using venv at ${VENV_DIR} (python: $(command -v python))"
+}
+
+use_conda_env() {
+  [ -d "${CONDA_DIR}" ] || die "Conda dir not found at ${CONDA_DIR}"
+  export PATH="${CONDA_DIR}/bin:${PATH}"
+
+  local CONDA_SH="${CONDA_DIR}/etc/profile.d/conda.sh"
+  if [ -r "${CONDA_SH}" ]; then
+    # shellcheck disable=SC1090
+    . "${CONDA_SH}"
+  else
+    die "conda.sh not found at ${CONDA_SH}"
+  fi
+
+  if ! conda env list | awk '{print $1}' | grep -qx "${CONDA_ENV_NAME}"; then
+    die "Conda env '${CONDA_ENV_NAME}' not found"
+  fi
+
+  tlog "Activating conda env '${CONDA_ENV_NAME}'..."
+  conda activate "${CONDA_ENV_NAME}"
+  tlog "Conda env active. python: $(command -v python)"
+}
+
+# ---------------------------------------------------------
+# Shared helpers (PIPE / misc)
+# ---------------------------------------------------------
+enable_tcmalloc() {
+  if command -v ldconfig >/dev/null 2>&1; then
+    local lib
+    lib="$(ldconfig -p 2>/dev/null | grep -Po 'libtcmalloc.so.\d' | head -n 1 || true)"
+    if [ -n "${lib}" ]; then
+      export LD_PRELOAD="${lib}"
+      tlog "Using tcmalloc: ${lib}"
+    else
+      tlog "libtcmalloc not found; skipping LD_PRELOAD."
+    fi
+  else
+    tlog "ldconfig not available; skipping tcmalloc detection."
+  fi
+}
+
+setup_network_volume() {
+  local base
+  if [ -d "/workspace" ]; then
+    base="/workspace"
+  else
+    base="/workspace"
+    mkdir -p "${base}"
+  fi
+
+  export NETWORK_VOLUME="${base}/diffusion_pipe_working_folder"
+  mkdir -p "${NETWORK_VOLUME}"
+  echo "cd ${NETWORK_VOLUME}" >> /root/.bashrc
+  tlog "NETWORK_VOLUME=${NETWORK_VOLUME}"
+}
+
+start_jupyter_for_network_volume() {
+  tlog "Starting JupyterLab for NETWORK_VOLUME=${NETWORK_VOLUME}..."
+  jupyter-lab --ip=0.0.0.0 --allow-root --no-browser \
+    --NotebookApp.token='' --NotebookApp.password='' \
+    --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True \
+    --notebook-dir="${NETWORK_VOLUME}" \
+    >/tmp/jupyter.log 2>&1 &
+}
+
+mirror_tree_if_missing() {
+  local src="$1" dst="$2"
+  if [ -d "${dst}" ]; then
+    tlog "Target ${dst} already exists; leaving as-is."
+    return 0
+  fi
+  if [ ! -d "${src}" ]; then
+    tlog "Warning: source ${src} does not exist; cannot mirror."
+    return 0
+  fi
+  tlog "Mirroring ${src} -> ${dst}..."
+  mkdir -p "${dst}"
+  rsync -a "${src}/" "${dst}/"
+}
+
+# ---------------------------------------------------------
+# DIFFUSION-PIPE mode (diffusion-pipe + Wan LoRA training harness)
+# ---------------------------------------------------------
+run_diffusion_pipe_mode() {
+  sub_section 5.1 "Initialize Diffusion Pipe workspace"
+
+  enable_tcmalloc
+  setup_network_volume
+  start_jupyter_for_network_volume
+
+  local DP_BASE_SRC="/opt/diffusion-pipe"
+  local HARNESS_SRC="${TRAINING_SRC_DIR}/diffusion-pipe"
+  local DP_WORK_DIR="${NETWORK_VOLUME}/diffusion_pipe"
+  local HARNESS_WORK_DIR="${NETWORK_VOLUME}/runpod-diffusion_pipe"
+
+  mirror_tree_if_missing "${DP_BASE_SRC}" "${DP_WORK_DIR}"
+  mirror_tree_if_missing "${HARNESS_SRC}" "${HARNESS_WORK_DIR}"
+
+  if [ -d "${HARNESS_WORK_DIR}" ]; then
+    # Move Captioning + Wan2.2 training helpers to root of working volume
+    [ -d "${HARNESS_WORK_DIR}/captioning" ] && \
+      mv "${HARNESS_WORK_DIR}/captioning" "${NETWORK_VOLUME}/"
+    [ -d "${HARNESS_WORK_DIR}/wan2.2_lora_training" ] && \
+      mv "${HARNESS_WORK_DIR}/wan2.2_lora_training" "${NETWORK_VOLUME}/"
+
+    # Optional Qwen helpers
+    if [ "${IS_DEV:-false}" = "true" ] && \
+       [ -d "${HARNESS_WORK_DIR}/qwen_image_musubi_training" ]; then
+      mv "${HARNESS_WORK_DIR}/qwen_image_musubi_training" "${NETWORK_VOLUME}/" 2>/dev/null || true
+    fi
+
+    local TOML_DIR="${HARNESS_WORK_DIR}/toml_files"
+    if [ -d "${TOML_DIR}" ]; then
+      tlog "Patching TOMLs under ${TOML_DIR}..."
+      for toml_file in "${TOML_DIR}"/*.toml; do
+        [ -f "${toml_file}" ] || continue
+        cp "${toml_file}" "${toml_file}.backup"
+
+        sed -i "s|diffusers_path = '/models/|diffusers_path = '${NETWORK_VOLUME}/models/|g" "${toml_file}"
+        sed -i "s|ckpt_path = '/Wan/|ckpt_path = '${NETWORK_VOLUME}/models/Wan/|g" "${toml_file}"
+        sed -i "s|checkpoint_path = '/models/|checkpoint_path = '${NETWORK_VOLUME}/models/|g" "${toml_file}"
+        sed -i "s|output_dir = '/data/|output_dir = '${NETWORK_VOLUME}/training_outputs/|g" "${toml_file}"
+        sed -i "s|#transformer_path = '/models/|#transformer_path = '${NETWORK_VOLUME}/models/|g" "${toml_file}"
+      done
+    fi
+
+    if [ -f "${HARNESS_WORK_DIR}/interactive_start_training.sh" ]; then
+      mv "${HARNESS_WORK_DIR}/interactive_start_training.sh" "${NETWORK_VOLUME}/"
+      chmod +x "${NETWORK_VOLUME}/interactive_start_training.sh"
+    fi
+
+    if [ -f "${HARNESS_WORK_DIR}/HowToUse.txt" ]; then
+      mv "${HARNESS_WORK_DIR}/HowToUse.txt" "${NETWORK_VOLUME}/"
+    fi
+
+    if [ -f "${HARNESS_WORK_DIR}/send_lora.sh" ]; then
+      chmod +x "${HARNESS_WORK_DIR}/send_lora.sh"
+      cp "${HARNESS_WORK_DIR}/send_lora.sh" /usr/local/bin/
+    fi
+
+    if [ -d "${DP_WORK_DIR}/examples" ]; then
+      rm -rf "${DP_WORK_DIR}/examples"/*
+      if [ -f "${HARNESS_WORK_DIR}/dataset.toml" ]; then
+        mv "${HARNESS_WORK_DIR}/dataset.toml" "${DP_WORK_DIR}/examples/"
+      fi
+    fi
+  fi
+
+  mkdir -p "${NETWORK_VOLUME}/image_dataset_here" \
+           "${NETWORK_VOLUME}/video_dataset_here" \
+           "${NETWORK_VOLUME}/logs"
+
+  if [ -f "${DP_WORK_DIR}/examples/dataset.toml" ]; then
+    sed -i "s|path = '/home/anon/data/images/grayscale'|path = '${NETWORK_VOLUME}/image_dataset_here'|" \
+      "${DP_WORK_DIR}/examples/dataset.toml"
+  fi
+
+  # Triton optional
+  if [ "${ENABLE_TRITON:-false}" = "true" ]; then
+    tlog "Installing Triton..."
+    pip install triton || tlog "Warning: Triton install failed."
+  fi
+
+  sub_section 5.2 "Finalize Diffusion Pipe Python stack"
+
+  tlog "Ensuring torch 2.7.1/cu128 for diffusion-pipe..."
+  pip install "torch==2.7.1" "torchvision==0.22.1" "torchaudio==2.7.1" \
+    --index-url https://download.pytorch.org/whl/cu128
+
+  tlog "Upgrading transformers..."
+  pip install -U transformers
+
+  # We intentionally do NOT upgrade huggingface_hub here because
+  # transformers 4.57.3 requires huggingface-hub<1.0.
+  # The version from requirements.txt (e.g. 0.36.x) is fine.
+  #tlog "Ensuring huggingface_hub[cli]..."
+  #pip install --upgrade "huggingface_hub[cli]"
+
+  tlog "Upgrading peft (>=0.17.0)..."
+  pip install --upgrade "peft>=0.17.0"
+
+  tlog "Updating diffusers from GitHub..."
+  pip uninstall -y diffusers || true
+  pip install "git+https://github.com/huggingface/diffusers"
+
+  sub_section 5.3 "Diffusion-pipe ready"
+  tlog "✅ JupyterLab (port 8888) + Diffusion Pipe workspace ready at ${NETWORK_VOLUME}"
+  sleep infinity
+}
+
+# ---------------------------------------------------------
+# AI-Toolkit mode (TOOLKIT)
+# ---------------------------------------------------------
+run_ai_toolkit_mode() {
+  sub_section 5.1 "Launch AI-Toolkit UI"
+
+  # venv already active
+  cd /opt/ai-toolkit/ui
+
+  tlog "Starting AI-Toolkit UI on port ${AI_TOOLKIT_PORT}..."
+  tlog "AI_TOOLKIT_AUTH=${AI_TOOLKIT_AUTH:-<not set>}"
+
+  # AI_TOOLKIT_AUTH is passed from Vast secrets
+  AI_TOOLKIT_AUTH="${AI_TOOLKIT_AUTH:-}" PORT="${AI_TOOLKIT_PORT}" \
+    npm run build_and_start
+}
+
+# ---------------------------------------------------------
+# MUSUBI GUI mode (MUSUBI_GUI)
+# ---------------------------------------------------------
+run_musubi_gui_mode() {
+  sub_section 5.1 "Launch SECourses Musubi trainer and GUI"
+
+  # Optional Sage prebuild
+  if [ "${ENABLE_SAGE:-false}" = "true" ]; then
+    if declare -f ensure_sage_from_bundle_or_build >/dev/null 2>&1; then
+      tlog "Ensuring SageAttention..."
+      ensure_sage_from_bundle_or_build
+    fi
+  fi
+
+  cd /opt/musubi-tuner_Wan2.2_GUI
+
+  # WANDB_TOKEN can be passed via env; we just expose it to the process
+  tlog "Starting Musubi Wan 2.2 GUI (local desktop app; no HTTP port)."
+  exec python musubi_tuner_gui.py
+}
+
+# ---------------------------------------------------------
+# MUSUBI CLI mode (MUSUBI)
+# ---------------------------------------------------------
+run_musubi_cli_mode() {
+  sub_section 5.1 "Prepare generic MUSUBI trainer environment"
+
+  # Optional Sage prebuild
+  if [ "${ENABLE_SAGE:-false}" = "true" ]; then
+    if declare -f ensure_sage_from_bundle_or_build >/dev/null 2>&1; then
+      tlog "Ensuring SageAttention..."
+      ensure_sage_from_bundle_or_build
+    fi
+  fi
+
+  cd /opt/musubi-tuner
+
+  tlog "Generic MUSUBI trainer environment ready."
+  tlog "You can now run musubi-tuner CLI scripts from /opt/musubi-tuner."
+  tlog "Dropping into an interactive shell..."
+  exec bash
+}
+
+hf_hub_install() {
+  # Safe, idempotent installer for huggingface-hub (provides huggingface-cli + python API)
+  local pip_bin="${PIP:-pip}"
+
+  echo "🔍 Checking for huggingface-hub package..."
+
+  if "$pip_bin" show huggingface-hub >/dev/null 2>&1; then
+    echo "✅ huggingface-hub already installed."
+    return 0
+  fi
+
+  echo "⬆️  Installing huggingface-hub..."
+  if "$pip_bin" install -q huggingface-hub >/dev/null 2>&1; then
+    echo "✅ huggingface-hub installed successfully."
+  else
+    echo "❌ ERROR: huggingface-hub installation failed."
+    return 1
+  fi
+}
+
+hf_transfer_install() {
+  local pip_bin="${PIP:-pip}"
+
+  # Ensure base hub tooling exists (needed for hff.py + huggingface-cli)
+  hf_hub_install || return 1
+
+  echo "🔍 Checking for hf_transfer package..."
+
+  if "$pip_bin" show hf_transfer >/dev/null 2>&1; then
+    echo "✅ hf_transfer already installed."
+    return 0
+  fi
+
+  echo "⬆️  Installing hf_transfer (fast HF backend)..."
+  if "$pip_bin" install -q hf_transfer >/dev/null 2>&1; then
+    echo "✅ hf_transfer installed successfully."
+  else
+    echo "⚠️  WARNING: hf_transfer installation failed — proceeding without it."
+    echo "   HuggingFace downloads will still work, but may be slower."
+    return 1
+  fi
+}
+
+hf_transfer_verify() {
+  python3 - <<'EOF'
+import os
+
+print("HF_XET_HIGH_PERFORMANCE:", os.environ.get("HF_XET_HIGH_PERFORMANCE") == "1")
+
+try:
+    import huggingface_hub
+    print("huggingface_hub installed:", getattr(huggingface_hub, "__version__", "?"))
+except Exception as e:
+    print("huggingface_hub NOT installed:", e)
+
+try:
+    from hf_transfer import __version__ as v
+    print("hf_transfer installed:", v)
+except Exception as e:
+    print("hf_transfer NOT installed:", e)
+EOF
+}
+
+hf_transfer_options_report() {
+  echo "=== hf_transfer / hub config ==="
+  env | grep -E '^HF_(HUB_|TOKEN|HUB_ENABLE|HUB_MAX_|SPLIT=|MCONN=|CHUNK=|AUTH_MODE=)' | sort
+  echo "==============================="
+}
+
+hf_transfer_tune() {
+  # Map our custom HF_* knobs into the official hub / hf_transfer env vars.
+
+  # Ensure fast backend is enabled if we want it
+  : "${HF_XET_HIGH_PERFORMANCE:=1}"
+  export HF_XET_HIGH_PERFORMANCE
+
+  # Map your concurrency knobs → hub-style envs
+  # HF_MCONN = parallel connections / workers
+  if [[ -n "${HF_MCONN:-}" ]]; then
+    # Max workers for concurrent operations (downloads/uploads)
+    : "${HF_HUB_MAX_WORKERS:=${HF_MCONN}}"
+    # Some tools also check this for concurrent downloads specifically
+    : "${HF_HUB_MAX_CONCURRENT_DOWNLOADS:=${HF_MCONN}}"
+    export HF_HUB_MAX_WORKERS HF_HUB_MAX_CONCURRENT_DOWNLOADS
+  fi
+
+  # HF_SPLIT = “batch size” / internal split count
+  if [[ -n "${HF_SPLIT:-}" ]]; then
+    # Not an exact 1:1 mapping, but we can use it as a batch size hint.
+    : "${HF_HUB_MAX_BATCH_SIZE:=${HF_SPLIT}}"
+    export HF_HUB_MAX_BATCH_SIZE
+  fi
+
+  # HF_CHUNK = per-chunk size, e.g. 4M, 8M, 16M
+  if [[ -n "${HF_CHUNK:-}" ]]; then
+    # hf_transfer honors HF_HUB_MAX_CHUNK_SIZE (bytes or with suffix like 4MB)
+    # Your HF_CHUNK is already like "4M", which hf_transfer understands as "4MB".
+    : "${HF_HUB_MAX_CHUNK_SIZE:=${HF_CHUNK}}"
+    export HF_HUB_MAX_CHUNK_SIZE
+  fi
+
+  # Auth mode hint – HF CLI doesn’t use this natively, but your own helpers can.
+  # We just normalize it here.
+  case "${HF_AUTH_MODE:-auto}" in
+    auto|always|never)
+      export HF_AUTH_MODE
+      ;;
+    *)
+      # Fallback to auto if someone sets garbage
+      export HF_AUTH_MODE=auto
+      ;;
+  esac
+
+  # Make sure hub sees the token env
+  if [[ -n "${HF_TOKEN:-}" && -z "${HUGGINGFACE_HUB_TOKEN:-}" ]]; then
+    export HUGGINGFACE_HUB_TOKEN="$HF_TOKEN"
+  fi
+
+  hf_transfer_options_report
+
+}
+
+
+# ============================
+# Hugging Face download helpers
+# ============================
+
+# ---- simple colored output helpers ----
+_hf_supports_color() {
+  [[ -t 1 ]] && [[ "${NO_COLOR:-}" != "1" ]] && [[ "${HFGET_NO_COLOR:-}" != "1" ]]
+}
+
+_hf_echo_color() {
+  local level="$1"; shift
+  local msg="$*"
+  local color=""
+  if _hf_supports_color; then
+    case "$level" in
+      info)   color="\033[1;34m" ;;  # bold blue
+      warn)   color="\033[1;33m" ;;  # bold yellow
+      err)    color="\033[1;31m" ;;  # bold red
+      ok)     color="\033[1;32m" ;;  # bold green
+      header) color="\033[1;35m" ;;  # bold magenta
+      *)      color="" ;;
+    esac
+    printf "%b%s\033[0m\n" "$color" "$msg"
+  else
+    printf "%s\n" "$msg"
+  fi
+}
+
+_hf_info()   { _hf_echo_color info   "$*"; }
+_hf_warn()   { _hf_echo_color warn   "$*"; }
+_hf_err()    { _hf_echo_color err    "$*"; }
+_hf_ok()     { _hf_echo_color ok     "$*"; }
+_hf_header() { _hf_echo_color header "$*"; }
+
+# ---- optional auth helper ----
+hfauth() {
+  # hfauth [--login]
+  local DO_LOGIN=0
+  if [[ "${1:-}" == "--login" ]]; then
+    DO_LOGIN=1
+    shift
+  fi
+
+  if ! command -v hf >/dev/null 2>&1; then
+    _hf_err "hfauth: 'hf' CLI not found in PATH."
+    return 1
+  fi
+
+  # Export token envs if present
+  if [[ -n "${HF_TOKEN:-}" ]]; then
+    export HF_TOKEN
+    : "${HUGGINGFACE_HUB_TOKEN:=$HF_TOKEN}"
+    export HUGGINGFACE_HUB_TOKEN
+  fi
+
+  # Default username for convenience (can override)
+  : "${HF_USERNAME:=markwelshboyx}"
+  export HF_USERNAME
+
+  # One-time tip about hf_transfer
+  if [[ -z "${HFGET_TIP_SHOWN:-}" && -z "${HF_XET_HIGH_PERFORMANCE:-}" ]]; then
+    _hf_info "hfget tip: set HF_XET_HIGH_PERFORMANCE=1 (and install 'hf_transfer') for faster downloads."
+    HFGET_TIP_SHOWN=1
+  fi
+
+  # Only login if explicitly requested
+  if [[ $DO_LOGIN -eq 1 ]]; then
+    if [[ -z "${HF_TOKEN:-}" ]]; then
+      _hf_err "hfauth: --login requested but HF_TOKEN is not set."
+      return 1
+    fi
+
+    if hf whoami >/dev/null 2>&1; then
+      local who
+      who="$(hf whoami 2>/dev/null || true)"
+      _hf_info "hfauth: already logged in as ${who}."
+      return 0
+    fi
+
+    _hf_info "hfauth: logging in via 'hf login --token'..."
+    if ! hf login --token "$HF_TOKEN" </dev/null >/dev/null 2>&1; then
+      if command -v huggingface-cli >/dev/null 2>&1; then
+        _hf_warn "hfauth: 'hf login' failed, retrying with 'huggingface-cli login'..."
+        if ! huggingface-cli login --token "$HF_TOKEN" </dev/null >/dev/null 2>&1; then
+          _hf_warn "hfauth: login still failed; will rely on env token only."
+        fi
+      else
+        _hf_warn "hfauth: 'hf login' failed and 'huggingface-cli' not found; relying on env token only."
+      fi
+    fi
+  fi
+}
+
+_hfget_flatten_safetensors() {
+  local base="$1" mode="$2"
+  [[ -d "$base" ]] || return 0
+
+  local tail; tail="$(basename "$base")"
+
+  ( cd "$base" || exit 0
+    # Only care about .safetensors
+    find . -type f -name '*.safetensors' -print0 | while IFS= read -r -d '' rel; do
+      rel="${rel#./}"
+      case "$rel" in
+        */*)
+          local dir file new_rel
+          dir="${rel%/*}"
+          file="${rel##*/}"
+
+          case "$mode" in
+            none)
+              continue ;;  # leave as-is
+
+            all)
+              new_rel="$file" ;;  # always flatten
+
+            matching)
+              # Only flatten if last component of dir == basename(base)
+              # e.g. split_files/diffusion_models under .../diffusion_models
+              local last; last="${dir##*/}"
+              if [[ "$last" == "$tail" ]]; then
+                new_rel="$file"      # drop entire dir chain
+              else
+                continue             # keep this subdir layout
+              fi
+              ;;
+          esac
+
+          [[ "$new_rel" == "$rel" ]] && continue
+
+          local src dst
+          src="$rel"
+          dst="$new_rel"
+
+          # Avoid overwriting silently
+          if [[ -e "$dst" && "$src" != "$dst" ]]; then
+            echo "hfget: WARN: target '$base/$dst' already exists, skipping move for '$base/$src'" >&2
+            continue
+          fi
+
+          echo "hfget: flattening '$base/$src' → '$base/$dst'"
+          mkdir -p "$(dirname "$dst")" 2>/dev/null || true
+          mv -f -- "$src" "$dst" || echo "hfget: WARN: failed to move '$src' to '$dst'" >&2
+
+          # Clean up empty dirs up the chain
+          local d="$dir"
+          while [[ "$d" != "." && -n "$d" ]]; do
+            rmdir -p -- "$d" 2>/dev/null || break
+            d="${d%/*}"
+          done
+          ;;
+        *)
+          # already directly under base
+          ;;
+      esac
+    done
+  )
+}
+
+# ---- internal URL parser: fills global-ish locals by name ----
+_hf_parse_url() {
+  # args: url
+  # sets: repo_id, revision, subpath, target_type, kind
+  local HF_URL="$1"
+
+  local url_no_q="${HF_URL%%\?*}"
+  url_no_q="${url_no_q%%\#*}"
+
+  if [[ "$url_no_q" != http://huggingface.co/* && "$url_no_q" != https://huggingface.co/* ]]; then
+    _hf_err "hfget: URL must point to huggingface.co (got: $HF_URL)"
+    return 1
+  fi
+
+  local path="${url_no_q#*://}"
+  path="${path#huggingface.co/}"
+
+  local user repo rest
+  local IFS='/'
+  read -r user repo rest <<<"$path"
+
+  if [[ -z "$user" || -z "$repo" ]]; then
+    _hf_err "hfget: unable to parse user/repo from: $HF_URL"
+    return 1
+  fi
+
+  repo_id="${user}/${repo}"
+  kind=""; revision=""; subpath=""
+
+  if [[ -z "$rest" ]]; then
+    kind="root"
+    revision="main"
+  else
+    local first rest2
+    IFS='/' read -r first rest2 <<<"$rest"
+    case "$first" in
+      blob|tree|resolve)
+        kind="$first"
+        IFS='/' read -r revision subpath <<<"$rest2"
+        ;;
+      *)
+        kind="revpath"
+        revision="$first"
+        subpath="$rest2"
+        ;;
+    esac
+  fi
+
+  revision="${revision:-main}"
+
+  # Decide what the URL represents
+  if [[ "$kind" == "tree" ]]; then
+    target_type="dir"
+  elif [[ "$kind" == "blob" || "$kind" == "resolve" ]]; then
+    target_type="file"
+  elif [[ "$kind" == "revpath" ]]; then
+    if [[ "$subpath" == *.* ]]; then
+      target_type="file"
+    else
+      target_type="dir"
+    fi
+  else
+    target_type="repo-root"
+  fi
+
+  return 0
+}
+
+_hf_normalize_url() {
+  # Takes a possibly-obfuscated URL and returns a clean HF URL if it can.
+  # Handles:
+  #  - YouTube redirect URLs with ?q=...huggingface...
+  #  - Percent-encoded HF URLs (https%3A%2F%2Fhuggingface.co%2F...)
+  #  - Extra trailing &v=... or other junk
+
+  local raw="$1"
+  local py="${PY:-python3}"
+
+  # 1) If it's a YouTube redirect, extract the q= parameter
+  if [[ "$raw" == *"youtube.com/redirect"* && "$raw" == *"q="* ]]; then
+    # Grab q=... up to the next &
+    local q="${raw#*q=}"
+    q="${q%%&*}"
+    raw="$q"
+  fi
+
+  # 2) If it looks like a percent-encoded HF URL, decode it
+  #    (e.g. https%3A%2F%2Fhuggingface.co%2F...)
+  if [[ "$raw" == https%3A%2F%2Fhuggingface.co* || "$raw" == http%3A%2F%2Fhuggingface.co* ]]; then
+    raw="$("$py" - << 'PY' "$raw"
+import sys, urllib.parse as u
+print(u.unquote(sys.argv[1]))
+PY
+)"
+  fi
+
+  # 3) If it now looks like a normal HF URL but still has trailing &junk,
+  #    strip everything after the first '&'.
+  if [[ "$raw" == http*://huggingface.co/* ]]; then
+    raw="${raw%%&*}"
+  fi
+
+  printf '%s\n' "$raw"
+}
+
+# ---- internal worker for a single URL ----
+# ---- internal worker for a single URL ----
+_hfget_one() {
+  # args: url dest_dir DRYRUN NO_CONFIRM only_patterns...
+  local RAW_URL="$1"
+  local DEST_DIR="$2"
+  local DRYRUN="$3"
+  local NO_CONFIRM="$4"
+  shift 4
+  local ONLY_PATTERNS=("$@")
+
+  # Normalize obfuscated / encoded URLs (YouTube redirect, %2F etc.)
+  local HF_URL
+  HF_URL="$(_hf_normalize_url "$RAW_URL")"
+
+  local repo_id revision subpath kind target_type
+
+  if ! _hf_parse_url "$HF_URL"; then
+    return 1
+  fi
+
+  # HEAD check with optional auth
+  local -a auth_args=()
+  if [[ -n "${HF_TOKEN:-}" ]]; then
+    auth_args=(-H "Authorization: Bearer $HF_TOKEN")
+  fi
+
+  _hf_info "HEAD → $HF_URL"
+  if ! curl -fsS -I "${auth_args[@]}" "$HF_URL" >/dev/null 2>&1; then
+    _hf_warn "curl HEAD failed (404/private/other) for $HF_URL."
+    if [[ "$DRYRUN" -eq 0 && "$NO_CONFIRM" -eq 0 ]]; then
+      read -r -p "Continue anyway for this URL? [y/N] " ans
+      [[ "$ans" =~ ^[Yy]$ ]] || return 1
+    fi
+  fi
+
+  _hf_info "Parsed:"
+  _hf_info "  Repo      : $repo_id"
+  _hf_info "  Revision  : $revision"
+  _hf_info "  Local dir : $DEST_DIR"
+
+  local -a cmd
+  if [[ "$target_type" == "file" ]]; then
+    local file_path="$subpath"
+    _hf_info "  Type      : file"
+    _hf_info "  File      : $file_path"
+
+    cmd=(hf download "$repo_id" "$file_path"
+         --revision "$revision"
+         --local-dir "$DEST_DIR")
+  else
+    # dir or repo-root
+    local base_prefix=""
+    if [[ "$target_type" == "dir" && -n "$subpath" ]]; then
+      base_prefix="$subpath/"
+      _hf_info "  Type      : directory"
+      _hf_info "  Subpath   : $subpath"
+    else
+      _hf_info "  Type      : repo-root"
+    fi
+
+    cmd=(hf download "$repo_id"
+         --revision "$revision"
+         --local-dir "$DEST_DIR")
+
+    if [[ "${#ONLY_PATTERNS[@]}" -eq 0 ]]; then
+      # no filter → everything under subpath
+      local default_pat="**"
+      if [[ -n "$base_prefix" ]]; then
+        default_pat="${base_prefix}**"
+      fi
+      _hf_info "  Include   : $default_pat"
+      cmd+=(--include "$default_pat")
+    else
+      _hf_info "  Include patterns:"
+      local pat full
+      for pat in "${ONLY_PATTERNS[@]}"; do
+        if [[ -n "$base_prefix" ]]; then
+          full="${base_prefix}${pat}"
+        else
+          full="$pat"
+        fi
+        _hf_info "    - $full"
+        cmd+=(--include "$full")
+      done
+    fi
+  fi
+
+  if [[ "$DRYRUN" -eq 1 ]]; then
+    cmd+=(--dry-run)
+  fi
+
+  printf "Command:\n  "
+  printf "%q " "${cmd[@]}"
+  printf "\n"
+
+  if [[ "$DRYRUN" -eq 1 ]]; then
+    _hf_info "Dry-run: executing without download."
+    "${cmd[@]}"
+    return $?
+  fi
+
+  if [[ "$NO_CONFIRM" -eq 0 ]]; then
+    read -r -p "Run this command for this URL? [y/N] " ans2
+    [[ "$ans2" =~ ^[Yy]$ ]] || { _hf_warn "Skipped."; return 0; }
+  fi
+
+  "${cmd[@]}"
+  local rc=$?
+
+  if [[ $rc -eq 0 ]]; then
+    _hf_ok "Done for $HF_URL."
+
+    # ---- NEW: apply flattening for *.safetensors under DEST_DIR ----
+    if [[ -n "$DEST_DIR" && -d "$DEST_DIR" ]]; then
+      local fm="${HFGET_FLATTEN_MODE:-matching}"
+      if [[ "$fm" != "none" ]]; then
+        _hfget_flatten_safetensors "$DEST_DIR" "$fm"
+      fi
+    fi
+    # ---------------------------------------------------------------
+  else
+    _hf_err "hf download exited with status $rc for $HF_URL."
+  fi
+
+  return $rc
+}
+
+hfclean() {
+  _hf_normalize_url "$1"
+}
+
+# ---- public entrypoint ----
+hfget() {
+  # hfget [--dry-run] [--login] [--no-confirm] [--dir DIR] [--only GLOB]... [--flatten=MODE] URL [URL...]
+  local DRYRUN=0
+  local FORCE_LOGIN=0
+  local NO_CONFIRM=0
+  local DEST_DIR="."
+  local -a ONLY_PATTERNS=()
+  # flatten modes: matching (default) | none | all
+  local FLATTEN_MODE="matching"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run)
+        DRYRUN=1; shift ;;
+      --login)
+        FORCE_LOGIN=1; shift ;;
+      --no-confirm)
+        NO_CONFIRM=1; shift ;;
+      --dir)
+        DEST_DIR="${2:-.}"; shift 2 ;;
+      --only)
+        ONLY_PATTERNS+=("$2"); shift 2 ;;
+      --flatten=*)
+        FLATTEN_MODE="${1#--flatten=}"
+        case "$FLATTEN_MODE" in
+          matching|none|all) ;;  # ok
+          *)
+            _hf_err "hfget: invalid --flatten mode: $FLATTEN_MODE (use matching|none|all)"
+            return 2 ;;
+        esac
+        shift ;;
+      --help|-h)
+        cat <<EOF
+hfget: download from Hugging Face using 'hf download' by parsing URL(s).
+
+Usage:
+  hfget [options] URL [URL ...]
+
+Options:
+  --dir DIR        Download into DIR (default: .)
+  --only GLOB      Restrict to paths matching GLOB (relative to repo/subdir).
+                   Can be used multiple times. Examples:
+                     --only '*.safetensors'
+                     --only 'Wan22Animate/*.safetensors'
+  --flatten=MODE   Control path flattening for *.safetensors under DIR:
+                     matching (default): flatten only when the last subdir
+                       matches the basename of DIR (e.g. split_files/diffusion_models
+                       under .../diffusion_models).
+                     none              : keep all subdirectories as-is.
+                     all               : drop all subdirs; put *.safetensors
+                       directly under DIR.
+  --dry-run        Pass --dry-run to hf download (no files written).
+  --login          Run hfauth --login first (hf login using HF_TOKEN).
+  --no-confirm     Do not prompt before running hf download.
+  --help           Show this help.
+
+Env:
+  HF_TOKEN                 Token for private repos (also used by curl HEAD).
+  HUGGINGFACE_HUB_TOKEN    Will default to HF_TOKEN if unset.
+  HF_USERNAME              Logical username (default: markwelshboyx).
+  HF_XET_HIGH_PERFORMANCE=1 enables faster Rust backend if 'hf_transfer' is installed.
+  NO_COLOR / HFGET_NO_COLOR disable colored output.
+  HFGET_FLATTEN_MODE       Flatten mode override (matching|none|all).
+EOF
+        return 0
+        ;;
+      --)
+        shift; break ;;
+      *)
+        break ;;
+    esac
+  done
+
+  if [[ $# -lt 1 ]]; then
+    _hf_err "hfget: no URLs provided."
+    return 1
+  fi
+
+  if ! command -v hf >/dev/null 2>&1; then
+    _hf_err "hfget: 'hf' CLI not found in PATH."
+    return 1
+  fi
+
+  # allow env override if set
+  if [[ -n "${HFGET_FLATTEN_MODE:-}" ]]; then
+    FLATTEN_MODE="$HFGET_FLATTEN_MODE"
+  fi
+  export HFGET_FLATTEN_MODE="$FLATTEN_MODE"
+
+  # auth setup (no-login by default)
+  if [[ $FORCE_LOGIN -eq 1 ]]; then
+    hfauth --login || return $?
+  else
+    hfauth >/dev/null 2>&1 || true
+  fi
+
+  mkdir -p "$DEST_DIR" 2>/dev/null || true
+
+  local url rc=0 this_rc
+  for url in "$@"; do
+    _hf_header "hfget → $url"
+    _hfget_one "$url" "$DEST_DIR" "$DRYRUN" "$NO_CONFIRM" "${ONLY_PATTERNS[@]}" || this_rc=$?
+    # keep last non-zero rc, but keep going
+    if [[ "${this_rc:-0}" -ne 0 ]]; then
+      rc=$this_rc
+    fi
+  done
+  return "$rc"
+}
+
+# Uses your COMFY_HOME / model dirs to decide where to put a file
+_hf_class_dest() {
+  # Echoes: "<category>|<dest_dir>"
+  # category: diffusion_models, loras, vae, text_encoders, clip_vision, skip
+
+  local url="$1"
+  local lower="${url,,}"
+
+  # Base comfy path
+  local comfy="${COMFY_HOME:-/workspace/ComfyUI}"
+
+  # Resolve model dirs from your env, with sane fallbacks
+  local diff_dir="${DIFFUSION_MODELS_DIR:-${CHECKPOINTS_DIR:-$comfy/models/diffusion_models}}"
+  local lora_dir="${LORAS_DIR:-$comfy/models/loras}"
+  local vae_dir="${VAE_DIR:-$comfy/models/vae}"
+  local te_dir="${TEXT_ENCODERS_DIR:-$comfy/models/text_encoders}"
+  local clipv_dir="${CLIP_VISION_DIR:-$comfy/models/clip_vision}"
+
+  # Non-safetensors URLs (e.g. model card root) → skip
+  if [[ "$lower" != *".safetensors" ]]; then
+    echo "skip|"
+    return 0
+  fi
+
+  # --- Special cases for Flux / Wan naming ---
+
+  # Flux text encoders: flux_text_encoders repo
+  if [[ "$lower" == *"flux_text_encoders"* ]]; then
+    echo "text_encoders|$te_dir"
+    return 0
+  fi
+
+  # Flux diffusion weights
+  if [[ "$lower" == *"flux.1-krea-dev"* || "$lower" == *"flux1-krea-dev"* ]]; then
+    # e.g. .../split_files/diffusion_models/flux1-krea-dev_fp8_scaled.safetensors
+    echo "diffusion_models|$diff_dir"
+    return 0
+  fi
+
+  # Wan VAE (specific naming)
+  if [[ "$lower" == *"/wanvideo_comfy/resolve/main/"* && "$lower" == *"vae"* ]]; then
+    echo "vae|$vae_dir"
+    return 0
+  fi
+
+  # --- General rules ---
+
+  # LoRAs
+  if [[ "$lower" == *"/loras/"* || "$lower" == *"lora_"* || "$lower" == *"lora."* || "$lower" == *"lora-"* ]]; then
+    echo "loras|$lora_dir"
+    return 0
+  fi
+
+  # VAE
+  if [[ "$lower" == *"/vae/"* || "$lower" == *"vae.safetensors"* || "$lower" == *"/ae.safetensors"* || "$lower" == *"sdxl_vae"* ]]; then
+    echo "vae|$vae_dir"
+    return 0
+  fi
+
+  # clip_vision
+  if [[ "$lower" == *"/clip_vision/"* || "$lower" == *"clip_vision_"* || "$lower" == *"clip-vision"* ]]; then
+    echo "clip_vision|$clipv_dir"
+    return 0
+  fi
+
+  # text_encoders
+  if [[ "$lower" == *"/text_encoders/"* || "$lower" == *"text_encoder"* || "$lower" == *"umt5"* || "$lower" == *"t5xxl"* || "$lower" == *"t5_xl"* ]]; then
+    echo "text_encoders|$te_dir"
+    return 0
+  fi
+
+  # Default: diffusion models
+  echo "diffusion_models|$diff_dir"
+}
+
+hfget_links() {
+  # hfget_links [--dry-run] [--login] [--no-confirm] [--print-only] [--base DIR] [FILE|-]
+  #
+  # Reads a huggingface_links.txt-style list and calls hfget
+  # with an inferred --dir for each URL, OR prints commands.
+
+  local DRYRUN=0
+  local FORCE_LOGIN=0
+  local NO_CONFIRM=0
+  local PRINT_ONLY=0
+
+  # Base path: use your COMFY_HOME-based layouts
+  local comfy="${COMFY_HOME:-/workspace/ComfyUI}"
+  local BASE_MODELS_DIR="${MODELS_DIR:-$comfy/models}"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run)
+        DRYRUN=1; shift ;;
+      --login)
+        FORCE_LOGIN=1; shift ;;
+      --no-confirm)
+        NO_CONFIRM=1; shift ;;
+      --print-only)
+        PRINT_ONLY=1; shift ;;
+      --base)
+        BASE_MODELS_DIR="$2"; shift 2 ;;
+      --help|-h)
+        cat <<EOF
+hfget_links: download a list of HuggingFace URLs (like huggingface_links.txt)
+and place each into an appropriate ComfyUI models subdirectory.
+
+Usage:
+  hfget_links [options] FILE
+  hfget_links [options] -   # read from stdin
+
+Options:
+  --base DIR      Base models dir (default: \$MODELS_DIR or \$COMFY_HOME/models)
+  --dry-run       Pass --dry-run to hfget (no files written).
+  --login         Run hfauth --login first (hf login using HF_TOKEN).
+  --no-confirm    Pass --no-confirm to hfget (no prompts).
+  --print-only    Do not run hfget, just print the hfget commands that would run.
+EOF
+        return 0
+        ;;
+      --)
+        shift; break ;;
+      *)
+        break ;;
+    esac
+  done
+
+  local SRC="${1:--}"
+
+  if [[ "$SRC" != "-" && ! -f "$SRC" ]]; then
+    echo "hfget_links: file not found: $SRC" >&2
+    return 1
+  fi
+
+  # Optional login/auth bootstrap
+  if [[ $FORCE_LOGIN -eq 1 ]]; then
+    hfauth --login || return $?
+  else
+    hfauth >/dev/null 2>&1 || true
+  fi
+
+  mkdir -p "$BASE_MODELS_DIR" 2>/dev/null || true
+
+  # Build common hfget flags
+  local -a common_flags=()
+  [[ $DRYRUN -eq 1 ]]     && common_flags+=(--dry-run)
+  [[ $NO_CONFIRM -eq 1 ]] && common_flags+=(--no-confirm)
+
+  local line
+  if [[ "$SRC" == "-" ]]; then
+    # Read from stdin
+    while IFS= read -r line; do
+      _hf_handle_links_line "$line" "$BASE_MODELS_DIR" "$PRINT_ONLY" "${common_flags[@]}"
+    done
+  else
+    # Read from file
+    while IFS= read -r line; do
+      _hf_handle_links_line "$line" "$BASE_MODELS_DIR" "$PRINT_ONLY" "${common_flags[@]}"
+    done < "$SRC"
+  fi
+}
+
+_hf_handle_links_line() {
+  local line="$1"
+  local BASE_MODELS_DIR="$2"
+  local PRINT_ONLY="$3"
+  shift 3
+  local -a common_flags=("$@")
+
+  # Trim whitespace
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
+
+  # Skip blanks and comments
+  [[ -z "$line" ]] && return 0
+  [[ "$line" == \#* ]] && return 0
+
+  # Must look like some kind of URL
+  if [[ "$line" != http*://* ]]; then
+    echo "hfget_links: skipping non-URL line: $line" >&2
+    return 0
+  fi
+
+  # Normalize obfuscated / encoded URLs (handles YouTube redirect/%2F etc.)
+  local HF_URL
+  HF_URL="$(_hf_normalize_url "$line")"
+
+  # Classify into category + concrete dest dir
+  local cat dest
+  IFS='|' read -r cat dest <<< "$(_hf_class_dest "$HF_URL")"
+
+  if [[ "$cat" == "skip" || -z "$dest" ]]; then
+    echo "hfget_links: skipping non-file URL: $HF_URL"
+    return 0
+  fi
+
+  mkdir -p "$dest" 2>/dev/null || true
+
+  echo ""
+  echo "=== hfget_links ==="
+  echo "URL      : $HF_URL"
+  echo "Category : $cat"
+  echo "Dest dir : $dest"
+
+  # Build the hfget command we would run
+  local -a cmd=(hfget "${common_flags[@]}" --dir "$dest" "$HF_URL")
+
+  if [[ "$PRINT_ONLY" -eq 1 ]]; then
+    # Print as a shell-usable command line
+    printf "CMD      : "
+    printf "%q " "${cmd[@]}"
+    printf "\n"
+    return 0
+  fi
+
+  # Actually run hfget
+  "${cmd[@]}"
+}
+
+fix_numeric_stack_if_broken() {
+  local pip_bin="${PIP:-/opt/venv/bin/pip}"
+
+  echo "🔍 Checking NumPy/SciPy health..."
+
+  # Try importing SciPy integrate as a health check
+  if /opt/venv/bin/python - << 'PY' >/dev/null 2>&1
+import numpy, scipy
+from scipy import integrate
+integrate.quad(lambda x: x, 0, 1)
+PY
+  then
+    echo "✅ NumPy/SciPy look healthy."
+    return 0
+  fi
+
+  echo "⚠️  NumPy/SciPy appear broken, attempting repair..."
+
+  # Capture current NumPy version (so we don't accidentally change your numeric stack)
+  local np_ver
+  np_ver="$(/opt/venv/bin/python - << 'PY'
+import numpy
+print(numpy.__version__)
+PY
+)"
+  echo "   Detected NumPy version: ${np_ver}"
+
+  # Reinstall NumPy at the same version (in case headers/ABI got out of sync)
+  echo "   Reinstalling NumPy ${np_ver}..."
+  if ! "$pip_bin" install --no-cache-dir --force-reinstall "numpy==${np_ver}"; then
+    echo "❌ Failed to reinstall NumPy ${np_ver}."
+    return 1
+  fi
+
+  # Now reinstall SciPy so it’s built/linked for this NumPy
+  echo "   Reinstalling SciPy..."
+  if ! "$pip_bin" install --no-cache-dir --force-reinstall "scipy"; then
+    echo "❌ Failed to reinstall SciPy."
+    return 1
+  fi
+
+  # Re-check
+  if /opt/venv/bin/python - << 'PY' >/dev/null 2>&1
+import numpy, scipy
+from scipy import integrate
+integrate.quad(lambda x: x, 0, 1)
+PY
+  then
+    echo "✅ NumPy/SciPy repaired successfully."
+    return 0
+  else
+    echo "❌ NumPy/SciPy still failing after reinstall."
+    return 1
+  fi
+}
+
+_sync_info() { printf 'ℹ️  %s\n' "$*" >&2; }
+_sync_ok()   { printf '✅ %s\n' "$*" >&2; }
+_sync_warn() { printf '⚠️  %s\n' "$*" >&2; }
+_sync_err()  { printf '❌ %s\n' "$*" >&2; }
+
+hf_sync_repo() {
+  # Usage: hf_sync_repo <repo_id> <local_dir> [patterns...]
+  # Example: hf_sync_repo markwelshboyx/MyLoras /cache/.hf_repo/MyLoras '*.safetensors'
+  local repo_id="$1"
+  local local_dir="$2"
+  shift 2
+  local -a patterns=("$@")
+
+  local repo_type="${HF_REPO_TYPE:-model}"     # override if needed
+  local revision="${HF_REVISION:-}"            # optional: branch/tag/commit
+
+  mkdir -p "$local_dir"
+
+  # Prefer hf_transfer if installed; don't fail if not.
+  export HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-1}"
+
+  # Build include args (if no patterns, pull everything)
+  local -a inc=()
+  local p
+  for p in "${patterns[@]}"; do
+    [[ -n "$p" ]] || continue
+    inc+=(--include "$p")
+  done
+
+  # Auth: huggingface-cli respects HF_TOKEN env var.
+  # (No username/password prompts; good for pods)
+  local -a rev_args=()
+  [[ -n "$revision" ]] && rev_args=(--revision "$revision")
+
+  echo ""
+  echo "------------------------------------------------------------------------------------------------------"
+  _sync_info "HF sync: repo=${repo_id} type=${repo_type}${revision:+ rev=${revision}} → ${local_dir}"
+  [[ ${#inc[@]} -gt 0 ]] && _sync_info "Includes: ${patterns[*]}"
+  echo ""
+
+  # This is the "git clone equivalent": download repo snapshot to local_dir
+  # Notes:
+  # - --local-dir-use-symlinks False gives you a real directory tree
+  # - repeated runs update/overwrite as needed (good for "sync on start")
+  huggingface-cli download "$repo_id" \
+    --repo-type "$repo_type" \
+    "${rev_args[@]}" \
+    "${inc[@]}" \
+    --local-dir "$local_dir" \
+    --local-dir-use-symlinks False
+
+  _sync_ok "HF sync complete: $local_dir"
+}
+
+# init_repo [--hf|--git] <repo-id-or-url> <local-dir> [track-patterns...]
+#   --hf  : HF repo-id like "user/repo" (or full https://huggingface.co/... URL)
+#   --git : repo-id like "user/repo" or full https:// / git@ URL (GitHub, etc.)
+#   default mode is --git if neither is provided.
+#
+#   track-patterns (git mode): one or more patterns for git-lfs, e.g.:
+#     '*.safetensors' '*.pth'
+#   Or a single quoted list:
+#     '*.safetensors *.pth'
+#
+# HF mode include/exclude (env vars):
+#   HF_INCLUDE_GLOBS="loras/** extras/**"
+#   HF_EXCLUDE_GLOBS="snapshot/** **/*.tar.gz **/*.manifest.json"
+# Notes:
+#   - HF mode args after <local-dir> are treated as include patterns (like before)
+#   - git clone doesn't support include/exclude; sparse checkout is separate.
+
+init_repo() {
+  local MODE="git"
+
+  # Raise open-files soft limit (Xet/CAS can use lots of FDs)
+  # Uses current hard limit as the ceiling.
+  _raise_nofile_ulimit() {
+    local target="${1:-262144}"
+    local hard
+    hard="$(ulimit -Hn 2>/dev/null || echo "")"
+
+    # If we can read hard limit and it's numeric, cap target to hard
+    if [[ "$hard" =~ ^[0-9]+$ ]] && (( target > hard )); then
+      target="$hard"
+    fi
+
+    ulimit -n "$target" 2>/dev/null || true
+    # Optional: log what we ended up with
+    _sync_info "ulimit -n now: $(ulimit -n 2>/dev/null || echo '?') (hard: ${hard:-?})"
+  }
+
+  case "${1:-}" in
+    --hf)  MODE="hf";  shift ;;
+    --git) MODE="git"; shift ;;
+  esac
+
+  if [[ $# -lt 2 ]]; then
+    _sync_err "init_repo: missing arguments. Usage: init_repo [--hf|--git] <repo-id-or-url> <local-dir> [patterns...]"
+    return 1
+  fi
+
+  local REPO_ID="$1"
+  local LOCAL_DIR="$2"
+  shift 2
+
+  echo ""
+  echo "------------------------------------------------------------------------------------------------------"
+  _sync_info "init_repo (mode=$MODE) for repo: $REPO_ID at local dir: $LOCAL_DIR"
+  echo ""
+
+  # Collect trailing patterns (may be one arg with spaces)
+  local -a SPECS=("$@")
+  if [[ ${#SPECS[@]} -eq 1 && "${SPECS[0]}" == *" "* ]]; then
+    read -r -a SPECS <<<"${SPECS[0]}"
+  fi
+
+  mkdir -p "$(dirname "$LOCAL_DIR")" 2>/dev/null || true
+
+  case "$MODE" in
+    hf)
+      # ------------------------------------------------------------
+      # HF mode = snapshot-style sync (NOT git). Think: "hf clone".
+      # Adds support for includes/excludes via env vars:
+      #   HF_INCLUDE_GLOBS, HF_EXCLUDE_GLOBS
+      # ------------------------------------------------------------
+      if ! command -v huggingface-cli >/dev/null 2>&1 && ! command -v hf >/dev/null 2>&1; then
+        _sync_err "init_repo --hf: huggingface CLI not found. Need 'hf' (preferred) or 'huggingface-cli'."
+        return 1
+      fi
+
+      _raise_nofile_ulimit "${HF_ULIMIT_NOFILE:-262144}"
+
+      mkdir -p "$LOCAL_DIR" || true
+
+      local repo_type="${HF_REPO_TYPE:-model}"   # model|dataset
+      local revision="${HF_REVISION:-}"          # optional: branch/tag/commit
+
+      # Enable hf_transfer if present; do not fail if it's not available.
+      export HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-1}"
+
+      # Prefer 'hf' CLI if present; fallback to 'huggingface-cli'
+      local HF_CMD="hf"
+      command -v hf >/dev/null 2>&1 || HF_CMD="huggingface-cli"
+
+      # ---- Build include specs ----
+      # 1) positional SPECS (keeps your current behavior): treated as includes in HF mode
+      # 2) HF_INCLUDE_GLOBS env: additional includes
+      local -a include_specs=()
+      local s
+
+      for s in "${SPECS[@]}"; do
+        [[ -n "$s" ]] || continue
+        include_specs+=("$s")
+      done
+
+      if [[ -n "${HF_INCLUDE_GLOBS:-}" ]]; then
+        local -a env_inc=()
+        read -r -a env_inc <<<"${HF_INCLUDE_GLOBS}"
+        for s in "${env_inc[@]}"; do
+          [[ -n "$s" ]] || continue
+          include_specs+=("$s")
+        done
+      fi
+
+      # ---- Build exclude specs ----
+      local -a exclude_specs=()
+      if [[ -n "${HF_EXCLUDE_GLOBS:-}" ]]; then
+        local -a env_exc=()
+        read -r -a env_exc <<<"${HF_EXCLUDE_GLOBS}"
+        for s in "${env_exc[@]}"; do
+          [[ -n "$s" ]] || continue
+          exclude_specs+=("$s")
+        done
+      fi
+
+      # Convert to CLI args (older hf expects ONE --include with many values)
+      local -a inc_args=()
+      local -a exc_args=()
+
+      if (( ${#include_specs[@]} > 0 )); then
+        inc_args=(--include "${include_specs[@]}")
+      fi
+      if (( ${#exclude_specs[@]} > 0 )); then
+        exc_args=(--exclude "${exclude_specs[@]}")
+      fi
+
+      local -a rev_args=()
+      [[ -n "$revision" ]] && rev_args=(--revision "$revision")
+
+      _sync_info "HF sync: repo=${REPO_ID} type=${repo_type}${revision:+ rev=${revision}} → ${LOCAL_DIR}"
+      [[ ${#include_specs[@]} -gt 0 ]] && _sync_info "Includes: ${include_specs[*]}"
+      [[ ${#exclude_specs[@]} -gt 0 ]] && _sync_info "Excludes: ${exclude_specs[*]}"
+
+      # "Clone" (download snapshot into LOCAL_DIR). Repeatable/idempotent.
+      "$HF_CMD" download "$REPO_ID" \
+        --repo-type "$repo_type" \
+        "${rev_args[@]}" \
+        "${inc_args[@]}" \
+        "${exc_args[@]}" \
+        --local-dir "$LOCAL_DIR" || {
+          _sync_err "init_repo --hf: download failed for $REPO_ID"
+          return 1
+        }
+
+      _sync_ok "init_repo: ready at $LOCAL_DIR (mode=hf)"
+      return 0
+      ;;
+
+    git)
+      # ------------------------------------------------------------
+      # Git mode (existing behavior)
+      # NOTE: git clone does not support include/exclude globs like hf download.
+      # If you ever want that behavior, you'd use sparse checkout or partial clone.
+      # ------------------------------------------------------------
+      local REMOTE_URL=""
+      local LOG_URL=""
+
+      if [[ "$REPO_ID" == http*://* || "$REPO_ID" == git@*:* ]]; then
+        REMOTE_URL="$REPO_ID"
+      else
+        REMOTE_URL="https://github.com/${REPO_ID}.git"
+      fi
+      LOG_URL="$REMOTE_URL"
+
+      if [[ ! -d "$LOCAL_DIR/.git" ]]; then
+        _sync_info "Cloning git repo: $LOG_URL → $LOCAL_DIR"
+        GIT_TERMINAL_PROMPT=0 git clone "$REMOTE_URL" "$LOCAL_DIR" || {
+          _sync_err "init_repo: failed to clone $LOG_URL"
+          return 1
+        }
+      else
+        _sync_info "init_repo: '$LOCAL_DIR' already a git repo, skipping clone."
+      fi
+
+      # Setup LFS tracking (if requested)
+      if ((${#SPECS[@]} > 0)); then
+        ( cd "$LOCAL_DIR" || exit 1
+
+          if ! command -v git-lfs >/dev/null 2>&1; then
+            _sync_warn "git-lfs not found; cannot add LFS tracking for ${SPECS[*]}"
+            exit 0
+          fi
+
+          git lfs install --local >/dev/null 2>&1 || true
+
+          local spec
+          for spec in "${SPECS[@]}"; do
+            [[ -n "$spec" ]] || continue
+            _sync_info "Adding LFS tracking: $spec"
+            git lfs track "$spec" || _sync_warn "Failed to track '$spec' with git-lfs"
+          done
+
+          if [[ -f .gitattributes ]]; then
+            if ! git diff --cached --quiet -- .gitattributes 2>/dev/null; then
+              git add .gitattributes
+              git commit -m "Add LFS tracking: ${SPECS[*]}" || true
+            fi
+          fi
+        )
+      fi
+
+      _sync_ok "init_repo: ready at $LOCAL_DIR (mode=git)"
+      return 0
+      ;;
+  esac
+}
+
+hf_repo_looks_good() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 1
+
+  # non-empty (guards against "created dir but download failed")
+  find "$dir" -mindepth 1 -maxdepth 1 -print -quit | grep -q . || return 1
+
+  # must have at least one safetensors file somewhere
+  find "$dir" -type f -name '*.safetensors' -print -quit | grep -q . || return 1
+
+  return 0
+}
+
+# sync_to_repo [--hf|--git] <local-dir> <branch> [force]
+#   Just uses git; mode is mainly for logging / future special-cases.
+sync_to_repo() {
+  local MODE="git"
+  case "${1:-}" in
+    --hf)  MODE="hf";  shift ;;
+    --git) MODE="git"; shift ;;
+  esac
+
+  if [[ $# -lt 2 ]]; then
+    _sync_err "sync_to_repo: usage: sync_to_repo [--hf|--git] <local-dir> <branch> [force]"
+    return 1
+  fi
+
+  local REPO_DIR="$1"
+  local BRANCH="$2"
+  local FORCE="${3:-}"
+
+  if [[ ! -d "$REPO_DIR/.git" ]]; then
+    _sync_err "sync_to_repo: '$REPO_DIR' is not a git repo."
+    return 1
+  fi
+
+  ( cd "$REPO_DIR" || exit 1
+
+    _sync_info "Syncing local repo ($MODE) to remote from $REPO_DIR (branch: $BRANCH)"
+
+    if ! git remote get-url origin >/dev/null 2>&1; then
+      _sync_err "sync_to_repo: no 'origin' remote configured."
+      exit 1
+    fi
+
+    git add -A
+
+    if ! git diff --cached --quiet; then
+      local msg="sync: $(date -Iseconds)"
+      _sync_info "Committing changes with message: $msg"
+      git commit -m "$msg"
+    else
+      _sync_info "No local changes to commit."
+    fi
+
+    if ! git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
+      _sync_warn "Branch '$BRANCH' does not exist locally, creating it."
+      git branch "$BRANCH" || exit 1
+    fi
+
+    local push_args=(origin "HEAD:${BRANCH}")
+    if [[ "$FORCE" == "force" || "$FORCE" == "--force" ]]; then
+      _sync_warn "Using --force-with-lease for push."
+      push_args=(--force-with-lease "${push_args[@]}")
+    fi
+
+    if ! git rev-parse --abbrev-ref "${BRANCH}@{upstream}" >/dev/null 2>&1; then
+      _sync_info "Setting upstream of '$BRANCH' to origin/$BRANCH"
+      push_args=(-u "${push_args[@]}")
+    fi
+
+    _sync_info "Running: git push ${push_args[*]}"
+    if git push "${push_args[@]}"; then
+      _sync_ok "sync_to_repo: remote now matches local ($REPO_DIR)."
+    else
+      _sync_err "sync_to_repo: git push failed."
+      exit 1
+    fi
+  )
+}
+
+# sync_from_repo [--hf|--git] <local-dir> <branch>
+sync_from_repo() {
+  local MODE="git"
+  case "${1:-}" in
+    --hf)  MODE="hf";  shift ;;
+    --git) MODE="git"; shift ;;
+  esac
+
+  if [[ $# -lt 2 ]]; then
+    _sync_err "sync_from_repo: usage: sync_from_repo [--hf|--git] <local-dir> <branch>"
+    return 1
+  fi
+
+  local REPO_DIR="$1"
+  local BRANCH="$2"
+
+  if [[ ! -d "$REPO_DIR/.git" ]]; then
+    _sync_err "sync_from_repo: '$REPO_DIR' is not a git repo."
+    return 1
+  fi
+
+  ( cd "$REPO_DIR" || exit 1
+    _sync_info "Pulling from remote ($MODE) into $REPO_DIR (branch: $BRANCH)"
+
+    if ! git remote get-url origin >/dev/null 2>&1; then
+      _sync_err "sync_from_repo: no 'origin' remote configured."
+      exit 1
+    fi
+
+    if ! git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
+      _sync_warn "Local branch '$BRANCH' missing, creating and tracking origin/$BRANCH"
+      git checkout -b "$BRANCH" "origin/$BRANCH" || exit 1
+    else
+      git checkout "$BRANCH" >/dev/null 2>&1 || git switch "$BRANCH" || exit 1
+    fi
+
+    if git pull --ff-only origin "$BRANCH"; then
+      _sync_ok "sync_from_repo: local '$REPO_DIR' is now up to date."
+    else
+      _sync_err "sync_from_repo: git pull failed (maybe history diverged)."
+      exit 1
+    fi
+  )
+}
+
+# rsync_or_symlink_source_to_destination <symlink|rsync> <source_dir> <dest_root>
+#   symlink:
+#       creates dest_root/<basename(source_dir)> -> source_dir
+#   rsync:
+#       normally: rsync source_dir/ -> dest_root/<basename(source_dir)>/
+#       BUT:
+#         if basename(source_dir) == basename(dest_root),
+#         auto-flatten: rsync source_dir/ -> dest_root/ (no extra nesting)
+rsync_or_symlink_source_to_destination() {
+  local MODE="$1"
+  local SRC="$2"
+  local DEST_ROOT="$3"
+
+  echo ""
+  _sync_info "rsync_or_symlink_source_to_destination: mode='$MODE', src='$SRC', dest_root='$DEST_ROOT'"
+  echo ""
+
+  if [[ -z "$MODE" || -z "$SRC" || -z "$DEST_ROOT" ]]; then
+    _sync_err "rsync_or_symlink_source_to_destination: usage: <symlink|rsync> <source_dir> <dest_root>"
+    return 1
+  fi
+
+  if [[ ! -d "$SRC" ]]; then
+    _sync_err "Source directory '$SRC' does not exist."
+    return 1
+  fi
+
+  # Normalize roots
+  DEST_ROOT="${DEST_ROOT%/}"
+  mkdir -p "$DEST_ROOT" 2>/dev/null || true
+
+  local SRC_NAME DEST_ROOT_NAME DEST_PATH
+  SRC_NAME="$(basename "$SRC")"
+  DEST_ROOT_NAME="$(basename "$DEST_ROOT")"
+
+  case "$MODE" in
+    symlink)
+      # Always create dest_root/<basename(src)> for symlink mode
+      DEST_PATH="${DEST_ROOT}/${SRC_NAME}"
+
+      if [[ -L "$DEST_PATH" || -e "$DEST_PATH" ]]; then
+        if [[ -L "$DEST_PATH" && "$(readlink -f "$DEST_PATH")" == "$(readlink -f "$SRC")" ]]; then
+          _sync_info "Symlink already in place: $DEST_PATH -> $SRC"
+          return 0
+        fi
+        _sync_warn "Destination '$DEST_PATH' already exists and is not the expected symlink. Leaving it as-is."
+        return 0
+      fi
+
+      ln -s "$SRC" "$DEST_PATH"
+      _sync_ok "Created symlink: $DEST_PATH -> $SRC"
+      ;;
+
+    rsync)
+      # Auto-flatten if dest_root already "is" that directory by name.
+      if [[ "$SRC_NAME" == "$DEST_ROOT_NAME" ]]; then
+        DEST_PATH="$DEST_ROOT"
+        _sync_info "Auto-flatten: basename(SRC) == basename(DEST_ROOT), rsyncing into '$DEST_PATH/'"
+      else
+        DEST_PATH="${DEST_ROOT}/${SRC_NAME}"
+        _sync_info "Rsyncing into '$DEST_PATH/' (standard mode)"
+      fi
+
+      mkdir -p "$DEST_PATH" 2>/dev/null || true
+
+      # Merge-only: -a = archive, --update = don't overwrite newer dest files
+      rsync -a --update "$SRC"/ "$DEST_PATH"/
+      _sync_ok "Rsync complete: $SRC → $DEST_PATH"
+      ;;
+
+    *)
+      _sync_err "Unknown mode '$MODE' (expected 'symlink' or 'rsync')."
+      return 1
+      ;;
+  esac
+}
+
+confirm_stack_health_or_stop() {
+  set -euo pipefail
+
+  local py="${PY_BIN:-/opt/venv/bin/python}"
+  local pip="${PIP_BIN:-/opt/venv/bin/pip}"
+  local constraints="${CONSTRAINTS_FILE:-/opt/constraints.txt}"
+
+  # Behavior:
+  #   warn (default): do NOT exit; write sentinel + notify; return 0
+  #   exit          : exit non-zero on failure
+  local mode="${STACK_HEALTH_MODE:-warn}"
+
+  # Pod state artifacts (so you can see status over SSH)
+  local state_dir="${STACK_STATE_DIR:-/workspace/logs}"
+  local ok_file="${STACK_OK_FILE:-${state_dir}/stack_ok}"
+  local bad_file="${STACK_BAD_FILE:-${state_dir}/stack_broken}"
+  local report_file="${STACK_REPORT_FILE:-${state_dir}/stack_health_report.txt}"
+
+  mkdir -p "$state_dir"
+
+  # Telegram (optional)
+  local tg_token="${TELEGRAM_BOT_TOKEN:-}"
+  local tg_chat="${TELEGRAM_CHAT_ID:-}"
+  local tg_name="${TELEGRAM_NAME:-comfy-pod}"
+  local tg_enable="${TELEGRAM_ENABLE:-1}"   # set 0 to disable
+  local tg_on_ok="${TELEGRAM_NOTIFY_OK:-0}" # set 1 to notify on success too
+
+  _tg_send() {
+    local msg="${1:-}"
+    [[ "${tg_enable}" == "1" ]] || return 0
+    [[ -n "$tg_token" && -n "$tg_chat" ]] || return 0
+    # Best-effort: never fail the script because Telegram is down.
+    curl -fsS -m 8 \
+      -X POST "https://api.telegram.org/bot${tg_token}/sendMessage" \
+      -d "chat_id=${tg_chat}" \
+      --data-urlencode "text=${msg}" \
+      -d "disable_web_page_preview=true" >/dev/null 2>&1 || true
+  }
+
+  _write_report_header() {
+    {
+      echo "==== stack health report ===="
+      echo "time        : $(date -Is)"
+      echo "mode        : ${mode}"
+      echo "python      : $("$py" -V 2>&1 || true)"
+      echo "py path     : ${py}"
+      echo "pip path    : ${pip}"
+      echo "pip version : $("$py" -m pip --version 2>&1 || true)"
+      echo "constraints : ${constraints}"
+      echo "cwd         : $(pwd)"
+      echo "============================="
+      echo ""
+    } >"$report_file"
+  }
+
+  _append() { printf "%s\n" "$*" >>"$report_file"; }
+
+  _stack_report() {
+    _append "---- stack report (selected imports/versions) ----"
+    "$py" - <<'PY' >>"$report_file" 2>&1 || true
+import importlib, sys
+pkgs = ["numpy","scipy","torch","torchvision","torchaudio","cv2","PIL","einops","kornia","huggingface_hub","safetensors"]
+def v(modname, importname=None):
+    try:
+        m = importlib.import_module(importname or modname)
+        return getattr(m, "__version__", "<no __version__>")
+    except Exception as e:
+        return f"<IMPORT FAILED: {type(e).__name__}: {e}>"
+
+print("sys.executable:", sys.executable)
+print("sys.path[0:8]:", sys.path[:8])
+print("")
+print("versions:")
+print("  numpy         :", v("numpy"))
+print("  scipy         :", v("scipy"))
+print("  torch         :", v("torch"))
+print("  torchvision   :", v("torchvision"))
+print("  torchaudio    :", v("torchaudio"))
+print("  cv2           :", v("cv2","cv2"))
+print("  Pillow        :", v("PIL","PIL"))
+print("  einops        :", v("einops"))
+print("  kornia        :", v("kornia"))
+print("  huggingface_hub:", v("huggingface_hub","huggingface_hub"))
+print("  safetensors   :", v("safetensors"))
+PY
+    _append ""
+    _append "---- pip freeze (core subset) ----"
+    "$pip" freeze 2>/dev/null | egrep -i '^(torch==|torchvision==|torchaudio==|numpy==|scipy==|opencv-python-headless==|pillow==|einops==|kornia==|huggingface-hub==|safetensors==|torchsde==|trampoline==)' >>"$report_file" 2>&1 || true
+    _append ""
+  }
+
+  _pip_metadata_sanity() {
+    _append "---- pip metadata sanity (detect broken dist-info) ----"
+    "$py" - <<'PY' >>"$report_file" 2>&1
+from importlib import metadata
+import re, sys
+
+def check_one(dist_name):
+    d = metadata.distribution(dist_name)
+    name = d.metadata.get("Name", dist_name)
+    mv = d.metadata.get("Metadata-Version", "")
+    # pip show blows up if mv is "" or non-numeric segments
+    parts = (mv or "").split(".")
+    try:
+        _ = tuple(int(p) for p in parts)
+    except Exception as e:
+        return (name, mv, f"BAD Metadata-Version parse: {e}", str(getattr(d, "_path", "")))
+
+    # RECORD should exist for uninstall safety
+    path = getattr(d, "_path", None)
+    rec_ok = True
+    if path:
+        # dist._path is like .../pkg-x.dist-info
+        # RECORD is inside dist-info directory
+        import pathlib
+        p = pathlib.Path(str(path)) / "RECORD"
+        rec_ok = p.exists()
+
+    if not rec_ok:
+        return (name, mv, "MISSING RECORD (uninstall-no-record-file risk)", str(path))
+    return None
+
+targets = [
+  "numpy","scipy","torch","torchvision","torchaudio",
+  "opencv-python-headless","Pillow","einops","kornia",
+  "huggingface-hub","safetensors","torchsde","trampoline",
+]
+
+bad=[]
+for t in targets:
+    try:
+        r = check_one(t)
+        if r: bad.append(r)
+    except metadata.PackageNotFoundError:
+        bad.append((t, "", "NOT INSTALLED", ""))
+
+if bad:
+    print("BAD_DIST_INFO:")
+    for name, mv, why, path in bad:
+        print(f" - {name} | Metadata-Version={mv!r} | {why} | path={path}")
+    raise SystemExit(2)
+else:
+    print("OK: dist-info metadata looks sane for core targets.")
+PY
+  }
+
+  _pin_match_check() {
+    [[ -f "$constraints" ]] || { _append "constraints missing: skipping pin match"; return 0; }
+    _append "---- pin match vs constraints.txt (pinned subset) ----"
+    "$py" - "$constraints" <<'PY' >>"$report_file" 2>&1
+import re, sys
+from importlib import metadata
+
+constraints = sys.argv[1]
+want = {}
+for line in open(constraints, "r", encoding="utf-8", errors="ignore"):
+    s=line.strip()
+    if not s or s.startswith("#") or s.startswith("--"):
+        continue
+    m=re.match(r"^([A-Za-z0-9_.-]+)==(.+)$", s)
+    if m:
+        want[m.group(1).lower().replace("_","-")] = m.group(2).strip()
+
+dist_map = {
+  "opencv-python-headless": "opencv-python-headless",
+  "pillow": "Pillow",
+  "huggingface-hub": "huggingface-hub",
+  "torchsde": "torchsde",
+  "trampoline": "trampoline",
+  "torch": "torch",
+  "torchvision": "torchvision",
+  "torchaudio": "torchaudio",
+  "numpy": "numpy",
+  "scipy": "scipy",
+  "einops": "einops",
+  "kornia": "kornia",
+  "safetensors": "safetensors",
+}
+
+bad=[]
+for key, dist in dist_map.items():
+    if key in want:
+        try:
+            got = metadata.version(dist)
+        except Exception:
+            got = None
+        if got != want[key]:
+            bad.append((dist, want[key], got))
+
+if bad:
+    print("MISMATCHES:")
+    for dist, w, g in bad:
+        print(f" - {dist}: want {w} got {g}")
+    raise SystemExit(2)
+print("OK: installed versions match pinned constraints (for core subset).")
+PY
+  }
+
+  _torch_cuda_sanity() {
+    _append "---- torch cuda sanity ----"
+    "$py" - <<'PY' >>"$report_file" 2>&1
+import torch, os
+print("torch:", torch.__version__)
+print("cuda available:", torch.cuda.is_available())
+print("torch cuda:", torch.version.cuda)
+if torch.cuda.is_available():
+    print("device:", torch.cuda.get_device_name(0))
+    print("capability:", torch.cuda.get_device_capability(0))
+PY
+  }
+
+  _numeric_sanity() {
+    "$py" - <<'PY' >/dev/null 2>&1
+import numpy, scipy
+from scipy import integrate
+integrate.quad(lambda x: x, 0, 1)
+PY
+  }
+
+  _torch_import_sanity() {
+    "$py" - <<'PY' >/dev/null 2>&1
+import torch
+import torchvision, torchaudio
+_ = torch.cuda.is_available()
+PY
+  }
+
+  _mark_ok() {
+    rm -f "$bad_file" || true
+    echo "OK $(date -Is)" >"$ok_file"
+  }
+
+  _mark_bad() {
+    rm -f "$ok_file" || true
+    echo "BROKEN $(date -Is)" >"$bad_file"
+  }
+
+  _fail() {
+    local why="${1:-unknown failure}"
+    _append ""
+    _append "!!! FAILURE: ${why}"
+    _append ""
+    _stack_report || true
+    _torch_cuda_sanity || true
+    _mark_bad
+
+    _tg_send "❌ ${tg_name}: stack BROKEN. Reason: ${why}."
+
+    if [[ "$mode" == "exit" ]]; then
+      echo "❌ Stack unhealthy: ${why}"
+      echo "   Report: ${report_file}"
+      return 1
+    else
+      echo "⚠️  Stack unhealthy (pod kept alive): ${why}"
+      echo "   Report: ${report_file}"
+      return 0
+    fi
+  }
+
+  _ok() {
+    _append ""
+    _append "✅ ALL CHECKS PASSED"
+    _mark_ok
+    if [[ "$tg_on_ok" == "1" ]]; then
+      _tg_send "✅ ${tg_name}: GPU POD PIP stack OK."
+    fi
+    echo "✅ Stack health confirmed."
+    return 0
+  }
+
+  # ------------------- run checks -------------------
+  _write_report_header
+
+  _append "Check 1/5: numeric sanity (numpy/scipy)"
+  if ! _numeric_sanity; then
+    _fail "Numeric sanity failed (numpy/scipy integrate)"
+    return $?
+  fi
+
+  _append "Check 2/5: torch import sanity (torch/vision/audio)"
+  if ! _torch_import_sanity; then
+    _fail "Torch import sanity failed (torch/torchvision/torchaudio)"
+    return $?
+  fi
+
+  _append "Check 3/5: dist-info sanity (pip show / RECORD / Metadata-Version)"
+  if ! _pip_metadata_sanity; then
+    _fail "dist-info metadata/RECORD sanity failed (pip/show/uninstall risk)"
+    return $?
+  fi
+
+  _append "Check 4/5: pinned version match vs constraints (core subset)"
+  if ! _pin_match_check; then
+    _fail "Installed versions mismatch constraints pins"
+    return $?
+  fi
+
+  _append "Check 5/5: torch cuda info (report only)"
+  _torch_cuda_sanity || true
+
+  _ok
+  return $?
+}
+
