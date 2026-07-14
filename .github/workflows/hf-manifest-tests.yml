@@ -1,0 +1,98 @@
+name: HF manifest downloader tests
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - helpers.sh
+      - helpers_hf_manifest.sh
+      - helpers_hf_manifest.d/**
+      - .github/workflows/hf-manifest-tests.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install test tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
+
+      - name: Check shell syntax
+        run: bash -n helpers.sh helpers_hf_manifest.sh helpers_hf_manifest.d/*.sh
+
+      - name: Test background downloads and status
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          helpers_human_bytes() { printf '%s B\n' "$1"; }
+          helpers_have_aria2_rpc() { return 1; }
+          helpers_queue_empty() { return 0; }
+          aria2_download_from_manifest() { echo ARIA2_ORIGINAL; }
+          aria2_show_download_snapshot() { :; }
+          aria2_monitor_progress() { :; }
+
+          test_root="$(mktemp -d)"
+          trap 'rm -rf "$test_root"' EXIT
+          mkdir -p "$test_root/hff/bin"
+          ln -s "$(command -v python3)" "$test_root/hff/bin/python"
+
+          cat > "$test_root/hff/bin/hf" <<'HF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          [[ "$1" == download ]]
+          repo="$2"
+          file="$3"
+          shift 3
+          local_dir=""
+          while (($#)); do
+            case "$1" in
+              --local-dir) local_dir="$2"; shift 2 ;;
+              --revision|--repo-type) shift 2 ;;
+              --quiet) shift ;;
+              *) shift ;;
+            esac
+          done
+          mkdir -p "$local_dir/$(dirname "$file")"
+          : > "$local_dir/$file"
+          for _ in 1 2 3 4; do
+            head -c 16384 /dev/zero >> "$local_dir/$file"
+            sleep 0.15
+          done
+          printf '%s\n' "$local_dir/$file"
+          HF
+          chmod +x "$test_root/hff/bin/hf"
+
+          export HFF_VENV="$test_root/hff"
+          export COMFY_LOGS="$test_root/logs"
+          export download_test=true
+          source ./helpers_hf_manifest.sh
+
+          HF_DOWNLOADER=false aria2_download_from_manifest | grep -q ARIA2_ORIGINAL
+
+          head -c 65536 /dev/zero > "$test_root/source.bin"
+          cat > "$test_root/generic.json" <<JSON
+          {"sections":{"download_test":[{"url":"file://$test_root/source.bin","path":"$test_root/generic-out.bin","bytes":65536}]}}
+          JSON
+          export HF_DOWNLOADER=true
+          hf_download_from_manifest "$test_root/generic.json" "$test_root/generic-state"
+          hf_download_wait "$test_root/generic-state"
+          generic_status="$(hf_download_status_json "$test_root/generic-state")"
+          jq -e '.completed == 1 and .failed == 0 and .percent == 100' <<<"$generic_status" >/dev/null
+          cmp "$test_root/source.bin" "$test_root/generic-out.bin"
+
+          cat > "$test_root/hf.json" <<JSON
+          {"sections":{"download_test":[{"url":"https://huggingface.co/acme/demo/resolve/main/models/fake.bin","path":"$test_root/hf-out.bin","bytes":65536}]}}
+          JSON
+          hf_download_from_manifest "$test_root/hf.json" "$test_root/hf-state"
+          sleep 0.30
+          live_status="$(hf_download_status_json "$test_root/hf-state")"
+          jq -e '.running == 1 and .items[0].observed_bytes > 0 and .items[0].observed_bytes < .items[0].total_bytes' <<<"$live_status" >/dev/null
+          hf_download_wait "$test_root/hf-state"
+          final_status="$(hf_download_status_json "$test_root/hf-state")"
+          jq -e '.completed == 1 and .failed == 0 and .percent == 100' <<<"$final_status" >/dev/null
+          [[ "$(stat -c %s "$test_root/hf-out.bin")" -eq 65536 ]]
