@@ -48,15 +48,20 @@ https://github.com/wallen0322/ComfyUI-Wan22FMLF ComfyUI-Wan22FMLF
 # Other....
 https://github.com/ltdrdata/ComfyUI-Manager comfyui-manager
 
-# LBM Relighting
-https://github.com/shadowcz007/comfyui-mixlab-nodes comfyui-mixlab-nodes
-https://github.com/kijai/ComfyUI-Florence2 ComfyUI-Florence2
-https://github.com/kijai/ComfyUI-IC-Light ComfyUI-IC-Light
-https://github.com/kijai/ComfyUI-LBMWrapper ComfyUI-LBMWrapper
+# Seed VR2
+https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler ComfyUI-SeedVR2_VideoUpscaler
+https://github.com/moonwhaler/comfyui-seedvr2-tilingupscaler comfyui-seedvr2-tilingupscaler
 
 # QWEN Compositor
 https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch ComfyUI-Inpaint-CropAndStitch
 https://github.com/erosDiffusion/ComfyUI-enricos-nodes ComfyUI-enricos-nodes
+
+# SDXL HD Photos (Graam)
+https://github.com/TinyTerra/ComfyUI_tinyterraNodes ComfyUI_tinyterraNodes
+https://github.com/pamparamm/sd-perturbed-attention sd-perturbed-attention
+https://github.com/gseth/ControlAltAI-Nodes ControlAltAI-Nodes 
+https://github.com/vrgamegirl19/comfyui-vrgamedevgirl comfyui-vrgamedevgirl
+https://github.com/brucew4yn3rp/ComfyUI_VintageEffect ComfyUI_VintageEffect
 
 # Background Removers
 https://github.com/john-mnz/ComfyUI-Inspyrenet-Rembg ComfyUI-Inspyrenet-Rembg
@@ -72,6 +77,8 @@ https://github.com/yushan777/ComfyUI-Y7Nodes ComfyUI-Y7Nodes
 
 https://github.com/Miosp/ComfyUI-FBCNN ComfyUI-FBCNN
 
+https://github.com/ChenDarYen/ComfyUI-NAG ComfyUI-NAG
+
 # Krea stuff
 https://github.com/WingeD123/ComfyUI_QwenVL_PromptCaption ComfyUI_QwenVL_PromptCaption
 https://github.com/IuvenisSapiens/ComfyUI_Qwen3-VL-Instruct ComfyUI_Qwen3-VL-Instruct
@@ -79,3 +86,4 @@ https://github.com/lrzjason/ComfyUI-EditUtils ComfyUI-EditUtils
 https://github.com/Azornes/Comfyui-Resolution-Master Comfyui-Resolution-Master.git
 https://github.com/capitan01R/ComfyUI-Krea2T-Enhancer ComfyUI-Krea2T-Enhancer
 https://github.com/Auryg/Krea-2-Two-Stage-Sampler Krea-2-Two-Stage-Sampler
+https://github.com/lbouaraba/comfyui-krea2edit comfyui-krea2edit

@@ -1007,11 +1007,11 @@
     "download_krea2": [
       {
         "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_fp8_scaled.safetensors",
-        "path": "{DIFFUSION_MODELS_DIR}/krea2_turbo_fp8_scaled.safetensors"
+        "path": "{DIFFUSION_MODELS_DIR}/Krea-2/krea2_turbo_fp8_scaled.safetensors"
       },
       {
         "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_raw_bf16.safetensors",
-        "path": "{DIFFUSION_MODELS_DIR}/krea2_raw_bf16.safetensors"
+        "path": "{DIFFUSION_MODELS_DIR}/Krea-2/krea2_raw_bf16.safetensors"
       },
       {
         "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_bf16.safetensors",
@@ -1035,59 +1035,59 @@
       },
       {
         "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/loras/krea2_turbo_lora_rank_64_bf16.safetensors",
-        "path": "{LORAS_DIR}/krea2_turbo_lora_rank_64_bf16.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/krea2_turbo_lora_rank_64_bf16.safetensors"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/KNPV3_1.safetensors",
-        "path": "{LORAS_DIR}/KNPV3_1.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/KNPV3_1.safetensors"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/Krea2-realism-V2.safetensors",
-        "path": "{LORAS_DIR}/Krea2-realism-V2.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/Krea2-realism-V2.safetensors"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/Krea2_HMNSFW_AIO.safetensors",
-        "path": "{LORAS_DIR}/Krea2_HMNSFW_AIO.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/Krea2_HMNSFW_AIO.safetensors"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/krea2filterbypass.safetensors",
-        "path": "{LORAS_DIR}/krea2filterbypass.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/krea2filterbypass.safetensors"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/training/krea2_lora.tar",
-        "path": "{LORAS_DIR}/krea2_lora.tar"
+        "path": "{LORAS_DIR}/Krea-2/krea2_lora.tar"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/snofs_krea_v1_1.safetensors",
-        "path": "{LORAS_DIR}/snofs_krea_v1_1.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/snofs_krea_v1_1.safetensors"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/MysticXXX_KREA2_v2.safetensors",
-        "path": "{LORAS_DIR}/MysticXXX_KREA2_v2.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/MysticXXX_KREA2_v2.safetensors"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/Krea2_0x7_NSFW.safetensors",
-        "path": "{LORAS_DIR}/Krea2_0x7_NSFW.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/Krea2_0x7_NSFW.safetensors"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/PhotoReal_BetterNudes_Krea2.safetensors",
-        "path": "{LORAS_DIR}/PhotoReal_BetterNudes_Krea2.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/PhotoReal_BetterNudes_Krea2.safetensors"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/penis_size_krea2_loraholic.safetensors",
-        "path": "{LORAS_DIR}/penis_size_krea2_loraholic.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/penis_size_krea2_loraholic.safetensors"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/onglass-krea2_v2.safetensors",
-        "path": "{LORAS_DIR}/onglass-krea2_v2.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/onglass-krea2_v2.safetensors"
       },
       {
         "url": "https://huggingface.co/conradlocke/krea2-identity-edit/resolve/main/krea2_identity_edit_v1_1.safetensors",
-        "path": "{LORAS_DIR}/krea2_identity_edit_v1_1.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/krea2_identity_edit_v1_1.safetensors"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/realism_engine_krea2_v3.1.safetensors",
-        "path": "{LORAS_DIR}/realism_engine_krea2_v3.1.safetensors"
+        "path": "{LORAS_DIR}/Krea-2/realism_engine_krea2_v3.1.safetensors"
       }
     ]
   }
