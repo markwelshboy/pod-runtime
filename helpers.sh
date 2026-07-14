@@ -10,6 +10,8 @@
 _helpers_entry_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=/dev/null
 source "${_helpers_entry_dir}/helpers_core.sh"
+# shellcheck source=/dev/null
+source "${_helpers_entry_dir}/helpers_hf_manifest.sh"
 unset _helpers_entry_dir
 
 # build_node: install one custom node and propagate failures to the
