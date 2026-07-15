@@ -79,11 +79,25 @@ https://github.com/Miosp/ComfyUI-FBCNN ComfyUI-FBCNN
 
 https://github.com/ChenDarYen/ComfyUI-NAG ComfyUI-NAG
 
-# Krea stuff
+https://github.com/pixaroma/ComfyUI-Pixaroma ComfyUI-Pixaroma
+
+https://github.com/vantagewithai/VantageLongWanVideo VantageLongWanVideo
+
+https://github.com/Azornes/Comfyui-Resolution-Master Comfyui-Resolution-Master
+
+https://github.com/lrzjason/ComfyUI-EditUtils ComfyUI-EditUtils
+
+# Vantage Nodes
+#https://github.com/vantagewithai/Vantage-Nodes Vantage-Nodes
+#https://github.com/vantagewithai/VantageLongWanVideo VantageLongWanVideo
+
+# Qwen/Krea stuff
 https://github.com/WingeD123/ComfyUI_QwenVL_PromptCaption ComfyUI_QwenVL_PromptCaption
 https://github.com/IuvenisSapiens/ComfyUI_Qwen3-VL-Instruct ComfyUI_Qwen3-VL-Instruct
-https://github.com/lrzjason/ComfyUI-EditUtils ComfyUI-EditUtils
-https://github.com/Azornes/Comfyui-Resolution-Master Comfyui-Resolution-Master.git
 https://github.com/capitan01R/ComfyUI-Krea2T-Enhancer ComfyUI-Krea2T-Enhancer
+https://github.com/ethanfel/ComfyUI-Krea2TextEncoder ComfyUI-Krea2TextEncoder
 https://github.com/Auryg/Krea-2-Two-Stage-Sampler Krea-2-Two-Stage-Sampler
 https://github.com/lbouaraba/comfyui-krea2edit comfyui-krea2edit
+https://github.com/facok/comfyui-krea2-controlnet comfyui-krea2-controlnet
+https://github.com/nova452/ComfyUI-Conditioning-Rebalance ComfyUI-Conditioning-Rebalance
+
