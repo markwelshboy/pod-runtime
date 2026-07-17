@@ -12,9 +12,15 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 _NORMALIZE_RE = re.compile(r"[-_.]+")
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def normalize_name(value: str) -> str:
@@ -31,6 +37,14 @@ def load_manifest(source: str) -> tuple[dict, Path | None]:
 
 def local_name(node: dict) -> str:
     return node.get("local") or Path(node["remote"].rstrip("/")).name.removesuffix(".git")
+
+
+def requested_set_names(requested: str) -> list[str]:
+    result = ["default"]
+    for name in re.split(r"[\s,]+", requested.strip()):
+        if name and name != "default" and name not in result:
+            result.append(name)
+    return result
 
 
 def validate_manifest(manifest: dict) -> None:
@@ -56,6 +70,20 @@ def validate_manifest(manifest: dict) -> None:
         destinations[destination] = node_id
         if "clone_options" in node and not isinstance(node["clone_options"], list):
             raise ValueError(f"{node_id}.clone_options must be an array")
+        pip_config = node.get("pip", {})
+        if not isinstance(pip_config, dict):
+            raise ValueError(f"{node_id}.pip must be an object")
+        if "options" in pip_config and not isinstance(pip_config["options"], list):
+            raise ValueError(f"{node_id}.pip.options must be an array")
+        mode = pip_config.get("constraint_mode", "inherit")
+        if mode not in {"inherit", "extend", "replace", "none"}:
+            raise ValueError(f"{node_id}.pip.constraint_mode is invalid: {mode}")
+        req = pip_config.get("requirements", {})
+        if not isinstance(req, dict):
+            raise ValueError(f"{node_id}.pip.requirements must be an object")
+        for key in ("files", "remove", "add"):
+            if key in req and not isinstance(req[key], list):
+                raise ValueError(f"{node_id}.pip.requirements.{key} must be an array")
 
     for set_name, node_ids in sets.items():
         if not isinstance(node_ids, list):
@@ -66,16 +94,9 @@ def validate_manifest(manifest: dict) -> None:
 
 
 def resolve_nodes(manifest: dict, requested: str) -> list[tuple[str, dict]]:
-    set_names = ["default"]
-    set_names.extend(
-        name
-        for name in re.split(r"[\s,]+", requested.strip())
-        if name and name != "default"
-    )
-
     resolved: list[tuple[str, dict]] = []
     seen: set[str] = set()
-    for set_name in set_names:
+    for set_name in requested_set_names(requested):
         if set_name not in manifest["sets"]:
             raise ValueError(f"unknown custom-node set: {set_name}")
         for node_id in manifest["sets"][set_name]:
@@ -85,13 +106,48 @@ def resolve_nodes(manifest: dict, requested: str) -> list[tuple[str, dict]]:
     return resolved
 
 
-def run_command(
-    command: list[str],
-    *,
-    cwd: Path | None = None,
-    env: dict | None = None,
-    log=None,
-) -> int:
+def print_table(headers: list[str], rows: list[list[Any]]) -> None:
+    rendered = [["" if value is None else str(value) for value in row] for row in rows]
+    widths = [len(header) for header in headers]
+    for row in rendered:
+        for index, value in enumerate(row):
+            widths[index] = max(widths[index], len(value))
+    print("  ".join(header.ljust(widths[i]) for i, header in enumerate(headers)))
+    print("  ".join("-" * width for width in widths))
+    for row in rendered:
+        print("  ".join(value.ljust(widths[i]) for i, value in enumerate(row)))
+
+
+def print_plan(manifest: dict, requested: str) -> None:
+    sets = requested_set_names(requested)
+    nodes = resolve_nodes(manifest, requested)
+    print(f"Selected sets : {', '.join(sets)}")
+    print(f"Resolved nodes: {len(nodes)}")
+    print()
+    rows: list[list[str]] = []
+    for node_id, node in nodes:
+        pip_config = node.get("pip", {})
+        req = pip_config.get("requirements", {})
+        overrides = []
+        if req.get("remove"):
+            overrides.append("remove=" + ",".join(req["remove"]))
+        if req.get("add"):
+            overrides.append("add=" + ",".join(req["add"]))
+        if node.get("clone_options"):
+            overrides.append("clone=" + " ".join(map(str, node["clone_options"])))
+        rows.append(
+            [
+                node_id,
+                local_name(node),
+                pip_config.get("constraint_mode", "inherit"),
+                "; ".join(overrides) or "-",
+                node["remote"],
+            ]
+        )
+    print_table(["ID", "LOCAL", "CONSTRAINTS", "OVERRIDES", "REMOTE"], rows)
+
+
+def run_command(command: list[str], *, cwd: Path | None = None, env: dict | None = None, log=None) -> int:
     print("+", shlex.join(command), file=log or sys.stderr, flush=True)
     completed = subprocess.run(
         command,
@@ -104,12 +160,24 @@ def run_command(
     return completed.returncode
 
 
-def clone_node(item: tuple[str, dict], custom_dir: Path, log_dir: Path) -> tuple[str, int]:
+def git_commit(destination: Path) -> str:
+    if not (destination / ".git").exists():
+        return ""
+    completed = subprocess.run(
+        ["git", "-C", str(destination), "rev-parse", "--short", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def clone_node(item: tuple[str, dict], custom_dir: Path, log_dir: Path) -> tuple[str, int, str]:
     node_id, node = item
     destination = custom_dir / local_name(node)
     log_path = log_dir / f"{local_name(node)}.log"
-
     with log_path.open("a") as log:
+        print(f"\n== clone/update {node_id} at {utc_now()} ==", file=log, flush=True)
         options = [str(value) for value in node.get("clone_options", [])]
         if (destination / ".git").exists():
             rc = run_command(
@@ -117,25 +185,15 @@ def clone_node(item: tuple[str, dict], custom_dir: Path, log_dir: Path) -> tuple
                 log=log,
             )
             if rc == 0:
-                rc = run_command(
-                    ["git", "-C", str(destination), "pull", "--ff-only"],
-                    log=log,
-                )
+                rc = run_command(["git", "-C", str(destination), "pull", "--ff-only"], log=log)
         elif destination.exists():
             print(f"ERROR: destination exists but is not a git checkout: {destination}", file=log)
             rc = 1
         else:
-            rc = run_command(
-                ["git", "clone", *options, node["remote"], str(destination)],
-                log=log,
-            )
-
+            rc = run_command(["git", "clone", *options, node["remote"], str(destination)], log=log)
         if rc == 0 and node.get("ref"):
-            rc = run_command(
-                ["git", "-C", str(destination), "checkout", str(node["ref"])],
-                log=log,
-            )
-        return node_id, rc
+            rc = run_command(["git", "-C", str(destination), "checkout", str(node["ref"])], log=log)
+        return node_id, rc, git_commit(destination) if rc == 0 else ""
 
 
 def requirement_name(line: str) -> str | None:
@@ -144,7 +202,6 @@ def requirement_name(line: str) -> str | None:
         return None
     try:
         from packaging.requirements import Requirement
-
         return normalize_name(Requirement(stripped).name)
     except Exception:
         match = re.match(r"([A-Za-z0-9_.-]+)", stripped)
@@ -172,31 +229,22 @@ def materialize_constraints(node: dict, temporary_dir: Path) -> list[str]:
     return paths
 
 
-def install_node(
-    item: tuple[str, dict],
-    custom_dir: Path,
-    log_dir: Path,
-    *,
-    dry_run: bool,
-) -> int:
-    _node_id, node = item
+def install_node(item: tuple[str, dict], custom_dir: Path, log_dir: Path, *, dry_run: bool) -> tuple[int, str]:
+    node_id, node = item
     destination = custom_dir / local_name(node)
     pip_config = node.get("pip", {})
     log_path = log_dir / f"{local_name(node)}.log"
-
     if pip_config.get("enabled", True) is False:
-        return 0
+        return 0, "disabled"
 
     with tempfile.TemporaryDirectory(prefix="custom-node-") as temporary, log_path.open("a") as log:
+        print(f"\n== dependency install {node_id} at {utc_now()} ==", file=log, flush=True)
         temporary_dir = Path(temporary)
         requirements_config = pip_config.get("requirements", {})
         requirement_files = requirements_config.get("files", ["requirements.txt"])
-        removals = {
-            normalize_name(name) for name in requirements_config.get("remove", [])
-        }
+        removals = {normalize_name(name) for name in requirements_config.get("remove", [])}
         additions = requirements_config.get("add", [])
         effective_lines: list[str] = []
-
         for relative_path in requirement_files:
             path = destination / relative_path
             if path.is_file():
@@ -205,118 +253,209 @@ def install_node(
                         effective_lines.append(line)
         effective_lines.extend(additions)
 
+        activity = False
         if effective_lines:
+            activity = True
             effective_requirements = temporary_dir / "requirements.txt"
             effective_requirements.write_text("\n".join(effective_lines) + "\n")
-
-            command = [
-                os.environ.get("PIP_BIN", os.environ.get("PIP", "pip")),
-                "install",
-                "--verbose",
-            ]
+            command = [os.environ.get("PIP_BIN", os.environ.get("PIP", "pip")), "install", "--verbose"]
             command.extend(
                 str(value)
-                for value in pip_config.get(
-                    "options", ["--upgrade-strategy", "only-if-needed"]
-                )
+                for value in pip_config.get("options", ["--upgrade-strategy", "only-if-needed"])
             )
-
             constraint_mode = pip_config.get("constraint_mode", "inherit")
             environment = os.environ.copy()
             if constraint_mode in ("replace", "none"):
                 environment.pop("PIP_CONSTRAINT", None)
                 environment.pop("PIP_BUILD_CONSTRAINT", None)
-
             if constraint_mode != "none":
                 for constraint in materialize_constraints(node, temporary_dir):
                     command.extend(["-c", constraint])
-
             if dry_run:
                 command.append("--dry-run")
             command.extend(["-r", str(effective_requirements)])
-
             rc = run_command(command, cwd=destination, env=environment, log=log)
             if rc:
-                return rc
+                return rc, "pip-failed"
 
         if not dry_run and (destination / "install.py").is_file():
+            activity = True
             rc = run_command(
-                [
-                    os.environ.get("PY_BIN", os.environ.get("PY", "python")),
-                    "-u",
-                    "install.py",
-                ],
+                [os.environ.get("PY_BIN", os.environ.get("PY", "python")), "-u", "install.py"],
                 cwd=destination,
                 log=log,
             )
             if rc:
-                return rc
-    return 0
+                return rc, "install.py-failed"
+
+    if dry_run and activity:
+        return 0, "dry-run-ok"
+    return 0, "installed" if activity else "no-dependencies"
+
+
+def status_file_path(log_dir: Path) -> Path:
+    return Path(os.environ.get("CUSTOM_NODE_STATUS_FILE", str(log_dir / "install_status.json")))
+
+
+def write_status(path: Path, report: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(report, indent=2) + "\n")
+    temporary.replace(path)
+
+
+def recompute_summary(report: dict) -> None:
+    ok = failed = pending = 0
+    for item in report.get("nodes", []):
+        clone = item.get("clone", "pending")
+        install_state = item.get("install", "pending")
+        if clone == "failed" or install_state == "failed":
+            failed += 1
+        elif clone == "ok" and install_state not in {"pending", "failed"}:
+            ok += 1
+        else:
+            pending += 1
+    report["summary"] = {"total": len(report.get("nodes", [])), "ok": ok, "failed": failed, "pending": pending}
+
+
+def print_status_report(report: dict, status_path: Path) -> None:
+    print(f"Run started  : {report.get('started_at', '-')}")
+    print(f"Run finished : {report.get('finished_at', '-')}")
+    print(f"Selected sets: {', '.join(report.get('sets', [])) or '-'}")
+    print(f"Status file  : {status_path}")
+    print()
+    rows = [
+        [
+            item.get("id", ""),
+            item.get("local", ""),
+            item.get("clone", "pending"),
+            item.get("install", "pending"),
+            item.get("commit", "-") or "-",
+            item.get("log", ""),
+        ]
+        for item in report.get("nodes", [])
+    ]
+    print_table(["ID", "LOCAL", "CLONE", "INSTALL", "COMMIT", "LOG"], rows)
+    summary = report.get("summary", {})
+    print()
+    print(
+        "Summary: "
+        f"total={summary.get('total', len(rows))} "
+        f"ok={summary.get('ok', 0)} "
+        f"failed={summary.get('failed', 0)} "
+        f"pending={summary.get('pending', 0)}"
+    )
 
 
 def install(args, manifest: dict) -> int:
     requested_sets = args.sets or os.environ.get("CUSTOM_NODE_SETS", "")
+    set_names = requested_set_names(requested_sets)
     nodes = resolve_nodes(manifest, requested_sets)
     custom_dir = Path(
         args.custom_dir
         or os.environ.get(
-            "CUSTOM_DIR",
-            os.environ.get("COMFY_HOME", "/workspace/ComfyUI") + "/custom_nodes",
+            "CUSTOM_DIR", os.environ.get("COMFY_HOME", "/workspace/ComfyUI") + "/custom_nodes"
         )
     )
     log_dir = Path(
-        os.environ.get(
-            "CUSTOM_LOG_DIR",
-            os.environ.get("COMFY_LOGS", "/workspace/logs") + "/custom_nodes",
-        )
+        os.environ.get("CUSTOM_LOG_DIR", os.environ.get("COMFY_LOGS", "/workspace/logs") + "/custom_nodes")
     )
     custom_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
+    status_path = status_file_path(log_dir)
 
-    print("Selected custom nodes:")
-    for node_id, node in nodes:
-        print(f"  {node_id}: {node['remote']} -> {local_name(node)}")
+    print_plan(manifest, requested_sets)
     if args.plan:
         return 0
 
+    report = {
+        "schema_version": 1,
+        "started_at": utc_now(),
+        "finished_at": None,
+        "sets": set_names,
+        "dry_run": bool(args.dry_run),
+        "custom_dir": str(custom_dir),
+        "nodes": [
+            {
+                "id": node_id,
+                "local": local_name(node),
+                "remote": node["remote"],
+                "clone": "pending",
+                "install": "pending",
+                "commit": "",
+                "log": str(log_dir / f"{local_name(node)}.log"),
+            }
+            for node_id, node in nodes
+        ],
+    }
+    by_id = {item["id"]: item for item in report["nodes"]}
+    recompute_summary(report)
+    write_status(status_path, report)
+
     clone_jobs = max(1, int(os.environ.get("MAX_CUSTOM_NODE_JOBS", "8")))
-    failures: list[str] = []
-
-    # Network-bound git work is bounded and parallel.
+    clone_failures: list[str] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=clone_jobs) as executor:
-        for node_id, rc in executor.map(
-            lambda item: clone_node(item, custom_dir, log_dir), nodes
-        ):
+        for node_id, rc, commit in executor.map(lambda item: clone_node(item, custom_dir, log_dir), nodes):
+            state = by_id[node_id]
+            state["clone"] = "ok" if rc == 0 else "failed"
+            state["commit"] = commit
             if rc:
-                failures.append(node_id)
-    if failures:
-        print("Clone failures: " + ", ".join(failures), file=sys.stderr)
-        return 1
+                state["install"] = "skipped-clone-failed"
+                clone_failures.append(node_id)
+            recompute_summary(report)
+            write_status(status_path, report)
 
-    # Environment mutation is intentionally serialized.
+    install_failures: list[str] = []
     for item in nodes:
-        rc = install_node(item, custom_dir, log_dir, dry_run=args.dry_run)
+        node_id = item[0]
+        if by_id[node_id]["clone"] != "ok":
+            continue
+        rc, detail = install_node(item, custom_dir, log_dir, dry_run=args.dry_run)
+        by_id[node_id]["install"] = detail if rc == 0 else "failed"
         if rc:
-            failures.append(item[0])
+            by_id[node_id]["detail"] = detail
+            install_failures.append(node_id)
+        recompute_summary(report)
+        write_status(status_path, report)
 
-    if failures:
-        print("Install failures: " + ", ".join(failures), file=sys.stderr)
+    report["finished_at"] = utc_now()
+    recompute_summary(report)
+    write_status(status_path, report)
+    print()
+    print_status_report(report, status_path)
+
+    if clone_failures:
+        print("Clone failures: " + ", ".join(clone_failures), file=sys.stderr)
+    if install_failures:
+        print("Install failures: " + ", ".join(install_failures), file=sys.stderr)
+    return 1 if clone_failures or install_failures else 0
+
+
+def show_status(args) -> int:
+    log_dir = Path(
+        os.environ.get("CUSTOM_LOG_DIR", os.environ.get("COMFY_LOGS", "/workspace/logs") + "/custom_nodes")
+    )
+    path = Path(args.file).expanduser() if args.file else status_file_path(log_dir)
+    if not path.is_file():
+        print(f"No custom-node status report found: {path}", file=sys.stderr)
         return 1
-    return 0
+    report = json.loads(path.read_text())
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print_status_report(report, path)
+    return 1 if report.get("summary", {}).get("failed", 0) else 0
 
 
 def add_node(args, manifest: dict, manifest_path: Path | None) -> int:
     if manifest_path is None:
         raise ValueError("add requires a local manifest path")
-
     node: dict = {
         "remote": args.remote,
-        "local": args.local
-        or Path(args.remote.rstrip("/")).name.removesuffix(".git"),
+        "local": args.local or Path(args.remote.rstrip("/")).name.removesuffix(".git"),
     }
     if args.clone_option:
         node["clone_options"] = args.clone_option
-
     pip_config: dict = {}
     requirements: dict = {}
     if args.pip_option:
@@ -329,12 +468,10 @@ def add_node(args, manifest: dict, manifest_path: Path | None) -> int:
         pip_config["requirements"] = requirements
     if pip_config:
         node["pip"] = pip_config
-
     manifest["nodes"][args.id] = node
     manifest["sets"].setdefault(args.set, [])
     if args.id not in manifest["sets"][args.set]:
         manifest["sets"][args.set].append(args.id)
-
     validate_manifest(manifest)
     temporary = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
     temporary.write_text(json.dumps(manifest, indent=2) + "\n")
@@ -344,22 +481,20 @@ def add_node(args, manifest: dict, manifest_path: Path | None) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--manifest", default=os.environ.get("CUSTOM_NODES_MANIFEST_URL", "")
-    )
+    parser.add_argument("--manifest", default=os.environ.get("CUSTOM_NODES_MANIFEST_URL", ""))
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("validate")
-
     plan_parser = subparsers.add_parser("plan")
     plan_parser.add_argument("--sets", default="")
-
     install_parser = subparsers.add_parser("install")
     install_parser.add_argument("--sets", default="")
     install_parser.add_argument("--custom-dir")
     install_parser.add_argument("--dry-run", action="store_true")
     install_parser.add_argument("--plan", action="store_true")
-
+    status_parser = subparsers.add_parser("status")
+    status_parser.add_argument("--file")
+    status_parser.add_argument("--json", action="store_true")
     add_parser = subparsers.add_parser("add")
     add_parser.add_argument("--set", default="default")
     add_parser.add_argument("--id", required=True)
@@ -371,18 +506,23 @@ def main() -> int:
     add_parser.add_argument("--add-requirement", action="append", default=[])
 
     args = parser.parse_args()
+    if args.command == "status":
+        return show_status(args)
     if not args.manifest:
         raise ValueError("manifest source is required")
 
     manifest, manifest_path = load_manifest(args.manifest)
     validate_manifest(manifest)
-
     if args.command == "validate":
+        print("Manifest valid")
+        print(f"Schema version : {manifest['schema_version']}")
+        print(f"Node definitions: {len(manifest['nodes'])}")
+        print(f"Sets           : {', '.join(manifest['sets'].keys())}")
+        for set_name, node_ids in manifest["sets"].items():
+            print(f"  {set_name}: {len(node_ids)} node(s)")
         return 0
     if args.command == "plan":
-        requested_sets = args.sets or os.environ.get("CUSTOM_NODE_SETS", "")
-        for node_id, node in resolve_nodes(manifest, requested_sets):
-            print(f"{node_id}\t{local_name(node)}\t{node['remote']}")
+        print_plan(manifest, args.sets or os.environ.get("CUSTOM_NODE_SETS", ""))
         return 0
     if args.command == "install":
         return install(args, manifest)
