@@ -205,16 +205,16 @@ fi
 #------------------------------------------------------------------------
 section 5 "Huggingface (Models) & CivitAI (Loras/Checkpoints) Download"
 #----------------------------------------------
-# Models via model_manifest.json + aria2
+# Models via model_manifest.json
 #----------------------------------------------
 
-helpers_have_aria2_rpc || aria2_start_daemon
-aria2_clear_results >/dev/null 2>&1 || true
+#helpers_have_aria2_rpc || aria2_start_daemon
+#aria2_clear_results >/dev/null 2>&1 || true
 
 if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}" == "true" ]]; then
   echo "Using model manifest: $MODEL_MANIFEST_URL"
-  if ! aria2_download_from_manifest; then
-    echo "⚠️ aria2_download_from_manifest failed; see logs."
+  if ! hf_download_from_manifest; then
+    echo "⚠️ hf_download_from_manifest failed; see logs."
   fi
 else
   echo "ENABLE_MODEL_MANIFEST_DOWNLOAD=false → skipping model downloader."
@@ -230,7 +230,7 @@ else
   echo "ENABLE_CIVITAI_DOWNLOAD=false → skipping CivitAI downloader."
 fi
 
-aria2_show_download_snapshot || true
+hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
 section 6 "SageAttention: Pull (if available) or Build from Source"
@@ -250,7 +250,7 @@ else
   echo "ENABLE_SAGE=false → skipping SageAttention setup."
 fi
 
-aria2_show_download_snapshot || true
+hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
 section 7 "Install Custom Nodes"
@@ -268,7 +268,7 @@ else
   echo "INSTALL_CUSTOM_NODES=false → skipping extra custom node installation."
 fi
 
-aria2_show_download_snapshot || true
+hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
 section 8 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
@@ -304,7 +304,7 @@ else
   echo "ENABLE_MY_WORKFLOWS_DOWNLOAD=false → skipping MyWorkflows sync."
 fi
 
-aria2_show_download_snapshot || true
+hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
 section 9 "Jupyter Launch"
@@ -319,7 +319,7 @@ else
   echo "LAUNCH_JUPYTER=0 → skipping Jupyter launch..."
 fi
 
-aria2_show_download_snapshot || true
+hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
 section 10 "ComfyUI"
@@ -363,7 +363,7 @@ else
   tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}." || true
 fi
 
-aria2_show_download_snapshot || true
+hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
 section 11 "Pull my LORA / model repo from Huggingface and symlink into ComfyUI"
