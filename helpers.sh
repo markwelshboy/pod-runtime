@@ -14,15 +14,11 @@ source "${_helpers_entry_dir}/helpers_hf_manifest.sh"
 : "${CUSTOM_NODES_MANIFEST_URL:=https://raw.githubusercontent.com/markwelshboy/pod-runtime/main/default_custom_nodes_manifest.json}"
 : "${CUSTOM_NODE_SETS:=}"
 : "${CUSTOM_NODES_TOOL:=${_helpers_entry_dir}/bin/custom_nodes.py}"
+: "${CUSTOM_NODES_WORKFLOW_TOOL:=${_helpers_entry_dir}/bin/custom_nodes_from_workflow.py}"
 
 custom_node_manifest() {
   local command="${1:-help}"
   shift || true
-
-  if [[ ! -f "$CUSTOM_NODES_TOOL" ]]; then
-    echo "[custom-nodes] Tool not found: $CUSTOM_NODES_TOOL" >&2
-    return 1
-  fi
 
   case "$command" in
     validate)
@@ -41,6 +37,13 @@ custom_node_manifest() {
       "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" \
         --manifest "$CUSTOM_NODES_MANIFEST_URL" add "$@"
       ;;
+    from-workflow|resolve-workflow)
+      if [[ ! -f "$CUSTOM_NODES_WORKFLOW_TOOL" ]]; then
+        echo "[custom-nodes] Workflow resolver not found: $CUSTOM_NODES_WORKFLOW_TOOL" >&2
+        return 1
+      fi
+      "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_WORKFLOW_TOOL" "$@"
+      ;;
     help|-h|--help)
       cat <<'EOF'
 custom_node_manifest commands:
@@ -48,6 +51,13 @@ custom_node_manifest commands:
   custom_node_manifest plan
   custom_node_manifest status [--json] [--file PATH]
   custom_node_manifest add --set SET --id ID --remote URL [options]
+  custom_node_manifest from-workflow WORKFLOW.json -o OUTPUT.json [options]
+
+Workflow resolver options:
+  --comfy-url URL          Live ComfyUI URL (default http://127.0.0.1:8188)
+  --accept-default         Select the first mapped provider and default branch
+  --allow-unresolved       Write/accept a manifest even when mappings are missing
+  --base-manifest SOURCE   Reuse known overrides from this manifest
 
 Add options may be repeated:
   --clone-option VALUE
@@ -72,8 +82,83 @@ custom_node_add() {
 }
 
 install_custom_nodes() {
-  local source="${1:-${CUSTOM_NODES_MANIFEST_URL:-}}"
-  shift || true
+  local source="${CUSTOM_NODES_MANIFEST_URL:-}"
+  local workflow=""
+  local generated=""
+  local accept_default=0
+  local allow_unresolved=0
+  local comfy_url="${COMFY_URL:-http://127.0.0.1:8188}"
+  local -a install_args=()
+
+  # A normal first positional argument remains a manifest source.
+  if [[ $# -gt 0 && "$1" != --* ]]; then
+    source="$1"
+    shift
+  fi
+
+  while (($#)); do
+    case "$1" in
+      --from-workflow)
+        [[ -n "${2:-}" ]] || { echo "[custom-nodes] --from-workflow requires a workflow path" >&2; return 2; }
+        workflow="$2"
+        shift
+        ;;
+      --output)
+        [[ -n "${2:-}" ]] || { echo "[custom-nodes] --output requires a path" >&2; return 2; }
+        generated="$2"
+        shift
+        ;;
+      --comfy-url)
+        [[ -n "${2:-}" ]] || { echo "[custom-nodes] --comfy-url requires a URL" >&2; return 2; }
+        comfy_url="$2"
+        shift
+        ;;
+      --accept-default)
+        accept_default=1
+        ;;
+      --allow-unresolved)
+        allow_unresolved=1
+        ;;
+      --plan|--dry-run)
+        install_args+=("$1")
+        ;;
+      --sets)
+        [[ -n "${2:-}" ]] || { echo "[custom-nodes] --sets requires a value" >&2; return 2; }
+        install_args+=(--sets "$2")
+        shift
+        ;;
+      *)
+        echo "[custom-nodes] Unknown installer option: $1" >&2
+        return 2
+        ;;
+    esac
+    shift
+  done
+
+  if [[ -n "$workflow" ]]; then
+    [[ -f "$CUSTOM_NODES_WORKFLOW_TOOL" ]] || {
+      echo "[custom-nodes] Workflow resolver not found: $CUSTOM_NODES_WORKFLOW_TOOL" >&2
+      return 1
+    }
+    if [[ -z "$generated" ]]; then
+      generated="${workflow%.*}.custom_nodes.json"
+    fi
+    local -a resolve_args=(
+      "$workflow"
+      --output "$generated"
+      --comfy-url "$comfy_url"
+      --base-manifest "$CUSTOM_NODES_MANIFEST_URL"
+    )
+    ((accept_default)) && resolve_args+=(--accept-default)
+    ((allow_unresolved)) && resolve_args+=(--allow-unresolved)
+
+    echo "[custom-nodes] Resolving missing live nodes from: $workflow"
+    if ! "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_WORKFLOW_TOOL" "${resolve_args[@]}"; then
+      echo "[custom-nodes] Workflow resolution did not complete cleanly." >&2
+      return 1
+    fi
+    source="$generated"
+  fi
 
   if [[ -z "$source" ]]; then
     echo "[custom-nodes] No manifest source configured; nothing to install." >&2
@@ -85,32 +170,8 @@ install_custom_nodes() {
     source="${source%default_custom_nodes_manifest.list}default_custom_nodes_manifest.json"
   fi
 
-  local -a args=(
-    --manifest "$source"
-    install
-    --sets "${CUSTOM_NODE_SETS:-}"
-  )
-
-  while (($#)); do
-    case "$1" in
-      --plan|--dry-run)
-        args+=("$1")
-        ;;
-      --sets)
-        [[ -n "${2:-}" ]] || {
-          echo "[custom-nodes] --sets requires a value" >&2
-          return 2
-        }
-        args+=(--sets "$2")
-        shift
-        ;;
-      *)
-        echo "[custom-nodes] Unknown installer option: $1" >&2
-        return 2
-        ;;
-    esac
-    shift
-  done
+  local -a args=(--manifest "$source" install --sets "${CUSTOM_NODE_SETS:-}")
+  args+=("${install_args[@]}")
 
   echo "[custom-nodes] Manifest: $source"
   echo "[custom-nodes] Optional sets: ${CUSTOM_NODE_SETS:-<none>} (default is always included)"
