@@ -22,26 +22,22 @@ custom_node_manifest() {
 
   case "$command" in
     validate)
-      "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" \
-        --manifest "$CUSTOM_NODES_MANIFEST_URL" validate "$@"
+      "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" --manifest "$CUSTOM_NODES_MANIFEST_URL" validate "$@"
       ;;
     plan)
-      "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" \
-        --manifest "$CUSTOM_NODES_MANIFEST_URL" plan \
-        --sets "${CUSTOM_NODE_SETS:-}" "$@"
+      "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" --manifest "$CUSTOM_NODES_MANIFEST_URL" plan --sets "${CUSTOM_NODE_SETS:-}" "$@"
       ;;
     status)
       "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" status "$@"
       ;;
     add)
-      "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" \
-        --manifest "$CUSTOM_NODES_MANIFEST_URL" add "$@"
+      "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" --manifest "$CUSTOM_NODES_MANIFEST_URL" add "$@"
       ;;
     from-workflow|resolve-workflow)
-      if [[ ! -f "$CUSTOM_NODES_WORKFLOW_TOOL" ]]; then
+      [[ -f "$CUSTOM_NODES_WORKFLOW_TOOL" ]] || {
         echo "[custom-nodes] Workflow resolver not found: $CUSTOM_NODES_WORKFLOW_TOOL" >&2
         return 1
-      fi
+      }
       "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_WORKFLOW_TOOL" "$@"
       ;;
     help|-h|--help)
@@ -83,6 +79,7 @@ custom_node_add() {
 
 install_custom_nodes() {
   local source="${CUSTOM_NODES_MANIFEST_URL:-}"
+  local selected_sets="${CUSTOM_NODE_SETS:-}"
   local workflow=""
   local generated=""
   local accept_default=0
@@ -124,7 +121,7 @@ install_custom_nodes() {
         ;;
       --sets)
         [[ -n "${2:-}" ]] || { echo "[custom-nodes] --sets requires a value" >&2; return 2; }
-        install_args+=(--sets "$2")
+        selected_sets="$2"
         shift
         ;;
       *)
@@ -140,9 +137,7 @@ install_custom_nodes() {
       echo "[custom-nodes] Workflow resolver not found: $CUSTOM_NODES_WORKFLOW_TOOL" >&2
       return 1
     }
-    if [[ -z "$generated" ]]; then
-      generated="${workflow%.*}.custom_nodes.json"
-    fi
+    [[ -n "$generated" ]] || generated="${workflow%.*}.custom_nodes.json"
     local -a resolve_args=(
       "$workflow"
       --output "$generated"
@@ -158,6 +153,7 @@ install_custom_nodes() {
       return 1
     fi
     source="$generated"
+    selected_sets=""
   fi
 
   if [[ -z "$source" ]]; then
@@ -165,16 +161,15 @@ install_custom_nodes() {
     return 0
   fi
 
-  # Transparent compatibility for pods carrying the former .list URL.
   if [[ "$source" == *"/default_custom_nodes_manifest.list" ]]; then
     source="${source%default_custom_nodes_manifest.list}default_custom_nodes_manifest.json"
   fi
 
-  local -a args=(--manifest "$source" install --sets "${CUSTOM_NODE_SETS:-}")
+  local -a args=(--manifest "$source" install --sets "$selected_sets")
   args+=("${install_args[@]}")
 
   echo "[custom-nodes] Manifest: $source"
-  echo "[custom-nodes] Optional sets: ${CUSTOM_NODE_SETS:-<none>} (default is always included)"
+  echo "[custom-nodes] Optional sets: ${selected_sets:-<none>} (default is always included)"
   "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" "${args[@]}"
 }
 
