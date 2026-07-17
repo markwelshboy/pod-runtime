@@ -55,6 +55,10 @@ Workflow resolver options:
   --allow-unresolved       Write/accept a manifest even when mappings are missing
   --base-manifest SOURCE   Reuse known overrides from this manifest
 
+Active-tab install:
+  install_custom_nodes --comfy-url http://127.0.0.1:8288
+  install_custom_nodes --current-tab --comfy-url URL [--output FILE]
+
 Add options may be repeated:
   --clone-option VALUE
   --pip-option VALUE
@@ -172,5 +176,8 @@ install_custom_nodes() {
   echo "[custom-nodes] Optional sets: ${selected_sets:-<none>} (default is always included)"
   "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" "${args[@]}"
 }
+
+# shellcheck source=/dev/null
+[[ -f "${_helpers_entry_dir}/helpers_active_workflow.sh" ]] && source "${_helpers_entry_dir}/helpers_active_workflow.sh"
 
 unset _helpers_entry_dir
