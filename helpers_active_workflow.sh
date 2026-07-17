@@ -2,7 +2,8 @@
 # Active-browser-tab workflow bridge helpers. Sourced after helpers.sh defines
 # the standard custom-node installer so this file can extend that interface.
 
-: "${CUSTOM_NODES_CURRENT_WORKFLOW_TOOL:=${POD_RUNTIME_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)}/bin/current_comfy_workflow.py}"
+_active_workflow_helpers_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+: "${CUSTOM_NODES_CURRENT_WORKFLOW_TOOL:=${POD_RUNTIME_DIR:-${_active_workflow_helpers_dir}}/bin/current_comfy_workflow.py}"
 
 custom_node_workflow_bridge_install() {
   local runtime_dir="${POD_RUNTIME_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)}"
@@ -90,8 +91,8 @@ install_custom_nodes() {
     shift
   done
 
-  # The concise form requested by the user: an explicitly supplied ComfyUI URL
-  # with no manifest or workflow means "use that server's active browser tab".
+  # An explicitly supplied ComfyUI URL with no manifest or workflow means
+  # "use that server's active browser tab".
   if ((explicit_comfy_url)) && ((explicit_source == 0)) && [[ -z "$workflow" ]]; then
     current_tab=1
   fi
@@ -129,7 +130,9 @@ install_custom_nodes() {
     ((accept_default)) && resolve_args+=(--accept-default)
     ((allow_unresolved)) && resolve_args+=(--allow-unresolved)
 
-    echo "[custom-nodes] Resolving missing live nodes from: ${current_tab:+active browser tab}${current_tab:0:0}"
+    local workflow_label="$workflow"
+    ((current_tab)) && workflow_label="active browser tab"
+    echo "[custom-nodes] Resolving missing live nodes from: $workflow_label"
     if ! "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_WORKFLOW_TOOL" "${resolve_args[@]}"; then
       echo "[custom-nodes] Workflow resolution did not complete cleanly." >&2
       rm -f "$temporary_workflow"
@@ -154,3 +157,5 @@ install_custom_nodes() {
   echo "[custom-nodes] Optional sets: ${selected_sets:-<none>} (default is always included)"
   "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" "${args[@]}"
 }
+
+unset _active_workflow_helpers_dir
