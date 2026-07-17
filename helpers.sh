@@ -34,6 +34,9 @@ custom_node_manifest() {
         --manifest "$CUSTOM_NODES_MANIFEST_URL" plan \
         --sets "${CUSTOM_NODE_SETS:-}" "$@"
       ;;
+    status)
+      "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" status "$@"
+      ;;
     add)
       "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" \
         --manifest "$CUSTOM_NODES_MANIFEST_URL" add "$@"
@@ -43,6 +46,7 @@ custom_node_manifest() {
 custom_node_manifest commands:
   custom_node_manifest validate
   custom_node_manifest plan
+  custom_node_manifest status [--json] [--file PATH]
   custom_node_manifest add --set SET --id ID --remote URL [options]
 
 Add options may be repeated:
@@ -52,6 +56,8 @@ Add options may be repeated:
   --add-requirement SPEC
 
 The add command requires CUSTOM_NODES_MANIFEST_URL to name a local JSON file.
+The status command reads the latest install report from CUSTOM_NODE_STATUS_FILE
+or, by default, $CUSTOM_LOG_DIR/install_status.json.
 EOF
       ;;
     *)
