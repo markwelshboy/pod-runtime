@@ -59,6 +59,15 @@ Active-tab install:
   install_custom_nodes --comfy-url http://127.0.0.1:8288
   install_custom_nodes --current-tab --comfy-url URL [--output FILE]
 
+Rollback install:
+  install_custom_nodes [normal options] --enable-rollback --rollback FILE
+  install_custom_nodes --perform-rollback --rollback FILE
+
+Rollback safety options:
+  --allow-dirty-snapshot   Permit snapshot with dirty Git repos (changes are not backed up)
+  --force-dirty-restore    Reset dirty Git repos during restore
+  --keep-added-nodes       Do not remove node directories added after the snapshot
+
 Add options may be repeated:
   --clone-option VALUE
   --pip-option VALUE
@@ -179,5 +188,7 @@ install_custom_nodes() {
 
 # shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/helpers_active_workflow.sh" ]] && source "${_helpers_entry_dir}/helpers_active_workflow.sh"
+# shellcheck source=/dev/null
+[[ -f "${_helpers_entry_dir}/helpers_custom_node_rollback.sh" ]] && source "${_helpers_entry_dir}/helpers_custom_node_rollback.sh"
 
 unset _helpers_entry_dir
