@@ -33,9 +33,12 @@ install_custom_nodes() {
   local enable_rollback=0
   local perform_rollback=0
   local rollback_path=""
+  local accept_default=0
   local allow_dirty_snapshot=0
-  local force_dirty_restore=0
+  local strict_dirty_snapshot=0
+  local preserve_dirty_restore=0
   local keep_added_nodes=0
+  local verbose_rollback=0
   local -a forwarded=()
 
   while (($#)); do
@@ -51,14 +54,27 @@ install_custom_nodes() {
         rollback_path="$2"
         shift
         ;;
-      --allow-dirty-snapshot)
+      --accept-default)
+        accept_default=1
+        forwarded+=("$1")
+        ;;
+      --allow-dirty-snapshot|--snapshot-dirty)
         allow_dirty_snapshot=1
         ;;
+      --strict-dirty-snapshot)
+        strict_dirty_snapshot=1
+        ;;
       --force-dirty-restore)
-        force_dirty_restore=1
+        # Kept for compatibility. Restores now reset dirty checkouts by default.
+        ;;
+      --preserve-dirty-restore)
+        preserve_dirty_restore=1
         ;;
       --keep-added-nodes)
         keep_added_nodes=1
+        ;;
+      --rollback-verbose)
+        verbose_rollback=1
         ;;
       *)
         forwarded+=("$1")
@@ -73,8 +89,9 @@ install_custom_nodes() {
       return 2
     }
     local -a restore_args=()
-    ((force_dirty_restore)) && restore_args+=(--force-dirty)
+    ((preserve_dirty_restore)) && restore_args+=(--preserve-dirty)
     ((keep_added_nodes)) && restore_args+=(--keep-added-nodes)
+    ((verbose_rollback)) && restore_args+=(--verbose)
     custom_node_rollback_perform "$rollback_path" "${restore_args[@]}"
     return $?
   fi
@@ -85,7 +102,10 @@ install_custom_nodes() {
       return 2
     }
     local -a create_args=()
+    ((accept_default)) && create_args+=(--accept-default)
     ((allow_dirty_snapshot)) && create_args+=(--allow-dirty)
+    ((strict_dirty_snapshot)) && create_args+=(--strict-dirty)
+    ((verbose_rollback)) && create_args+=(--verbose)
     echo "[custom-nodes] Capturing pre-install rollback snapshot: $rollback_path"
     custom_node_rollback_create "$rollback_path" "${create_args[@]}" || return $?
   elif [[ -n "$rollback_path" ]]; then
