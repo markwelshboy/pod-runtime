@@ -48,6 +48,11 @@ custom_node_manifest commands:
   custom_node_manifest status [--json] [--file PATH]
   custom_node_manifest add --set SET --id ID --remote URL [options]
   custom_node_manifest from-workflow WORKFLOW.json -o OUTPUT.json [options]
+  custom_node_manifest list-sets [--verbose] [--manifest FILE]
+  custom_node_manifest show-set SET [--manifest FILE]
+  custom_node_manifest merge SOURCE.json --into TARGET.json --set SET
+  custom_node_manifest rename-set OLD NEW [--manifest FILE]
+  custom_node_manifest delete-set SET [--manifest FILE]
 
 Workflow resolver options:
   --comfy-url URL          Live ComfyUI URL (default http://127.0.0.1:8188)
@@ -63,20 +68,8 @@ Rollback install:
   install_custom_nodes [normal options] --enable-rollback --rollback FILE
   install_custom_nodes --perform-rollback --rollback FILE
 
-Rollback safety options:
-  --allow-dirty-snapshot   Permit snapshot with dirty Git repos (changes are not backed up)
-  --force-dirty-restore    Reset dirty Git repos during restore
-  --keep-added-nodes       Do not remove node directories added after the snapshot
-
-Add options may be repeated:
-  --clone-option VALUE
-  --pip-option VALUE
-  --remove-requirement NAME
-  --add-requirement SPEC
-
-The add command requires CUSTOM_NODES_MANIFEST_URL to name a local JSON file.
-The status command reads the latest install report from CUSTOM_NODE_STATUS_FILE
-or, by default, $CUSTOM_LOG_DIR/install_status.json.
+Run `install_custom_nodes --help` for full install, rollback, manifest-retention,
+and tag-management options and examples.
 EOF
       ;;
     *)
@@ -190,5 +183,8 @@ install_custom_nodes() {
 [[ -f "${_helpers_entry_dir}/helpers_active_workflow.sh" ]] && source "${_helpers_entry_dir}/helpers_active_workflow.sh"
 # shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/helpers_custom_node_rollback.sh" ]] && source "${_helpers_entry_dir}/helpers_custom_node_rollback.sh"
+# Must be sourced last so it can compose with active-workflow and rollback wrappers.
+# shellcheck source=/dev/null
+[[ -f "${_helpers_entry_dir}/helpers_custom_node_manifest_manage.sh" ]] && source "${_helpers_entry_dir}/helpers_custom_node_manifest_manage.sh"
 
 unset _helpers_entry_dir
