@@ -115,6 +115,70 @@ Examples:
 EOF
 }
 
+if declare -F custom_node_manifest >/dev/null 2>&1 && ! declare -F _custom_node_manifest_without_set_management >/dev/null 2>&1; then
+  eval "$(declare -f custom_node_manifest | sed '1s/^custom_node_manifest /_custom_node_manifest_without_set_management /')"
+fi
+
+custom_node_manifest() {
+  local command="${1:-help}"
+  shift || true
+  local target
+  case "$command" in
+    list-sets|list-tags)
+      target="$(_custom_nodes_local_manifest_default)"
+      local verbose=0
+      while (($#)); do
+        case "$1" in
+          --manifest|--target-manifest) target="${2:?path required}"; shift ;;
+          --verbose) verbose=1 ;;
+          *) echo "[custom-nodes] Unknown list-sets option: $1" >&2; return 2 ;;
+        esac
+        shift
+      done
+      local -a args=(list-sets --manifest "$target")
+      ((verbose)) && args+=(--verbose)
+      _custom_nodes_manage "${args[@]}"
+      ;;
+    show-set|show-tag)
+      local name="${1:?set name required}"; shift
+      target="$(_custom_nodes_local_manifest_default)"
+      [[ "${1:-}" == --manifest || "${1:-}" == --target-manifest ]] && { target="${2:?path required}"; shift 2; }
+      _custom_nodes_manage show-set "$name" --manifest "$target"
+      ;;
+    merge)
+      local source="${1:?source manifest required}"; shift
+      local into="" set_name="" update=0
+      while (($#)); do
+        case "$1" in
+          --into) into="${2:?path required}"; shift ;;
+          --set) set_name="${2:?set required}"; shift ;;
+          --update-existing) update=1 ;;
+          *) echo "[custom-nodes] Unknown merge option: $1" >&2; return 2 ;;
+        esac
+        shift
+      done
+      [[ -n "$into" ]] || into="$(_custom_nodes_local_manifest_default)"
+      [[ -n "$set_name" ]] || { echo "[custom-nodes] merge requires --set NAME" >&2; return 2; }
+      local -a args=(merge "$source" --into "$into" --set "$set_name")
+      ((update)) && args+=(--update-existing)
+      _custom_nodes_manage "${args[@]}"
+      ;;
+    rename-set|rename-tag)
+      local old="${1:?old set required}" new="${2:?new set required}"; shift 2
+      target="$(_custom_nodes_local_manifest_default)"
+      [[ "${1:-}" == --manifest || "${1:-}" == --target-manifest ]] && target="${2:?path required}"
+      _custom_nodes_manage rename-set "$old" "$new" --manifest "$target"
+      ;;
+    delete-set|delete-tag)
+      local name="${1:?set name required}"; shift
+      target="$(_custom_nodes_local_manifest_default)"
+      [[ "${1:-}" == --manifest || "${1:-}" == --target-manifest ]] && target="${2:?path required}"
+      _custom_nodes_manage delete-set "$name" --manifest "$target"
+      ;;
+    *) _custom_node_manifest_without_set_management "$command" "$@" ;;
+  esac
+}
+
 if declare -F install_custom_nodes >/dev/null 2>&1 && ! declare -F _install_custom_nodes_without_manifest_management >/dev/null 2>&1; then
   eval "$(declare -f install_custom_nodes | sed '1s/^install_custom_nodes /_install_custom_nodes_without_manifest_management /')"
 fi
