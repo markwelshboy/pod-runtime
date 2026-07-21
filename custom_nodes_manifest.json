@@ -289,6 +289,10 @@
     "krea2-bbox-prompter": {
       "remote": "https://github.com/ukr8b3g-cmyk/Krea2-BBOX-Prompter.git",
       "local": "Krea2-BBOX-Prompter"
+    },
+    "custom-nodes-krea2-bbox-pose-gesture-v1": {
+      "remote": "https://github.com/ukr8b3g-cmyk/custom_nodes-krea2_bbox_pose_gesture_v1.git",
+      "local": "custom_nodes-krea2_bbox_pose_gesture_v1"
     }
   },
   "sets": {
@@ -348,7 +352,8 @@
       "comfyui-pixaroma",
       "vantagelongwanvideo",
       "comfyui-resolution-master",
-      "comfyui-editutils"
+      "comfyui-editutils",
+      "custom-nodes-krea2-bbox-pose-gesture-v1"
     ],
     "krea2": [
       "comfyui-qwenvl-promptcaption",
