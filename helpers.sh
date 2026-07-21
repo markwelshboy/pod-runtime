@@ -54,6 +54,10 @@ custom_node_manifest commands:
   custom_node_manifest rename-set OLD NEW [--manifest FILE]
   custom_node_manifest delete-set SET [--manifest FILE]
 
+Friendly add helper:
+  custom_node_add REPOSITORY [--set SET] [--local DIR] [--install]
+  custom_node_add REPOSITORY --accept-default
+
 Workflow resolver options:
   --comfy-url URL          Live ComfyUI URL (default http://127.0.0.1:8188)
   --accept-default         Select the first mapped provider and default branch
@@ -186,5 +190,8 @@ install_custom_nodes() {
 # Must be sourced last so it can compose with active-workflow and rollback wrappers.
 # shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/helpers_custom_node_manifest_manage.sh" ]] && source "${_helpers_entry_dir}/helpers_custom_node_manifest_manage.sh"
+# Friendly custom_node_add override must come after the legacy function definition.
+# shellcheck source=/dev/null
+[[ -f "${_helpers_entry_dir}/helpers_custom_node_add.sh" ]] && source "${_helpers_entry_dir}/helpers_custom_node_add.sh"
 
 unset _helpers_entry_dir
