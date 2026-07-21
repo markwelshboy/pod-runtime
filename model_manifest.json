@@ -1101,6 +1101,54 @@
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/loras/krea2/realism_engine_krea2_v3.1.safetensors",
         "path": "{LORAS_DIR}/Krea-2/realism_engine_krea2_v3.1.safetensors"
       }
+    ],
+    "download_krea2_siobhan_loras": [
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000002500.safetensors",
+        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000002500.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000003000.safetensors",
+        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000003000.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000003500.safetensors",
+        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000003500.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000004000.safetensors",
+        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000004000.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000004500.safetensors",
+        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000004500.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000005000.safetensors",
+        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000005000.safetensors"
+      }
+    ],
+    "download_wan21_siobhan_loras": [
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/wan/wan21-t2v/5H1V_captions_less_spread_000009750.safetensors",
+        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v/5H1V_captions_less_spread_000009750.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000006000.safetensors",
+        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000006000.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000007500.safetensors",
+        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000007500.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000009000.safetensors",
+        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000009000.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/wan/wan21-t2v/wan21_siobhan_caption.safetensors",
+        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v/wan21_siobhan_caption.safetensors"
+      },
     ]
   }
 }
