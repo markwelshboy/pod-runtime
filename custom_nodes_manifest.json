@@ -1,361 +1,366 @@
 {
-    "schema_version": 1,
-    "defaults": {
-        "pip_options": [
-            "--upgrade-strategy",
-            "only-if-needed"
-        ],
-        "constraint_mode": "inherit"
+  "schema_version": 1,
+  "defaults": {
+    "pip_options": [
+      "--upgrade-strategy",
+      "only-if-needed"
+    ],
+    "constraint_mode": "inherit"
+  },
+  "nodes": {
+    "comfyui-ultimatesdupscale": {
+      "remote": "https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git",
+      "local": "ComfyUI_UltimateSDUpscale",
+      "clone_options": [
+        "--recursive"
+      ]
     },
-    "nodes": {
-        "comfyui-ultimatesdupscale": {
-            "remote": "https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git",
-            "local": "ComfyUI_UltimateSDUpscale",
-            "clone_options": [
-                "--recursive"
-            ]
-        },
-        "comfyui-kjnodes": {
-            "remote": "https://github.com/kijai/ComfyUI-KJNodes.git",
-            "local": "ComfyUI-KJNodes"
-        },
-        "rgthree-comfy": {
-            "remote": "https://github.com/rgthree/rgthree-comfy.git",
-            "local": "rgthree-comfy"
-        },
-        "comfyui-jps-nodes": {
-            "remote": "https://github.com/JPS-GER/ComfyUI_JPS-Nodes.git",
-            "local": "ComfyUI_JPS-Nodes"
-        },
-        "comfyui-comfyroll-customnodes": {
-            "remote": "https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes.git",
-            "local": "ComfyUI_Comfyroll_CustomNodes"
-        },
-        "comfy-plasma": {
-            "remote": "https://github.com/Jordach/comfy-plasma.git",
-            "local": "comfy-plasma"
-        },
-        "comfyui-videohelpersuite": {
-            "remote": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
-            "local": "ComfyUI-VideoHelperSuite"
-        },
-        "mikey-nodes": {
-            "remote": "https://github.com/bash-j/mikey_nodes.git",
-            "local": "mikey_nodes"
-        },
-        "comfyui-impact-pack": {
-            "remote": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git",
-            "local": "ComfyUI-Impact-Pack"
-        },
-        "comfyui-controlnet-aux": {
-            "remote": "https://github.com/Fannovel16/comfyui_controlnet_aux.git",
-            "local": "comfyui_controlnet_aux"
-        },
-        "comfyui-easy-use": {
-            "remote": "https://github.com/yolain/ComfyUI-Easy-Use.git",
-            "local": "ComfyUI-Easy-Use"
-        },
-        "comfyui-latentsyncwrapper": {
-            "remote": "https://github.com/ShmuelRonen/ComfyUI-LatentSyncWrapper.git",
-            "local": "ComfyUI-LatentSyncWrapper"
-        },
-        "was-node-suite-comfyui": {
-            "remote": "https://github.com/WASasquatch/was-node-suite-comfyui.git",
-            "local": "was-node-suite-comfyui"
-        },
-        "comfyui-logic": {
-            "remote": "https://github.com/theUpsider/ComfyUI-Logic.git",
-            "local": "ComfyUI-Logic"
-        },
-        "comfyui-essentials": {
-            "remote": "https://github.com/cubiq/ComfyUI_essentials.git",
-            "local": "ComfyUI_essentials"
-        },
-        "cg-image-picker": {
-            "remote": "https://github.com/chrisgoringe/cg-image-picker.git",
-            "local": "cg-image-picker"
-        },
-        "comfyui-layerstyle": {
-            "remote": "https://github.com/chflame163/ComfyUI_LayerStyle.git",
-            "local": "ComfyUI_LayerStyle"
-        },
-        "cg-use-everywhere": {
-            "remote": "https://github.com/chrisgoringe/cg-use-everywhere.git",
-            "local": "cg-use-everywhere"
-        },
-        "comfyui-segment-anything-2": {
-            "remote": "https://github.com/kijai/ComfyUI-segment-anything-2.git",
-            "local": "ComfyUI-segment-anything-2"
-        },
-        "res4lyf": {
-            "remote": "https://github.com/ClownsharkBatwing/RES4LYF",
-            "local": "RES4LYF"
-        },
-        "comfyui-frame-interpolation": {
-            "remote": "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",
-            "local": "ComfyUI-Frame-Interpolation"
-        },
-        "comfyui-detail-daemon": {
-            "remote": "https://github.com/Jonseed/ComfyUI-Detail-Daemon.git",
-            "local": "ComfyUI-Detail-Daemon"
-        },
-        "comfyui-wanvideowrapper": {
-            "remote": "https://github.com/kijai/ComfyUI-WanVideoWrapper.git",
-            "local": "ComfyUI-WanVideoWrapper"
-        },
-        "comfyui-layerstyle-advance": {
-            "remote": "https://github.com/chflame163/ComfyUI_LayerStyle_Advance.git",
-            "local": "ComfyUI_LayerStyle_Advance"
-        },
-        "masquerade-nodes-comfyui": {
-            "remote": "https://github.com/BadCafeCode/masquerade-nodes-comfyui.git",
-            "local": "masquerade-nodes-comfyui"
-        },
-        "comfyui-rmbg": {
-            "remote": "https://github.com/1038lab/ComfyUI-RMBG.git",
-            "local": "ComfyUI-RMBG"
-        },
-        "comfyliterals": {
-            "remote": "https://github.com/M1kep/ComfyLiterals.git",
-            "local": "ComfyLiterals"
-        },
-        "comfyui-wananimatepreprocess": {
-            "remote": "https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git",
-            "local": "ComfyUI-WanAnimatePreprocess"
-        },
-        "comfyui-fsampler": {
-            "remote": "https://github.com/obisin/ComfyUI-FSampler.git",
-            "local": "ComfyUI-FSampler"
-        },
-        "comfyui-wanmoescheduler": {
-            "remote": "https://github.com/cmeka/ComfyUI-WanMoEScheduler.git",
-            "local": "ComfyUI-WanMoEScheduler"
-        },
-        "comfyui-vae-utils": {
-            "remote": "https://github.com/lrzjason/ComfyUI-VAE-Utils.git",
-            "local": "ComfyUI-VAE-Utils"
-        },
-        "comfyui-custom-scripts": {
-            "remote": "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git",
-            "local": "ComfyUI-Custom-Scripts"
-        },
-        "comfyui-mxtoolkit": {
-            "remote": "https://github.com/Smirnov75/ComfyUI-mxToolkit.git",
-            "local": "ComfyUI-mxToolkit"
-        },
-        "comfyui-crystools": {
-            "remote": "https://github.com/crystian/ComfyUI-Crystools",
-            "local": "ComfyUI-Crystools"
-        },
-        "comfyui-prompt-control": {
-            "remote": "https://github.com/asagi4/comfyui-prompt-control",
-            "local": "comfyui-prompt-control"
-        },
-        "comfyui-wan22fmlf": {
-            "remote": "https://github.com/wallen0322/ComfyUI-Wan22FMLF",
-            "local": "ComfyUI-Wan22FMLF"
-        },
-        "comfyui-manager": {
-            "remote": "https://github.com/ltdrdata/ComfyUI-Manager",
-            "local": "comfyui-manager"
-        },
-        "comfyui-seedvr2-videoupscaler": {
-            "remote": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler",
-            "local": "ComfyUI-SeedVR2_VideoUpscaler"
-        },
-        "comfyui-seedvr2-tilingupscaler": {
-            "remote": "https://github.com/moonwhaler/comfyui-seedvr2-tilingupscaler",
-            "local": "comfyui-seedvr2-tilingupscaler"
-        },
-        "comfyui-inpaint-cropandstitch": {
-            "remote": "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch",
-            "local": "ComfyUI-Inpaint-CropAndStitch"
-        },
-        "comfyui-enricos-nodes": {
-            "remote": "https://github.com/erosDiffusion/ComfyUI-enricos-nodes",
-            "local": "ComfyUI-enricos-nodes"
-        },
-        "comfyui-tinyterranodes": {
-            "remote": "https://github.com/TinyTerra/ComfyUI_tinyterraNodes",
-            "local": "ComfyUI_tinyterraNodes"
-        },
-        "sd-perturbed-attention": {
-            "remote": "https://github.com/pamparamm/sd-perturbed-attention",
-            "local": "sd-perturbed-attention"
-        },
-        "controlaltai-nodes": {
-            "remote": "https://github.com/gseth/ControlAltAI-Nodes",
-            "local": "ControlAltAI-Nodes"
-        },
-        "comfyui-vrgamedevgirl": {
-            "remote": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl",
-            "local": "comfyui-vrgamedevgirl"
-        },
-        "comfyui-vintageeffect": {
-            "remote": "https://github.com/brucew4yn3rp/ComfyUI_VintageEffect",
-            "local": "ComfyUI_VintageEffect"
-        },
-        "comfyui-inspyrenet-rembg": {
-            "remote": "https://github.com/john-mnz/ComfyUI-Inspyrenet-Rembg",
-            "local": "ComfyUI-Inspyrenet-Rembg"
-        },
-        "comfyui-crosshairguidelines": {
-            "remote": "https://github.com/SparknightLLC/ComfyUI-CrosshairGuidelines",
-            "local": "ComfyUI-CrosshairGuidelines"
-        },
-        "comfyui-various": {
-            "remote": "https://github.com/jamesWalker55/comfyui-various",
-            "local": "comfyui-various"
-        },
-        "comfyui-y7nodes": {
-            "remote": "https://github.com/yushan777/ComfyUI-Y7Nodes",
-            "local": "ComfyUI-Y7Nodes"
-        },
-        "comfyui-fbcnn": {
-            "remote": "https://github.com/Miosp/ComfyUI-FBCNN",
-            "local": "ComfyUI-FBCNN"
-        },
-        "comfyui-nag": {
-            "remote": "https://github.com/ChenDarYen/ComfyUI-NAG",
-            "local": "ComfyUI-NAG"
-        },
-        "comfyui-pixaroma": {
-            "remote": "https://github.com/pixaroma/ComfyUI-Pixaroma",
-            "local": "ComfyUI-Pixaroma"
-        },
-        "vantagelongwanvideo": {
-            "remote": "https://github.com/vantagewithai/VantageLongWanVideo",
-            "local": "VantageLongWanVideo"
-        },
-        "comfyui-resolution-master": {
-            "remote": "https://github.com/Azornes/Comfyui-Resolution-Master",
-            "local": "Comfyui-Resolution-Master"
-        },
-        "comfyui-editutils": {
-            "remote": "https://github.com/lrzjason/ComfyUI-EditUtils",
-            "local": "ComfyUI-EditUtils"
-        },
-        "comfyui-qwenvl-promptcaption": {
-            "remote": "https://github.com/WingeD123/ComfyUI_QwenVL_PromptCaption",
-            "local": "ComfyUI_QwenVL_PromptCaption"
-        },
-        "comfyui-qwen3-vl-instruct": {
-            "remote": "https://github.com/IuvenisSapiens/ComfyUI_Qwen3-VL-Instruct",
-            "local": "ComfyUI_Qwen3-VL-Instruct"
-        },
-        "comfyui-krea2t-enhancer": {
-            "remote": "https://github.com/capitan01R/ComfyUI-Krea2T-Enhancer",
-            "local": "ComfyUI-Krea2T-Enhancer"
-        },
-        "comfyui-krea2textencoder": {
-            "remote": "https://github.com/ethanfel/ComfyUI-Krea2TextEncoder",
-            "local": "ComfyUI-Krea2TextEncoder"
-        },
-        "krea-2-two-stage-sampler": {
-            "remote": "https://github.com/Auryg/Krea-2-Two-Stage-Sampler",
-            "local": "Krea-2-Two-Stage-Sampler"
-        },
-        "comfyui-krea2edit": {
-            "remote": "https://github.com/lbouaraba/comfyui-krea2edit",
-            "local": "comfyui-krea2edit"
-        },
-        "comfyui-krea2-controlnet": {
-            "remote": "https://github.com/facok/comfyui-krea2-controlnet",
-            "local": "comfyui-krea2-controlnet"
-        },
-        "comfyui-conditioning-rebalance": {
-            "remote": "https://github.com/nova452/ComfyUI-Conditioning-Rebalance",
-            "local": "ComfyUI-Conditioning-Rebalance"
-        },
-        "crt-nodes": {
-            "remote": "https://github.com/PGCRT/CRT-Nodes.git",
-            "local": "CRT-Nodes",
-            "pip": {
-                "options": [
-                    "--upgrade-strategy",
-                    "only-if-needed"
-                ],
-                "constraint_mode": "inherit",
-                "requirements": {
-                    "remove": [
-                        "omnivoice"
-                    ],
-                    "add": [
-                        "openai-whisper==20250625"
-                    ]
-                }
-            }
+    "comfyui-kjnodes": {
+      "remote": "https://github.com/kijai/ComfyUI-KJNodes.git",
+      "local": "ComfyUI-KJNodes"
+    },
+    "rgthree-comfy": {
+      "remote": "https://github.com/rgthree/rgthree-comfy.git",
+      "local": "rgthree-comfy"
+    },
+    "comfyui-jps-nodes": {
+      "remote": "https://github.com/JPS-GER/ComfyUI_JPS-Nodes.git",
+      "local": "ComfyUI_JPS-Nodes"
+    },
+    "comfyui-comfyroll-customnodes": {
+      "remote": "https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes.git",
+      "local": "ComfyUI_Comfyroll_CustomNodes"
+    },
+    "comfy-plasma": {
+      "remote": "https://github.com/Jordach/comfy-plasma.git",
+      "local": "comfy-plasma"
+    },
+    "comfyui-videohelpersuite": {
+      "remote": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
+      "local": "ComfyUI-VideoHelperSuite"
+    },
+    "mikey-nodes": {
+      "remote": "https://github.com/bash-j/mikey_nodes.git",
+      "local": "mikey_nodes"
+    },
+    "comfyui-impact-pack": {
+      "remote": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git",
+      "local": "ComfyUI-Impact-Pack"
+    },
+    "comfyui-controlnet-aux": {
+      "remote": "https://github.com/Fannovel16/comfyui_controlnet_aux.git",
+      "local": "comfyui_controlnet_aux"
+    },
+    "comfyui-easy-use": {
+      "remote": "https://github.com/yolain/ComfyUI-Easy-Use.git",
+      "local": "ComfyUI-Easy-Use"
+    },
+    "comfyui-latentsyncwrapper": {
+      "remote": "https://github.com/ShmuelRonen/ComfyUI-LatentSyncWrapper.git",
+      "local": "ComfyUI-LatentSyncWrapper"
+    },
+    "was-node-suite-comfyui": {
+      "remote": "https://github.com/WASasquatch/was-node-suite-comfyui.git",
+      "local": "was-node-suite-comfyui"
+    },
+    "comfyui-logic": {
+      "remote": "https://github.com/theUpsider/ComfyUI-Logic.git",
+      "local": "ComfyUI-Logic"
+    },
+    "comfyui-essentials": {
+      "remote": "https://github.com/cubiq/ComfyUI_essentials.git",
+      "local": "ComfyUI_essentials"
+    },
+    "cg-image-picker": {
+      "remote": "https://github.com/chrisgoringe/cg-image-picker.git",
+      "local": "cg-image-picker"
+    },
+    "comfyui-layerstyle": {
+      "remote": "https://github.com/chflame163/ComfyUI_LayerStyle.git",
+      "local": "ComfyUI_LayerStyle"
+    },
+    "cg-use-everywhere": {
+      "remote": "https://github.com/chrisgoringe/cg-use-everywhere.git",
+      "local": "cg-use-everywhere"
+    },
+    "comfyui-segment-anything-2": {
+      "remote": "https://github.com/kijai/ComfyUI-segment-anything-2.git",
+      "local": "ComfyUI-segment-anything-2"
+    },
+    "res4lyf": {
+      "remote": "https://github.com/ClownsharkBatwing/RES4LYF",
+      "local": "RES4LYF"
+    },
+    "comfyui-frame-interpolation": {
+      "remote": "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",
+      "local": "ComfyUI-Frame-Interpolation"
+    },
+    "comfyui-detail-daemon": {
+      "remote": "https://github.com/Jonseed/ComfyUI-Detail-Daemon.git",
+      "local": "ComfyUI-Detail-Daemon"
+    },
+    "comfyui-wanvideowrapper": {
+      "remote": "https://github.com/kijai/ComfyUI-WanVideoWrapper.git",
+      "local": "ComfyUI-WanVideoWrapper"
+    },
+    "comfyui-layerstyle-advance": {
+      "remote": "https://github.com/chflame163/ComfyUI_LayerStyle_Advance.git",
+      "local": "ComfyUI_LayerStyle_Advance"
+    },
+    "masquerade-nodes-comfyui": {
+      "remote": "https://github.com/BadCafeCode/masquerade-nodes-comfyui.git",
+      "local": "masquerade-nodes-comfyui"
+    },
+    "comfyui-rmbg": {
+      "remote": "https://github.com/1038lab/ComfyUI-RMBG.git",
+      "local": "ComfyUI-RMBG"
+    },
+    "comfyliterals": {
+      "remote": "https://github.com/M1kep/ComfyLiterals.git",
+      "local": "ComfyLiterals"
+    },
+    "comfyui-wananimatepreprocess": {
+      "remote": "https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git",
+      "local": "ComfyUI-WanAnimatePreprocess"
+    },
+    "comfyui-fsampler": {
+      "remote": "https://github.com/obisin/ComfyUI-FSampler.git",
+      "local": "ComfyUI-FSampler"
+    },
+    "comfyui-wanmoescheduler": {
+      "remote": "https://github.com/cmeka/ComfyUI-WanMoEScheduler.git",
+      "local": "ComfyUI-WanMoEScheduler"
+    },
+    "comfyui-vae-utils": {
+      "remote": "https://github.com/lrzjason/ComfyUI-VAE-Utils.git",
+      "local": "ComfyUI-VAE-Utils"
+    },
+    "comfyui-custom-scripts": {
+      "remote": "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git",
+      "local": "ComfyUI-Custom-Scripts"
+    },
+    "comfyui-mxtoolkit": {
+      "remote": "https://github.com/Smirnov75/ComfyUI-mxToolkit.git",
+      "local": "ComfyUI-mxToolkit"
+    },
+    "comfyui-crystools": {
+      "remote": "https://github.com/crystian/ComfyUI-Crystools",
+      "local": "ComfyUI-Crystools"
+    },
+    "comfyui-prompt-control": {
+      "remote": "https://github.com/asagi4/comfyui-prompt-control",
+      "local": "comfyui-prompt-control"
+    },
+    "comfyui-wan22fmlf": {
+      "remote": "https://github.com/wallen0322/ComfyUI-Wan22FMLF",
+      "local": "ComfyUI-Wan22FMLF"
+    },
+    "comfyui-manager": {
+      "remote": "https://github.com/ltdrdata/ComfyUI-Manager",
+      "local": "comfyui-manager"
+    },
+    "comfyui-seedvr2-videoupscaler": {
+      "remote": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler",
+      "local": "ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "comfyui-seedvr2-tilingupscaler": {
+      "remote": "https://github.com/moonwhaler/comfyui-seedvr2-tilingupscaler",
+      "local": "comfyui-seedvr2-tilingupscaler"
+    },
+    "comfyui-inpaint-cropandstitch": {
+      "remote": "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch",
+      "local": "ComfyUI-Inpaint-CropAndStitch"
+    },
+    "comfyui-enricos-nodes": {
+      "remote": "https://github.com/erosDiffusion/ComfyUI-enricos-nodes",
+      "local": "ComfyUI-enricos-nodes"
+    },
+    "comfyui-tinyterranodes": {
+      "remote": "https://github.com/TinyTerra/ComfyUI_tinyterraNodes",
+      "local": "ComfyUI_tinyterraNodes"
+    },
+    "sd-perturbed-attention": {
+      "remote": "https://github.com/pamparamm/sd-perturbed-attention",
+      "local": "sd-perturbed-attention"
+    },
+    "controlaltai-nodes": {
+      "remote": "https://github.com/gseth/ControlAltAI-Nodes",
+      "local": "ControlAltAI-Nodes"
+    },
+    "comfyui-vrgamedevgirl": {
+      "remote": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl",
+      "local": "comfyui-vrgamedevgirl"
+    },
+    "comfyui-vintageeffect": {
+      "remote": "https://github.com/brucew4yn3rp/ComfyUI_VintageEffect",
+      "local": "ComfyUI_VintageEffect"
+    },
+    "comfyui-inspyrenet-rembg": {
+      "remote": "https://github.com/john-mnz/ComfyUI-Inspyrenet-Rembg",
+      "local": "ComfyUI-Inspyrenet-Rembg"
+    },
+    "comfyui-crosshairguidelines": {
+      "remote": "https://github.com/SparknightLLC/ComfyUI-CrosshairGuidelines",
+      "local": "ComfyUI-CrosshairGuidelines"
+    },
+    "comfyui-various": {
+      "remote": "https://github.com/jamesWalker55/comfyui-various",
+      "local": "comfyui-various"
+    },
+    "comfyui-y7nodes": {
+      "remote": "https://github.com/yushan777/ComfyUI-Y7Nodes",
+      "local": "ComfyUI-Y7Nodes"
+    },
+    "comfyui-fbcnn": {
+      "remote": "https://github.com/Miosp/ComfyUI-FBCNN",
+      "local": "ComfyUI-FBCNN"
+    },
+    "comfyui-nag": {
+      "remote": "https://github.com/ChenDarYen/ComfyUI-NAG",
+      "local": "ComfyUI-NAG"
+    },
+    "comfyui-pixaroma": {
+      "remote": "https://github.com/pixaroma/ComfyUI-Pixaroma",
+      "local": "ComfyUI-Pixaroma"
+    },
+    "vantagelongwanvideo": {
+      "remote": "https://github.com/vantagewithai/VantageLongWanVideo",
+      "local": "VantageLongWanVideo"
+    },
+    "comfyui-resolution-master": {
+      "remote": "https://github.com/Azornes/Comfyui-Resolution-Master",
+      "local": "Comfyui-Resolution-Master"
+    },
+    "comfyui-editutils": {
+      "remote": "https://github.com/lrzjason/ComfyUI-EditUtils",
+      "local": "ComfyUI-EditUtils"
+    },
+    "comfyui-qwenvl-promptcaption": {
+      "remote": "https://github.com/WingeD123/ComfyUI_QwenVL_PromptCaption",
+      "local": "ComfyUI_QwenVL_PromptCaption"
+    },
+    "comfyui-qwen3-vl-instruct": {
+      "remote": "https://github.com/IuvenisSapiens/ComfyUI_Qwen3-VL-Instruct",
+      "local": "ComfyUI_Qwen3-VL-Instruct"
+    },
+    "comfyui-krea2t-enhancer": {
+      "remote": "https://github.com/capitan01R/ComfyUI-Krea2T-Enhancer",
+      "local": "ComfyUI-Krea2T-Enhancer"
+    },
+    "comfyui-krea2textencoder": {
+      "remote": "https://github.com/ethanfel/ComfyUI-Krea2TextEncoder",
+      "local": "ComfyUI-Krea2TextEncoder"
+    },
+    "krea-2-two-stage-sampler": {
+      "remote": "https://github.com/Auryg/Krea-2-Two-Stage-Sampler",
+      "local": "Krea-2-Two-Stage-Sampler"
+    },
+    "comfyui-krea2edit": {
+      "remote": "https://github.com/lbouaraba/comfyui-krea2edit",
+      "local": "comfyui-krea2edit"
+    },
+    "comfyui-krea2-controlnet": {
+      "remote": "https://github.com/facok/comfyui-krea2-controlnet",
+      "local": "comfyui-krea2-controlnet"
+    },
+    "comfyui-conditioning-rebalance": {
+      "remote": "https://github.com/nova452/ComfyUI-Conditioning-Rebalance",
+      "local": "ComfyUI-Conditioning-Rebalance"
+    },
+    "crt-nodes": {
+      "remote": "https://github.com/PGCRT/CRT-Nodes.git",
+      "local": "CRT-Nodes",
+      "pip": {
+        "options": [
+          "--upgrade-strategy",
+          "only-if-needed"
+        ],
+        "constraint_mode": "inherit",
+        "requirements": {
+          "remove": [
+            "omnivoice"
+          ],
+          "add": [
+            "openai-whisper==20250625"
+          ]
         }
+      }
     },
-    "sets": {
-        "default": [
-            "comfyui-ultimatesdupscale",
-            "comfyui-kjnodes",
-            "rgthree-comfy",
-            "comfyui-jps-nodes",
-            "comfyui-comfyroll-customnodes",
-            "comfy-plasma",
-            "comfyui-videohelpersuite",
-            "mikey-nodes",
-            "comfyui-impact-pack",
-            "comfyui-controlnet-aux",
-            "comfyui-easy-use",
-            "comfyui-latentsyncwrapper",
-            "was-node-suite-comfyui",
-            "comfyui-logic",
-            "comfyui-essentials",
-            "cg-image-picker",
-            "comfyui-layerstyle",
-            "cg-use-everywhere",
-            "comfyui-segment-anything-2",
-            "res4lyf",
-            "comfyui-frame-interpolation",
-            "comfyui-detail-daemon",
-            "comfyui-wanvideowrapper",
-            "comfyui-layerstyle-advance",
-            "masquerade-nodes-comfyui",
-            "comfyui-rmbg",
-            "comfyliterals",
-            "comfyui-wananimatepreprocess",
-            "comfyui-fsampler",
-            "comfyui-wanmoescheduler",
-            "comfyui-vae-utils",
-            "comfyui-custom-scripts",
-            "comfyui-mxtoolkit",
-            "comfyui-crystools",
-            "comfyui-prompt-control",
-            "comfyui-wan22fmlf",
-            "comfyui-manager",
-            "comfyui-seedvr2-videoupscaler",
-            "comfyui-seedvr2-tilingupscaler",
-            "comfyui-inpaint-cropandstitch",
-            "comfyui-enricos-nodes",
-            "comfyui-tinyterranodes",
-            "sd-perturbed-attention",
-            "controlaltai-nodes",
-            "comfyui-vrgamedevgirl",
-            "comfyui-vintageeffect",
-            "comfyui-inspyrenet-rembg",
-            "comfyui-crosshairguidelines",
-            "comfyui-various",
-            "comfyui-y7nodes",
-            "comfyui-fbcnn",
-            "comfyui-nag",
-            "comfyui-pixaroma",
-            "vantagelongwanvideo",
-            "comfyui-resolution-master",
-            "comfyui-editutils"
-        ],
-        "krea2": [
-            "comfyui-qwenvl-promptcaption",
-            "comfyui-qwen3-vl-instruct",
-            "comfyui-krea2t-enhancer",
-            "comfyui-krea2textencoder",
-            "krea-2-two-stage-sampler",
-            "comfyui-krea2edit",
-            "comfyui-krea2-controlnet",
-            "comfyui-conditioning-rebalance",
-            "crt-nodes"
-        ]
+    "krea2-bbox-prompter": {
+      "remote": "https://github.com/ukr8b3g-cmyk/Krea2-BBOX-Prompter.git",
+      "local": "Krea2-BBOX-Prompter"
     }
+  },
+  "sets": {
+    "default": [
+      "comfyui-ultimatesdupscale",
+      "comfyui-kjnodes",
+      "rgthree-comfy",
+      "comfyui-jps-nodes",
+      "comfyui-comfyroll-customnodes",
+      "comfy-plasma",
+      "comfyui-videohelpersuite",
+      "mikey-nodes",
+      "comfyui-impact-pack",
+      "comfyui-controlnet-aux",
+      "comfyui-easy-use",
+      "comfyui-latentsyncwrapper",
+      "was-node-suite-comfyui",
+      "comfyui-logic",
+      "comfyui-essentials",
+      "cg-image-picker",
+      "comfyui-layerstyle",
+      "cg-use-everywhere",
+      "comfyui-segment-anything-2",
+      "res4lyf",
+      "comfyui-frame-interpolation",
+      "comfyui-detail-daemon",
+      "comfyui-wanvideowrapper",
+      "comfyui-layerstyle-advance",
+      "masquerade-nodes-comfyui",
+      "comfyui-rmbg",
+      "comfyliterals",
+      "comfyui-wananimatepreprocess",
+      "comfyui-fsampler",
+      "comfyui-wanmoescheduler",
+      "comfyui-vae-utils",
+      "comfyui-custom-scripts",
+      "comfyui-mxtoolkit",
+      "comfyui-crystools",
+      "comfyui-prompt-control",
+      "comfyui-wan22fmlf",
+      "comfyui-manager",
+      "comfyui-seedvr2-videoupscaler",
+      "comfyui-seedvr2-tilingupscaler",
+      "comfyui-inpaint-cropandstitch",
+      "comfyui-enricos-nodes",
+      "comfyui-tinyterranodes",
+      "sd-perturbed-attention",
+      "controlaltai-nodes",
+      "comfyui-vrgamedevgirl",
+      "comfyui-vintageeffect",
+      "comfyui-inspyrenet-rembg",
+      "comfyui-crosshairguidelines",
+      "comfyui-various",
+      "comfyui-y7nodes",
+      "comfyui-fbcnn",
+      "comfyui-nag",
+      "comfyui-pixaroma",
+      "vantagelongwanvideo",
+      "comfyui-resolution-master",
+      "comfyui-editutils"
+    ],
+    "krea2": [
+      "comfyui-qwenvl-promptcaption",
+      "comfyui-qwen3-vl-instruct",
+      "comfyui-krea2t-enhancer",
+      "comfyui-krea2textencoder",
+      "krea-2-two-stage-sampler",
+      "comfyui-krea2edit",
+      "comfyui-krea2-controlnet",
+      "comfyui-conditioning-rebalance",
+      "crt-nodes",
+      "krea2-bbox-prompter"
+    ]
+  }
 }
