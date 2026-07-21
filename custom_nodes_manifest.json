@@ -365,6 +365,10 @@
     "comfyui-qwenvl-mod": {
       "remote": "https://github.com/huchukato/ComfyUI-QwenVL-Mod",
       "local": "ComfyUI-QwenVL-Mod"
+    },
+    "comfyui-huggingface": {
+      "remote": "https://github.com/huchukato/ComfyUI-HuggingFace",
+      "local": "ComfyUI-HuggingFace"
     }
   },
   "sets": {
@@ -424,7 +428,8 @@
       "comfyui-pixaroma",
       "vantagelongwanvideo",
       "comfyui-resolution-master",
-      "comfyui-editutils"
+      "comfyui-editutils",
+      "comfyui-huggingface"
     ],
     "krea2": [
       "comfyui-qwenvl-promptcaption",
