@@ -424,8 +424,7 @@
       "comfyui-pixaroma",
       "vantagelongwanvideo",
       "comfyui-resolution-master",
-      "comfyui-editutils",
-      "custom-nodes-krea2-bbox-pose-gesture-v1"
+      "comfyui-editutils"
     ],
     "krea2": [
       "comfyui-qwenvl-promptcaption",
