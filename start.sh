@@ -366,7 +366,7 @@ fi
 hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
-section 11 "Pull my LORA / model repo from Huggingface and symlink into ComfyUI"
+section 11 "Pull my model repo from Huggingface and symlink into ComfyUI"
 #----------------------------------------------
 # Synchronize 'diffusionetc' from HF to local 
 #   cache repo (and symlink into ComfyUI)
@@ -375,7 +375,7 @@ section 11 "Pull my LORA / model repo from Huggingface and symlink into ComfyUI"
 if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
   
   export HF_EXCLUDE_GLOBS="${HF_MY_REPO_EXCLUDE_GLOBS:-training/** snapshot/**}"
-  export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS:-loras/** checkpoints/** ultralytics/** upscale_models/**}"
+  export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS:-models/loras/** models/checkpoints/** models/ultralytics/** models/upscale_models/**}"
   HF_REPO_TYPE=${HF_MY_REPO_TYPE} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" || true
 
   if hf_repo_looks_good "$HF_MY_REPO_LOCAL"; then
@@ -383,12 +383,12 @@ if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
     rsync_or_symlink_source_to_destination symlink "$HF_MY_REPO_LOCAL" "/workspace" || true
     # Create additional symlinks into main COMFY dirs as needed
     _sync_info "✅ Linking files from $HF_MY_REPO_LOCAL into ComfyUI directories via symlinks..."
-    ln -sfn $HF_MY_REPO_LOCAL/loras/*             "$LORAS_DIR/"               || true
-    ln -sfn $HF_MY_REPO_LOCAL/checkpoints/*       "$CHECKPOINTS_DIR/"         || true
-    [ -f   "$HF_MY_REPO_LOCAL/ultralytics/ultralytics.tar" ]  && ( tar -xf "$HF_MY_REPO_LOCAL/ultralytics/ultralytics.tar" -C "$ULTRALYTICS_DIR/" )   || true
-    ln -sfn $HF_MY_REPO_LOCAL/ultralytics/*       "$ULTRALYTICS_DIR/"         || true
-    [ -f   "$HF_MY_REPO_LOCAL/upscale_models/upscalers.tar" ] && ( tar -xf "$HF_MY_REPO_LOCAL/upscale_models/upscalers.tar" -C "$UPSCALE_DIR/" )      || true
-    ln -sfn $HF_MY_REPO_LOCAL/upscale_models/*    "$UPSCALE_DIR/"             || true
+    ln -sfn $HF_MY_REPO_LOCAL/models/loras/*             "$LORAS_DIR/"               || true
+    ln -sfn $HF_MY_REPO_LOCAL/models/checkpoints/*       "$CHECKPOINTS_DIR/"         || true
+    [ -f   "$HF_MY_REPO_LOCAL/models/ultralytics/ultralytics.tar" ]  && ( tar -xf "$HF_MY_REPO_LOCAL/models/ultralytics/ultralytics.tar" -C "$ULTRALYTICS_DIR/" )   || true
+    ln -sfn $HF_MY_REPO_LOCAL/models/ultralytics/*       "$ULTRALYTICS_DIR/"         || true
+    [ -f   "$HF_MY_REPO_LOCAL/models/upscale_models/upscalers.tar" ] && ( tar -xf "$HF_MY_REPO_LOCAL/models/upscale_models/upscalers.tar" -C "$UPSCALE_DIR/" )      || true
+    ln -sfn $HF_MY_REPO_LOCAL/models/upscale_models/*    "$UPSCALE_DIR/"             || true
 
     tg "📥 HuggingFace repo sync completed: $HF_MY_REPO_ID"                   || true
 
@@ -400,17 +400,9 @@ else
   echo "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
 fi
 
-#------------------------------------------------------------------------
-section 12 "Aria2 (Manifest+CivitAI) Tracking till completion"
-#----------------------------------------------
-# Wait for all downloads to complete
-#----------------------------------------------
-
-aria2_monitor_progress || true
-aria2_clear_results >/dev/null 2>&1 || true
 
 #------------------------------------------------------------------------
-section 13 "Disk Watcher"
+section 12 "Disk Watcher"
 #----------------------------------------------
 # Start disk watcher to monitor disk usage
 # Defaults to checking every 10 minutes, warning at 85%,
