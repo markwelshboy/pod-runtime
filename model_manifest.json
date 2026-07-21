@@ -1148,7 +1148,7 @@
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/wan/wan21-t2v/wan21_siobhan_caption.safetensors",
         "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v/wan21_siobhan_caption.safetensors"
-      },
+      }
     ]
   }
 }
