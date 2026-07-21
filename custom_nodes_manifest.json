@@ -436,7 +436,8 @@
       "comfyui-krea2-controlnet",
       "comfyui-conditioning-rebalance",
       "crt-nodes",
-      "krea2-bbox-prompter"
+      "krea2-bbox-prompter",
+      "custom-nodes-krea2-bbox-pose-gesture-v1"
     ],
     "krea2-lonecat": [
       "comfyui-florence2",
