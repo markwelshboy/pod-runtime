@@ -15,7 +15,7 @@
     "CTRLNET_DIR": "{COMFY_HOME}/models/controlnet",
     "CHECKPOINTS_DIR": "{COMFY_HOME}/models/checkpoints",
     "SEEDVR2_DIR": "{COMFY_HOME}/models/SEEDVR2"
-},
+  },
   "sections": {
     "download_480p_native_models": [
       {
@@ -540,7 +540,6 @@
       }
     ],
     "download_qwen_image_edit_2509": [
-
       {
         "url": "https://huggingface.co/aidiffuser/Qwen-Image-Edit-2509/resolve/main/Qwen-Image-Edit-2509_bf16.safetensors",
         "path": "{DIFFUSION_MODELS_DIR}/qwen_image_edit_2509_bf16.safetensors"
@@ -1050,44 +1049,16 @@
         "path": "{LORAS_DIR}/Krea-2/krea2_turbo_lora_rank_64_bf16.safetensors"
       },
       {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/KNPV3_1.safetensors",
-        "path": "{LORAS_DIR}/Krea-2/KNPV3_1.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/Krea2-realism-V2.safetensors",
-        "path": "{LORAS_DIR}/Krea-2/Krea2-realism-V2.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/Krea2_HMNSFW_AIO.safetensors",
-        "path": "{LORAS_DIR}/Krea-2/Krea2_HMNSFW_AIO.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/krea2filterbypass.safetensors",
-        "path": "{LORAS_DIR}/Krea-2/krea2filterbypass.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/snofs_krea_v1_1.safetensors",
-        "path": "{LORAS_DIR}/Krea-2/snofs_krea_v1_1.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/MysticXXX_KREA2_v2.safetensors",
-        "path": "{LORAS_DIR}/Krea-2/MysticXXX_KREA2_v2.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/Krea2_0x7_NSFW.safetensors",
-        "path": "{LORAS_DIR}/Krea-2/Krea2_0x7_NSFW.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/PhotoReal_BetterNudes_Krea2.safetensors",
-        "path": "{LORAS_DIR}/Krea-2/PhotoReal_BetterNudes_Krea2.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/penis_size_krea2_loraholic.safetensors",
-        "path": "{LORAS_DIR}/Krea-2/penis_size_krea2_loraholic.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/onglass-krea2_v2.safetensors",
-        "path": "{LORAS_DIR}/Krea-2/onglass-krea2_v2.safetensors"
+        "id": "download_krea2-models-loras-krea2",
+        "mode": "tree",
+        "repo_id": "markwelshboyx/diffusionetc",
+        "repo_type": "model",
+        "revision": "main",
+        "include": [
+          "models/loras/krea2/*.safetensors"
+        ],
+        "strip_prefix": "models/loras/krea2",
+        "path": "{LORAS_DIR}/Krea-2"
       },
       {
         "url": "https://huggingface.co/conradlocke/krea2-identity-edit/resolve/main/krea2_identity_edit_v1_1.safetensors",
@@ -1096,10 +1067,6 @@
       {
         "url": "https://huggingface.co/conradlocke/krea2-identity-edit/resolve/main/krea2_identity_edit_v1_2.safetensors",
         "path": "{LORAS_DIR}/Krea-2/krea2_identity_edit_v1_2.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/realism_engine_krea2_v3.1.safetensors",
-        "path": "{LORAS_DIR}/Krea-2/realism_engine_krea2_v3.1.safetensors"
       },
       {
         "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/loras/krea2_turbo_lora_rank_64_bf16.safetensors",
@@ -1116,50 +1083,30 @@
     ],
     "download_krea2_siobhan_loras": [
       {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000002500.safetensors",
-        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000002500.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000003000.safetensors",
-        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000003000.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000003500.safetensors",
-        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000003500.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000004000.safetensors",
-        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000004000.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000004500.safetensors",
-        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000004500.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/5h1vy_woman_rank_64_automagic_000005000.safetensors",
-        "path": "{LORAS_DIR}/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic_000005000.safetensors"
+        "id": "download_krea2_siobhan_loras-models-loras-characters-siobhan-krea2-5h1vy-woman-rank-64-automagic",
+        "mode": "tree",
+        "repo_id": "markwelshboyx/diffusionetc",
+        "repo_type": "model",
+        "revision": "main",
+        "include": [
+          "models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/*.safetensors"
+        ],
+        "strip_prefix": "models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic",
+        "path": "{LORAS_DIR}/characters/siobhan/krea2"
       }
     ],
     "download_wan21_siobhan_loras": [
       {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/wan/wan21-t2v/5H1V_captions_less_spread_000009750.safetensors",
-        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v/5H1V_captions_less_spread_000009750.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000006000.safetensors",
-        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000006000.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000007500.safetensors",
-        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000007500.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000009000.safetensors",
-        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v/5H1V_WAN21_custom_prompt_000009000.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/characters/siobhan/wan/wan21-t2v/wan21_siobhan_caption.safetensors",
-        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v/wan21_siobhan_caption.safetensors"
+        "id": "download_wan21_siobhan_loras-models-loras-characters-siobhan-wan-wan21-t2v",
+        "mode": "tree",
+        "repo_id": "markwelshboyx/diffusionetc",
+        "repo_type": "model",
+        "revision": "main",
+        "include": [
+          "models/loras/characters/siobhan/wan/wan21-t2v/*.safetensors"
+        ],
+        "strip_prefix": "models/loras/characters/siobhan/wan/wan21-t2v",
+        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v"
       }
     ]
   }
