@@ -1096,6 +1096,18 @@
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/realism_engine_krea2_v3.1.safetensors",
         "path": "{LORAS_DIR}/Krea-2/realism_engine_krea2_v3.1.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/loras/krea2_turbo_lora_rank_64_bf16.safetensors",
+        "path": "{LORAS_DIR}/Krea-2/krea2_turbo_lora_rank_64_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/reverentelusarca/krea2-detail-enhancer-edit-lora/resolve/main/krea-detail-enhancer-exp.safetensors",
+        "path": "{LORAS_DIR}/Krea-2/krea-detail-enhancer-exp.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Kutches/Kr3a/resolve/main/krea2_raw_to_turbo_r256_comfy.safetensors",
+        "path": "{LORAS_DIR}/Krea-2/krea2_raw_to_turbo_lora_rank_256_comfy.safetensors"
       }
     ],
     "download_krea2_siobhan_loras": [
