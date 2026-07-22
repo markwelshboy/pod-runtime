@@ -57,3 +57,5 @@ if [ -x /opt/venv/bin/python3 ]; then
   alias py='/opt/venv/bin/python3'
   alias pip='/opt/venv/bin/pip'
 fi
+
+alias crestart="/workspace/pod-runtime/run_comfy_mux.sh restart"
