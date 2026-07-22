@@ -368,7 +368,7 @@ hf_download_show_snapshot || true
 #------------------------------------------------------------------------
 section 11 "Pull my model repo from Huggingface and symlink into ComfyUI"
 #----------------------------------------------
-# Synchronize 'diffusionetc' from HF to local 
+# Synchronize "HF_MY_REPO_*" from HF to local 
 #   cache repo (and symlink into ComfyUI)
 #----------------------------------------------
 
