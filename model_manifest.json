@@ -775,6 +775,18 @@
       {
         "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
         "path": "{LORAS_DIR}/SVI/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
+      },
+      {
+        "id": "download_wan22_svi-models-diffusion_models-wan22-SVI",
+        "mode": "tree",
+        "repo_id": "markwelshboyx/diffusionetc",
+        "repo_type": "model",
+        "revision": "main",
+        "include": [
+          "models/diffusion_models/wan22/SVI/*.safetensors"
+        ],
+        "strip_prefix": "models/diffusion_models/wan22/SVI",
+        "path": "{DIFFUSION_MODELS_DIR}/SVI"
       }
     ],
     "download_wan22_svi_lite": [
@@ -849,6 +861,18 @@
       {
         "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
         "path": "{LORAS_DIR}/SVI/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
+      },
+      {
+        "id": "download_wan22_svi_lite-models-diffusion_models-wan22-SVI",
+        "mode": "tree",
+        "repo_id": "markwelshboyx/diffusionetc",
+        "repo_type": "model",
+        "revision": "main",
+        "include": [
+          "models/diffusion_models/wan22/SVI/*.safetensors"
+        ],
+        "strip_prefix": "models/diffusion_models/wan22/SVI",
+        "path": "{DIFFUSION_MODELS_DIR}/SVI"
       }
     ],
     "download_upscale": [
