@@ -132,6 +132,7 @@ def _list_repo_tree(
     revision: str,
     token: str | None,
     *,
+    path_in_repo: str = "",
     api: Any | None = None,
 ) -> Iterable[Any]:
     if api is None:
@@ -140,6 +141,7 @@ def _list_repo_tree(
         api = HfApi(token=token)
     return api.list_repo_tree(
         repo_id=repo_id,
+        path_in_repo=path_in_repo or None,
         recursive=True,
         revision=revision,
         repo_type=None if repo_type == "model" else repo_type,
@@ -176,7 +178,14 @@ def expand_tree_entry(
 
     expanded: list[dict[str, Any]] = []
     destination_paths: set[str] = set()
-    for item in _list_repo_tree(repo_id, repo_type, revision, token, api=api):
+    for item in _list_repo_tree(
+        repo_id,
+        repo_type,
+        revision,
+        token,
+        path_in_repo=strip_prefix,
+        api=api,
+    ):
         if not _is_repo_file(item):
             continue
         remote_path = _repo_file_path(item).strip("/")
