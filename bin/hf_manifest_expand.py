@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import json
 import os
 import posixpath
@@ -33,6 +32,36 @@ def _as_list(value: Any, *, default: list[str] | None = None) -> list[str]:
 
 def _truthy(value: Any) -> bool:
     return str(value or "").strip().lower() in TRUTHY
+
+
+def _glob_regex(pattern: str) -> re.Pattern[str]:
+    """Translate path globs so * is one segment and ** is recursive."""
+    source = pattern.strip("/")
+    output = ["^"]
+    index = 0
+    while index < len(source):
+        char = source[index]
+        if char == "*":
+            if index + 1 < len(source) and source[index + 1] == "*":
+                index += 2
+                if index < len(source) and source[index] == "/":
+                    output.append("(?:.*/)?")
+                    index += 1
+                else:
+                    output.append(".*")
+                continue
+            output.append("[^/]*")
+        elif char == "?":
+            output.append("[^/]")
+        else:
+            output.append(re.escape(char))
+        index += 1
+    output.append("$")
+    return re.compile("".join(output))
+
+
+def _glob_match(path: str, pattern: str) -> bool:
+    return _glob_regex(pattern).match(path.strip("/")) is not None
 
 
 def _resolve(value: Any, values: Mapping[str, Any]) -> str:
@@ -189,9 +218,9 @@ def expand_tree_entry(
         if not _is_repo_file(item):
             continue
         remote_path = _repo_file_path(item).strip("/")
-        if not any(fnmatch.fnmatchcase(remote_path, pattern) for pattern in include):
+        if not any(_glob_match(remote_path, pattern) for pattern in include):
             continue
-        if exclude and any(fnmatch.fnmatchcase(remote_path, pattern) for pattern in exclude):
+        if exclude and any(_glob_match(remote_path, pattern) for pattern in exclude):
             continue
 
         relative = _safe_relative(remote_path, strip_prefix, flatten)
