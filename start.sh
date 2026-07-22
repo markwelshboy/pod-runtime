@@ -183,6 +183,7 @@ section 3 "Git Auth Bootstrap"
 #----------------------------------------------
 # If GITHUB_DEPLOY_KEY_COMFYUI_TEMPLATES is set, use it to set up git auth 
 #   for that repo 
+#----------------------------------------------
 
 git_auth_bootstrap || true
 
@@ -373,27 +374,17 @@ section 11 "Pull my model repo from Huggingface and symlink into ComfyUI"
 #----------------------------------------------
 
 if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
-  
+
   export HF_EXCLUDE_GLOBS="${HF_MY_REPO_EXCLUDE_GLOBS:-training/** snapshot/** models/loras/** deleteme/** latestimages/**}"
   export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS:-models/ultralytics/** models/upscale_models/**}"
-  HF_REPO_TYPE=${HF_MY_REPO_TYPE} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" || true
 
-  if hf_repo_looks_good "$HF_MY_REPO_LOCAL"; then
-    # Stash (symlink) the repo into /workspace for easy access/viewing
-    rsync_or_symlink_source_to_destination symlink "$HF_MY_REPO_LOCAL" "/workspace" || true
-    # Create additional symlinks into main COMFY dirs as needed
-    _sync_info "✅ Linking files from $HF_MY_REPO_LOCAL into ComfyUI directories via symlinks..."
-    ln -sfn $HF_MY_REPO_LOCAL/models/loras/*             "$LORAS_DIR/"               || true
-    ln -sfn $HF_MY_REPO_LOCAL/models/checkpoints/*       "$CHECKPOINTS_DIR/"         || true
-    [ -f   "$HF_MY_REPO_LOCAL/models/ultralytics/ultralytics.tar" ]  && ( tar -xf "$HF_MY_REPO_LOCAL/models/ultralytics/ultralytics.tar" -C "$ULTRALYTICS_DIR/" )   || true
-    ln -sfn $HF_MY_REPO_LOCAL/models/ultralytics/*       "$ULTRALYTICS_DIR/"         || true
-    [ -f   "$HF_MY_REPO_LOCAL/models/upscale_models/upscalers.tar" ] && ( tar -xf "$HF_MY_REPO_LOCAL/models/upscale_models/upscalers.tar" -C "$UPSCALE_DIR/" )      || true
-    ln -sfn $HF_MY_REPO_LOCAL/models/upscale_models/*    "$UPSCALE_DIR/"             || true
-
-    tg "📥 HuggingFace repo sync completed: $HF_MY_REPO_ID"                   || true
-
+  if HF_REPO_TYPE="${HF_MY_REPO_TYPE:-model}" \
+      init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL"; then
+    if ! hf_my_repo_sync_assets "$HF_MY_REPO_LOCAL" "$HF_MY_REPO_ID"; then
+      _sync_warn "$HF_MY_REPO_ID downloaded, but asset extraction/linking reported errors."
+    fi
   else
-    _sync_warn "$HF_MY_REPO_ID repo not healthy at '$HF_MY_REPO_LOCAL' (skipping symlinks)."
+    _sync_warn "HF repo download failed for $HF_MY_REPO_ID at '$HF_MY_REPO_LOCAL'."
   fi
 
 else
