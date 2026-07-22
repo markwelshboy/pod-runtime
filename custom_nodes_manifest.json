@@ -235,10 +235,6 @@
       "remote": "https://github.com/lrzjason/ComfyUI-EditUtils",
       "local": "ComfyUI-EditUtils"
     },
-    "comfyui-qwenvl-promptcaption": {
-      "remote": "https://github.com/WingeD123/ComfyUI_QwenVL_PromptCaption",
-      "local": "ComfyUI_QwenVL_PromptCaption"
-    },
     "comfyui-qwen3-vl-instruct": {
       "remote": "https://github.com/IuvenisSapiens/ComfyUI_Qwen3-VL-Instruct",
       "local": "ComfyUI_Qwen3-VL-Instruct"
@@ -432,7 +428,6 @@
       "comfyui-huggingface"
     ],
     "krea2": [
-      "comfyui-qwenvl-promptcaption",
       "comfyui-qwen3-vl-instruct",
       "comfyui-krea2t-enhancer",
       "comfyui-krea2textencoder",
