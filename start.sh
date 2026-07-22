@@ -374,8 +374,8 @@ section 11 "Pull my model repo from Huggingface and symlink into ComfyUI"
 
 if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
   
-  export HF_EXCLUDE_GLOBS="${HF_MY_REPO_EXCLUDE_GLOBS:-training/** snapshot/**}"
-  export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS:-models/loras/** models/checkpoints/** models/ultralytics/** models/upscale_models/**}"
+  export HF_EXCLUDE_GLOBS="${HF_MY_REPO_EXCLUDE_GLOBS:-training/** snapshot/** models/loras/** deleteme/** latestimages/**}"
+  export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS:-models/ultralytics/** models/upscale_models/**}"
   HF_REPO_TYPE=${HF_MY_REPO_TYPE} init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL" || true
 
   if hf_repo_looks_good "$HF_MY_REPO_LOCAL"; then
