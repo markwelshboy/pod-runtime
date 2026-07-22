@@ -1026,7 +1026,7 @@
         "path": "{TEXT_ENCODERS_DIR}/qwen3vl_4b_bf16.safetensors"
       },
       {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/text_encoders/qwen/qwen3VL4BAbliteratedComfyui_v10.safetensors",
+        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/text_encoders/qwen/qwen3VL4BAbliteratedComfyui_v10.safetensors",
         "path": "{TEXT_ENCODERS_DIR}/qwen3VL4BAbliteratedComfyui_v10.safetensors"
       },
       {
@@ -1064,10 +1064,6 @@
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/krea2filterbypass.safetensors",
         "path": "{LORAS_DIR}/Krea-2/krea2filterbypass.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/training/krea2_lora.tar",
-        "path": "{LORAS_DIR}/Krea-2/krea2_lora.tar"
       },
       {
         "url": "https://huggingface.co/markwelshboyx/diffusionetc/resolve/main/models/loras/krea2/snofs_krea_v1_1.safetensors",
