@@ -36,7 +36,7 @@ install_custom_nodes() {
   local generated=""
   local accept_default=0
   local allow_unresolved=0
-  local comfy_url="${COMFY_URL:-http://127.0.0.1:8188}"
+  local comfy_url="${COMFY_URL:-http://127.0.0.1:8288}"
   local explicit_source=0
   local explicit_comfy_url=0
   local current_tab=0
