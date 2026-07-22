@@ -7,6 +7,8 @@ _helpers_entry_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=/dev/null
 source "${_helpers_entry_dir}/helpers_core.sh"
 # shellcheck source=/dev/null
+[[ -f "${_helpers_entry_dir}/helpers_hf_repo_sync.sh" ]] && source "${_helpers_entry_dir}/helpers_hf_repo_sync.sh"
+# shellcheck source=/dev/null
 source "${_helpers_entry_dir}/helpers_hf_manifest.sh"
 # shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/custom_nodes.env" ]] && source "${_helpers_entry_dir}/custom_nodes.env"
