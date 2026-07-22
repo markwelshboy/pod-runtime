@@ -18,4 +18,7 @@ source "${_hf_manifest_lib_dir}/03-status.sh"
 source "${_hf_manifest_lib_dir}/04-dispatch.sh"
 # shellcheck source=/dev/null
 source "${_hf_manifest_root_dir}/helpers_hf_manifest_selection.sh"
+# Must load after selection so tree expansion can preserve existing tag handling.
+# shellcheck source=/dev/null
+source "${_hf_manifest_root_dir}/helpers_hf_manifest_tree.sh"
 unset _hf_manifest_lib_dir _hf_manifest_root_dir
