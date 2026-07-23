@@ -365,6 +365,18 @@
     "comfyui-huggingface": {
       "remote": "https://github.com/huchukato/ComfyUI-HuggingFace",
       "local": "ComfyUI-HuggingFace"
+    },
+    "comfyui-basic_data_handling": {
+      "remote": "https://github.com/BlenderNeko/ComfyUI-BasicDataHandling",
+      "local": "ComfyUI-BasicDataHandling"
+    },
+    "comfyui-wan-vace-prep": {
+      "remote": "https://github.com/stuttlepress/ComfyUI-Wan-VACE-Prep",
+      "local": "ComfyUI-Wan-VACE-Prep"
+    },
+    "comfyui-wan-vace-video-joiner": {
+      "remote": "https://github.com/stuttlepress/ComfyUI-Wan-VACE-Video-Joiner",
+      "local": "ComfyUI-Wan-VACE-Video-Joiner"
     }
   },
   "sets": {
@@ -391,20 +403,16 @@
       "res4lyf",
       "comfyui-frame-interpolation",
       "comfyui-detail-daemon",
-      "comfyui-wanvideowrapper",
       "comfyui-layerstyle-advance",
       "masquerade-nodes-comfyui",
       "comfyui-rmbg",
       "comfyliterals",
-      "comfyui-wananimatepreprocess",
       "comfyui-fsampler",
-      "comfyui-wanmoescheduler",
       "comfyui-vae-utils",
       "comfyui-custom-scripts",
       "comfyui-mxtoolkit",
       "comfyui-crystools",
       "comfyui-prompt-control",
-      "comfyui-wan22fmlf",
       "comfyui-manager",
       "comfyui-seedvr2-videoupscaler",
       "comfyui-seedvr2-tilingupscaler",
@@ -425,7 +433,18 @@
       "vantagelongwanvideo",
       "comfyui-resolution-master",
       "comfyui-editutils",
-      "comfyui-huggingface"
+      "comfyui-huggingface",
+      "comfyui-basic_data_handling"
+    ],
+    "wanvideo": [
+      "comfyui-wanvideowrapper",
+      "comfyui-wananimatepreprocess",
+      "comfyui-wanmoescheduler",
+      "vantagelongwanvideo",
+      "comfyui-wanvideowrapper",
+      "comfyui-wan22fmlf",
+      "comfyui-wan-vace-prep",
+      "comfyui-wan-vace-video-joiner"
     ],
     "krea2": [
       "comfyui-qwen3-vl-instruct",

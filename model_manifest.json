@@ -721,7 +721,7 @@
         "path": "{TEXT_ENCODERS_DIR}/SVI/umt5-xxl-enc-bf16.safetensors"
       },
       {
-        "url": "https://huggingface.co/NSFW-API/NSFW-Wan-UMT5-XXL/resolve/main/nsfw_wan_umt5-xxl_bf16.safetensors",
+        "url": "https://huggingface.co/zootkitty/nsfw_wan_umt5-xxl_bf16_fixed/resolve/main/nsfw_wan_umt5-xxl_bf16_fixed.safetensors",
         "path": "{TEXT_ENCODERS_DIR}/SVI/nsfw_wan_umt5-xxl_bf16.safetensors"
       },
       {
@@ -1057,6 +1057,10 @@
         "path": "{TEXT_ENCODERS_DIR}/qwen3-vl-4b-heretic.safetensors"
       },
       {
+        "url": "https://huggingface.co/DreamFast/Qwen3-VL-4b-Heretic-ComfyUI/resolve/main/qwen3-vl-4b-heretic_fp8_e4m3fn.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/qwen3-vl-4b-heretic_fp8_e4m3fn.safetensors"
+      },
+      {
         "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_fp32.safetensors",
         "path": "{VAE_DIR}/Wan2_1_VAE_fp32.safetensors"
       },
@@ -1116,7 +1120,7 @@
           "models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic/*.safetensors"
         ],
         "strip_prefix": "models/loras/characters/siobhan/krea2/5h1vy_woman_rank_64_automagic",
-        "path": "{LORAS_DIR}/characters/siobhan/krea2"
+        "path": "{LORAS_DIR}/characters/siobhan/Krea-2"
       }
     ],
     "download_wan21_siobhan_loras": [
