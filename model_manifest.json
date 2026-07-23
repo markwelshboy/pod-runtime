@@ -1130,7 +1130,7 @@
           "models/loras/characters/siobhan/wan/wan21-t2v/*.safetensors"
         ],
         "strip_prefix": "models/loras/characters/siobhan/wan/wan21-t2v",
-        "path": "{LORAS_DIR}/characters/siobhan/wan/wan21-t2v"
+        "path": "{LORAS_DIR}/characters/siobhan/wan"
       }
     ]
   }
