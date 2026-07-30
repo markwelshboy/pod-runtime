@@ -377,6 +377,10 @@
     "comfyui-wan-vace-video-joiner": {
       "remote": "https://github.com/stuttlepress/ComfyUI-Wan-VACE-Video-Joiner",
       "local": "ComfyUI-Wan-VACE-Video-Joiner"
+    },
+    "krea2-multi-character-lora-node-w-bounding-box": {
+      "remote": "https://github.com/CliffNodes/Krea2-Multi-Character-Lora-Node-w-bounding-box",
+      "local": "Krea2-Multi-Character-Lora-Node-w-bounding-box"
     }
   },
   "sets": {
@@ -456,7 +460,8 @@
       "comfyui-conditioning-rebalance",
       "crt-nodes",
       "krea2-bbox-prompter",
-      "custom-nodes-krea2-bbox-pose-gesture-v1"
+      "custom-nodes-krea2-bbox-pose-gesture-v1",
+      "krea2-multi-character-lora-node-w-bounding-box"
     ],
     "krea2-lonecat": [
       "comfyui-florence2",
