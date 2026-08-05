@@ -65,36 +65,50 @@ def has_glob(s: str) -> bool:
 
 
 def parse_hf_uri(uri: str):
-    """Parse hf://<models|datasets>/<owner>/<repo>/<path> sources."""
+    """Parse an hf:// repository URI while preserving directory intent."""
     raw = (uri or "").strip()
     if not raw.startswith("hf://"):
         return None
 
     parts = raw[5:].split("/")
-    if len(parts) < 4:
+    if len(parts) < 3:
         die(
             "cp: invalid Hugging Face URI; expected "
-            "hf://datasets/OWNER/REPO/path or hf://models/OWNER/REPO/path",
+            "hf://datasets/OWNER/REPO/path or hf://OWNER/REPO/path",
             1,
         )
 
-    kind, owner, repo_name = parts[:3]
-    filename = normalize_path("/".join(parts[3:]))
-    type_map = {
-        "dataset": "dataset",
-        "datasets": "dataset",
-        "model": "model",
-        "models": "model",
-    }
-    repo_type = type_map.get(kind.lower())
-    if not repo_type:
-        die(f"cp: unsupported Hugging Face URI repo type: {kind}", 1)
-    if not owner or not repo_name or not filename:
-        die("cp: Hugging Face URI is missing owner, repo, or file path", 1)
-    if has_glob(filename) or has_trailing_slash(raw):
-        die("cp: remote hf:// sources must name one file (no glob or directory source)", 1)
+    first = parts[0].lower()
+    if first in {"dataset", "datasets", "model", "models"}:
+        if len(parts) < 4:
+            die("cp: Hugging Face URI is missing owner, repo, or path", 1)
+        repo_type = "dataset" if first in {"dataset", "datasets"} else "model"
+        owner, repo_name = parts[1:3]
+        path_parts = parts[3:]
+    else:
+        repo_type = "model"
+        owner, repo_name = parts[:2]
+        path_parts = parts[2:]
 
-    return f"{owner}/{repo_name}", repo_type, filename
+    path_in_repo = normalize_path("/".join(path_parts))
+    if not owner or not repo_name or not path_in_repo:
+        die("cp: Hugging Face URI is missing owner, repo, or file path", 1)
+    if has_glob(path_in_repo):
+        die("cp: hf:// sources do not support globs", 1)
+
+    return f"{owner}/{repo_name}", repo_type, path_in_repo, has_trailing_slash(raw)
+
+
+def make_hf_uri(repo: str, repo_type: str, path: str, trailing_slash: bool = False) -> str:
+    prefix = "hf://datasets/" if repo_type == "dataset" else "hf://"
+    uri = f"{prefix}{repo}/{normalize_path(path)}"
+    if trailing_slash and not uri.endswith("/"):
+        uri += "/"
+    return uri
+
+
+def supports_server_side_copy(api_: HfApi) -> bool:
+    return callable(getattr(api_, "copy_files", None))
 
 
 def ensure_dir_ops(existing: Set[str], dir_path: str) -> List[object]:
@@ -609,70 +623,91 @@ def cmd_put(args) -> None:
 
 
 def cmd_cp(args) -> None:
-    """Copy a local file or one hf:// remote file into the configured repo."""
+    """Copy a local file or an hf:// source into the configured repository."""
     src_raw = (args.src or "").strip()
     if not src_raw:
         die("cp: src required")
 
     remote = parse_hf_uri(src_raw)
     if remote is None:
-        # Preserve existing local upload behavior.
         args.local = [src_raw]
         return cmd_put(args)
 
     tok = need_token()
-    source_repo, source_type, source_file = remote
-
+    source_repo, source_type, source_path, source_is_dir = remote
     dst_arg = (args.dst or "").strip()
     dst_is_dir = has_trailing_slash(dst_arg)
-    dst_raw = normalize_path(dst_arg)
-    if not dst_raw:
+    dst_path = normalize_path(dst_arg)
+    if not dst_path:
         die("cp: dst required")
 
-    if dst_is_dir:
-        dst = f"{dst_raw}/{Path(source_file).name}"
+    if source_is_dir:
+        destination_path = dst_path
+        destination_is_dir = dst_is_dir
+    elif dst_is_dir:
+        destination_path = f"{dst_path}/{Path(source_path).name}"
+        destination_is_dir = False
     else:
-        dst = dst_raw
+        destination_path = dst_path
+        destination_is_dir = False
 
+    destination_uri = make_hf_uri(
+        args.repo,
+        args.type,
+        destination_path,
+        trailing_slash=destination_is_dir,
+    )
     a = api(tok)
-    destination_files = set(list_files(a, args.repo, args.type))
-    if dst_is_dir and dst_raw in destination_files:
-        die(f"cp: destination is an existing file, not a directory: {dst_raw}", 1)
 
-    target_dir = dst_raw if dst_is_dir else parent_dir(dst)
-    if target_dir:
-        ops = ensure_dir_ops(destination_files, target_dir)
-        if ops:
-            a.create_commit(
+    if args.local_transfer:
+        if source_is_dir:
+            die("cp: --local currently supports only single-file hf:// sources", 1)
+        print(f"[hff] Local transfer: {src_raw} -> {destination_uri}", file=sys.stderr)
+        try:
+            cached = _hf_download(
+                source_repo,
+                source_type,
+                source_path,
+                tok,
+                cache_dir=args.cache_dir or None,
+            )
+        except Exception as e:
+            die(f"cp: local download failed for {src_raw}: {e}", 1)
+        try:
+            a.upload_file(
+                path_or_fileobj=str(cached),
+                path_in_repo=destination_path,
                 repo_id=args.repo,
                 repo_type=args.type,
-                operations=ops,
-                commit_message=f"mkdir {target_dir}",
+                commit_message=args.message or f"cp {src_raw} -> {destination_path} via local transfer",
             )
+        except Exception as e:
+            die(f"cp: local upload failed to {destination_uri}: {e}", 1)
+        print(destination_uri)
+        return
+
+    if not supports_server_side_copy(a):
+        try:
+            import huggingface_hub
+            version = getattr(huggingface_hub, "__version__", "unknown")
+        except Exception:
+            version = "unknown"
+        die(
+            "cp: server-side repository copy is unavailable with "
+            f"huggingface-hub {version}. Re-run with --local for a single-file "
+            "download/upload transfer.",
+            1,
+        )
 
     try:
-        cached = _hf_download(
-            source_repo,
-            source_type,
-            source_file,
-            tok,
-            cache_dir=args.cache_dir or None,
-        )
+        a.copy_files(src_raw, destination_uri)
     except Exception as e:
-        die(f"cp: download failed for {src_raw}: {e}", 1)
+        hint = ""
+        if not source_is_dir:
+            hint = " Re-run with --local to download and upload the file through this machine."
+        die(f"cp: server-side copy failed: {e}.{hint}", 1)
 
-    try:
-        a.upload_file(
-            path_or_fileobj=str(cached),
-            path_in_repo=dst,
-            repo_id=args.repo,
-            repo_type=args.type,
-            commit_message=args.message or f"cp {src_raw} -> {dst}",
-        )
-    except Exception as e:
-        die(f"cp: upload failed to {dst}: {e}", 1)
-
-    print("ok")
+    print(destination_uri)
 
 
 def cmd_get(args) -> None:
@@ -1074,10 +1109,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(fn=cmd_put)
 
     sp = sub.add_parser("cp")
-    sp.add_argument("src", help="local file or hf://<models|datasets>/OWNER/REPO/path")
+    sp.add_argument("src", help="local file or hf:// repository URI")
     sp.add_argument("dst")
     sp.add_argument("-m", "--message", default="")
     sp.add_argument("--cache-dir", default="")
+    sp.add_argument(
+        "--local",
+        dest="local_transfer",
+        action="store_true",
+        help="for one hf:// file, download then upload instead of using server-side copy",
+    )
     sp.set_defaults(fn=cmd_cp)
 
     sp = sub.add_parser("get")

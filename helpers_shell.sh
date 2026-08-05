@@ -26,9 +26,27 @@ _hff_warn() { echo "[hff] WARN: $*" >&2; }
 _hff_err()  { echo "[hff] ERROR: $*" >&2; }
 
 # -------- venv bootstrap (LAN-friendly) --------
+_hff_is_home_network() {
+  case "${HFF_ENVIRONMENT:-}" in
+    home|local) return 0 ;;
+    pod|remote) return 1 ;;
+  esac
+
+  local fqdn domains
+  fqdn="$(hostname -f 2>/dev/null || true)"
+  domains="$(
+    {
+      grep -hE '^[[:space:]]*(search|domain)[[:space:]]+' /etc/resolv.conf 2>/dev/null || true
+      command -v resolvectl >/dev/null 2>&1 && resolvectl domain 2>/dev/null || true
+    } | tr '\n' ' '
+  )"
+  [[ "$fqdn" == *.home.arpa ]] || [[ "$domains" == *home.arpa* ]]
+}
+
 ensure_hf_tools_venv() {
   local venv="${HFF_VENV}"
   local py="${PYTHON:-python3}"
+  local hub_spec install_mode installed_version copy_support
 
   if [[ ! -x "$venv/bin/python" ]]; then
     _hff_info "Creating venv: $venv"
@@ -37,21 +55,39 @@ ensure_hf_tools_venv() {
   fi
 
   export HFF_VENV="$venv"
-
   "$venv/bin/python" -m pip install -U pip >/dev/null || return 1
 
-  # Keep it unpinned by default; you can pin by exporting HFF_PINNED=1 + versions below
-  if [[ "${HFF_PINNED:-0}" == "1" ]]; then
-    : "${HFF_HUB_VER:=1.3.1}"
-    : "${HFF_XFER_VER:=0.1.9}"
-    "$venv/bin/python" -m pip install -U \
-      "huggingface-hub==${HFF_HUB_VER}" \
-      "hf-transfer==${HFF_XFER_VER}" >/dev/null || return 1
+  if [[ -n "${HFF_HUB_VER:-}" ]]; then
+    hub_spec="huggingface-hub==${HFF_HUB_VER}"
+    install_mode="explicit pin"
+  elif [[ "${HFF_PINNED:-0}" == "1" ]]; then
+    HFF_HUB_VER="1.3.1"
+    hub_spec="huggingface-hub==${HFF_HUB_VER}"
+    install_mode="pod-compatible pin"
+  elif _hff_is_home_network; then
+    hub_spec="huggingface-hub"
+    install_mode="latest stable (home/local)"
   else
-    "$venv/bin/python" -m pip install -U huggingface-hub hf-transfer >/dev/null || return 1
+    HFF_HUB_VER="1.3.1"
+    hub_spec="huggingface-hub==${HFF_HUB_VER}"
+    install_mode="conservative fallback"
   fi
 
+  : "${HFF_XFER_VER:=0.1.9}"
+  "$venv/bin/python" -m pip install -U \
+    "$hub_spec" \
+    "hf-transfer==${HFF_XFER_VER}" >/dev/null || return 1
+
+  installed_version="$(
+    "$venv/bin/python" -c 'import huggingface_hub; print(huggingface_hub.__version__)'
+  )" || return 1
+  copy_support="$(
+    "$venv/bin/python" -c 'from huggingface_hub import HfApi; print("yes" if callable(getattr(HfApi(), "copy_files", None)) else "no")'
+  )" || return 1
+
   _hff_info "Ready: $venv"
+  _hff_info "huggingface-hub: ${installed_version} (${install_mode})"
+  _hff_info "Server-side repo copy support: ${copy_support}"
 }
 
 # -------- install/link hff.py from pod-runtime --------
