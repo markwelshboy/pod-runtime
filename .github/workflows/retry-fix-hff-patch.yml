@@ -1,0 +1,48 @@
+name: Retry hff patch workflow fix
+
+on:
+  push:
+    paths:
+      - .github/workflows/retry-fix-hff-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Correct URI builder and retrigger patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          path = Path('.github/workflows/patch-hff-capability-aware-cp.yml')
+          text = path.read_text(encoding='utf-8')
+          text2, count1 = re.subn(
+              r'prefix = "hf://datasets" if repo_type == "dataset" else "hf://"',
+              'prefix = "hf://datasets/" if repo_type == "dataset" else "hf://"',
+              text,
+              count=1,
+          )
+          text3, count2 = re.subn(
+              r'(?m)^(\s*)separator = "/" if prefix\.endswith\("://"\) else "/"\n\s*uri = f"\{prefix\}\{separator\}/\{repo\}/\{normalize_path\(path\)\}"$',
+              r'\1uri = f"{prefix}{repo}/{normalize_path(path)}"',
+              text2,
+              count=1,
+          )
+          if count1 != 1 or count2 != 1:
+              raise SystemExit(f'URI builder replacements failed: prefix={count1}, body={count2}')
+          path.write_text(text3, encoding='utf-8')
+          PY
+          rm -f .github/workflows/fix-hff-patch-workflow.yml
+          rm -f .github/workflows/retry-fix-hff-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/patch-hff-capability-aware-cp.yml .github/workflows/fix-hff-patch-workflow.yml .github/workflows/retry-fix-hff-patch.yml
+          git commit -m "Fix hff destination URI construction"
+          git push origin main
