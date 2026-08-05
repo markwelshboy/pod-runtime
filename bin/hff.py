@@ -64,6 +64,39 @@ def has_glob(s: str) -> bool:
     return any(ch in s for ch in ["*", "?", "["])
 
 
+def parse_hf_uri(uri: str):
+    """Parse hf://<models|datasets>/<owner>/<repo>/<path> sources."""
+    raw = (uri or "").strip()
+    if not raw.startswith("hf://"):
+        return None
+
+    parts = raw[5:].split("/")
+    if len(parts) < 4:
+        die(
+            "cp: invalid Hugging Face URI; expected "
+            "hf://datasets/OWNER/REPO/path or hf://models/OWNER/REPO/path",
+            1,
+        )
+
+    kind, owner, repo_name = parts[:3]
+    filename = normalize_path("/".join(parts[3:]))
+    type_map = {
+        "dataset": "dataset",
+        "datasets": "dataset",
+        "model": "model",
+        "models": "model",
+    }
+    repo_type = type_map.get(kind.lower())
+    if not repo_type:
+        die(f"cp: unsupported Hugging Face URI repo type: {kind}", 1)
+    if not owner or not repo_name or not filename:
+        die("cp: Hugging Face URI is missing owner, repo, or file path", 1)
+    if has_glob(filename) or has_trailing_slash(raw):
+        die("cp: remote hf:// sources must name one file (no glob or directory source)", 1)
+
+    return f"{owner}/{repo_name}", repo_type, filename
+
+
 def ensure_dir_ops(existing: Set[str], dir_path: str) -> List[object]:
     """Ensure a 'directory' exists by adding <dir>/.gitkeep if missing."""
     ops: List[object] = []
@@ -575,6 +608,73 @@ def cmd_put(args) -> None:
         print("ok")
 
 
+def cmd_cp(args) -> None:
+    """Copy a local file or one hf:// remote file into the configured repo."""
+    src_raw = (args.src or "").strip()
+    if not src_raw:
+        die("cp: src required")
+
+    remote = parse_hf_uri(src_raw)
+    if remote is None:
+        # Preserve existing local upload behavior.
+        args.local = [src_raw]
+        return cmd_put(args)
+
+    tok = need_token()
+    source_repo, source_type, source_file = remote
+
+    dst_arg = (args.dst or "").strip()
+    dst_is_dir = has_trailing_slash(dst_arg)
+    dst_raw = normalize_path(dst_arg)
+    if not dst_raw:
+        die("cp: dst required")
+
+    if dst_is_dir:
+        dst = f"{dst_raw}/{Path(source_file).name}"
+    else:
+        dst = dst_raw
+
+    a = api(tok)
+    destination_files = set(list_files(a, args.repo, args.type))
+    if dst_is_dir and dst_raw in destination_files:
+        die(f"cp: destination is an existing file, not a directory: {dst_raw}", 1)
+
+    target_dir = dst_raw if dst_is_dir else parent_dir(dst)
+    if target_dir:
+        ops = ensure_dir_ops(destination_files, target_dir)
+        if ops:
+            a.create_commit(
+                repo_id=args.repo,
+                repo_type=args.type,
+                operations=ops,
+                commit_message=f"mkdir {target_dir}",
+            )
+
+    try:
+        cached = _hf_download(
+            source_repo,
+            source_type,
+            source_file,
+            tok,
+            cache_dir=args.cache_dir or None,
+        )
+    except Exception as e:
+        die(f"cp: download failed for {src_raw}: {e}", 1)
+
+    try:
+        a.upload_file(
+            path_or_fileobj=str(cached),
+            path_in_repo=dst,
+            repo_id=args.repo,
+            repo_type=args.type,
+            commit_message=args.message or f"cp {src_raw} -> {dst}",
+        )
+    except Exception as e:
+        die(f"cp: upload failed to {dst}: {e}", 1)
+
+    print("ok")
+
+
 def cmd_get(args) -> None:
     tok = need_token()
     src_raw = (args.src or "").strip()
@@ -972,6 +1072,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("dst")
     sp.add_argument("-m", "--message", default="")
     sp.set_defaults(fn=cmd_put)
+
+    sp = sub.add_parser("cp")
+    sp.add_argument("src", help="local file or hf://<models|datasets>/OWNER/REPO/path")
+    sp.add_argument("dst")
+    sp.add_argument("-m", "--message", default="")
+    sp.add_argument("--cache-dir", default="")
+    sp.set_defaults(fn=cmd_cp)
 
     sp = sub.add_parser("get")
     sp.add_argument("src")
