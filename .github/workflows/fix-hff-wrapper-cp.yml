@@ -1,0 +1,57 @@
+name: Fix hff wrapper cp
+
+on:
+  push:
+    paths:
+      - .github/workflows/fix-hff-wrapper-cp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Expose cp in wrapper
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("helpers_shell.sh")
+          text = path.read_text(encoding="utf-8")
+
+          old = "    ls|mkdir|mv|rm|put|get)\n"
+          new = "    ls|mkdir|mv|rm|put|cp|get)\n"
+          if old not in text:
+              raise SystemExit("hff command dispatch block not found")
+          text = text.replace(old, new, 1)
+
+          old_help = "  put <local> <dst> [-m]   Upload file; supports local globs; multi-file dst must end with /\n"
+          new_help = old_help + "  cp <src> <dst> [--local] Copy local file or hf:// source; --local downloads/uploads one file\n"
+          if old_help in text and "cp <src> <dst>" not in text:
+              text = text.replace(old_help, new_help, 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          bash -n helpers_shell.sh
+          grep -F 'ls|mkdir|mv|rm|put|cp|get)' helpers_shell.sh
+          grep -F 'cp <src> <dst>' helpers_shell.sh
+
+      - name: Commit
+        shell: bash
+        run: |
+          rm -f .github/workflows/fix-hff-wrapper-cp.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add helpers_shell.sh .github/workflows/fix-hff-wrapper-cp.yml
+          git commit -m "Expose hff cp through shell wrapper"
+          git push origin main
