@@ -28,17 +28,13 @@ ensure_hf_tools_venv() {
   if [[ -n "${HFF_HUB_VER:-}" ]]; then
     hub_spec="huggingface-hub==${HFF_HUB_VER}"
     install_mode="explicit pin"
-  elif [[ "${HFF_PINNED:-0}" == "1" ]]; then
-    HFF_HUB_VER="0.36.0"
-    hub_spec="huggingface-hub==${HFF_HUB_VER}"
-    install_mode="pod-compatible pin"
   elif _hff_is_home_network; then
     hub_spec="huggingface-hub"
     install_mode="latest stable (home/local)"
   else
     HFF_HUB_VER="0.36.0"
     hub_spec="huggingface-hub==${HFF_HUB_VER}"
-    install_mode="conservative fallback"
+    install_mode="pod-compatible automatic pin"
   fi
 
   if [[ "$hub_spec" == huggingface-hub==0.* ]]; then
