@@ -17,7 +17,8 @@ source "${_helpers_entry_dir}/helpers_hf_manifest.sh"
 
 : "${CUSTOM_NODES_MANIFEST_URL:=https://raw.githubusercontent.com/markwelshboy/pod-runtime/main/default_custom_nodes_manifest.json}"
 : "${CUSTOM_NODE_SETS:=}"
-: "${CUSTOM_NODES_TOOL:=${_helpers_entry_dir}/bin/custom_nodes.py}"
+: "${CUSTOM_NODES_TOOL:=${_helpers_entry_dir}/bin/custom_nodes_profiled.py}"
+: "${CUSTOM_NODES_PROFILE_TOOL:=${_helpers_entry_dir}/bin/custom_nodes_profile_report.py}"
 : "${CUSTOM_NODES_WORKFLOW_TOOL:=${_helpers_entry_dir}/bin/custom_nodes_from_workflow.py}"
 
 custom_node_manifest() {
@@ -34,6 +35,13 @@ custom_node_manifest() {
     status)
       "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" status "$@"
       ;;
+    profile|profiles|profile-report)
+      [[ -f "$CUSTOM_NODES_PROFILE_TOOL" ]] || {
+        echo "[custom-nodes] Profile report tool not found: $CUSTOM_NODES_PROFILE_TOOL" >&2
+        return 1
+      }
+      "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_PROFILE_TOOL" "$@"
+      ;;
     add)
       "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" --manifest "$CUSTOM_NODES_MANIFEST_URL" add "$@"
       ;;
@@ -45,11 +53,12 @@ custom_node_manifest() {
       "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_WORKFLOW_TOOL" "$@"
       ;;
     help|-h|--help)
-      cat <<'EOF'
+      cat <<'HELP_EOF'
 custom_node_manifest commands:
   custom_node_manifest validate
   custom_node_manifest plan
   custom_node_manifest status [--json] [--file PATH]
+  custom_node_manifest profile [--runs N] [--min-runs N] [--json]
   custom_node_manifest add --set SET --id ID --remote URL [options]
   custom_node_manifest from-workflow WORKFLOW.json -o OUTPUT.json [options]
   custom_node_manifest list-sets [--verbose] [--manifest FILE]
@@ -76,9 +85,13 @@ Rollback install:
   install_custom_nodes [normal options] --enable-rollback --rollback FILE
   install_custom_nodes --perform-rollback --rollback FILE
 
+Profiling:
+  Profiling is automatic for normal installs. Run
+  `custom_node_manifest profile --runs 20` to compare recent sessions.
+
 Run `install_custom_nodes --help` for full install, rollback, manifest-retention,
 and tag-management options and examples.
-EOF
+HELP_EOF
       ;;
     *)
       echo "[custom-nodes] Unknown manifest command: $command" >&2
