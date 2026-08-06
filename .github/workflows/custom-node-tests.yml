@@ -13,62 +13,27 @@ on:
       - .github/workflows/custom-node-tests.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: main
 
-      - name: Patch HFF pod bootstrap
-        shell: bash
+      - name: Install test tools
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Check syntax
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
+          bash -n helpers.sh
+          python -m py_compile \
+            bin/custom_nodes.py \
+            bin/custom_nodes_profiled.py \
+            bin/custom_nodes_profile_report.py
 
-          path = Path("helpers_shell.sh")
-          text = path.read_text(encoding="utf-8")
+      - name: Validate manifest through profiled wrapper
+        run: python bin/custom_nodes_profiled.py --manifest custom_nodes_manifest.json validate
 
-          text = text.replace(
-              '    HFF_HUB_VER="1.3.1"\n    hub_spec="huggingface-hub==${HFF_HUB_VER}"\n    install_mode="pod-compatible pin"',
-              '    HFF_HUB_VER="0.36.0"\n    hub_spec="huggingface-hub==${HFF_HUB_VER}"\n    install_mode="pod-compatible pin"',
-              1,
-          )
-          text = text.replace(
-              '    HFF_HUB_VER="1.3.1"\n    hub_spec="huggingface-hub==${HFF_HUB_VER}"\n    install_mode="conservative fallback"',
-              '    HFF_HUB_VER="0.36.0"\n    hub_spec="huggingface-hub==${HFF_HUB_VER}"\n    install_mode="conservative fallback"',
-              1,
-          )
-
-          old = '  _hff_pip install -U "$hub_spec" >/dev/null || return 1\n'
-          new = '''  if [[ "$hub_spec" == huggingface-hub==0.* ]]; then
-    : "${HFF_XFER_VER:=0.1.9}"
-    _hff_pip install -U \\
-      "$hub_spec" \\
-      "hf-transfer==${HFF_XFER_VER}" >/dev/null || return 1
-  else
-    _hff_pip install -U "$hub_spec" >/dev/null || return 1
-  fi
-'''
-          if old not in text:
-              raise SystemExit("Hub install block not found")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
-          PY
-
-          bash -n helpers_shell.sh
-          grep -F 'HFF_HUB_VER="0.36.0"' helpers_shell.sh
-          grep -F 'hf-transfer==${HFF_XFER_VER}' helpers_shell.sh
-
-      - name: Restore workflow and commit patch
-        shell: bash
-        run: |
-          git checkout HEAD^ -- .github/workflows/custom-node-tests.yml
-          rm -f .github/workflows/patch-hff-pod-pin.yml .github/hff-pod-pin-trigger
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add helpers_shell.sh .github/workflows/custom-node-tests.yml .github/workflows/patch-hff-pod-pin.yml .github/hff-pod-pin-trigger
-          git commit -m "Use stack-compatible Hub version for pod HFF"
-          git push origin main
+      - name: Test profiling recommendations
+        run: python -m pytest -q tests/test_custom_nodes_profile_report.py
