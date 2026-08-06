@@ -190,6 +190,7 @@ Commands:
   mv <src> <dst>           Move/rename; supports prefix and globs (dst is treated as a dir for multi-move)
   rm <path> [--dry-run]    Delete file(s); supports globs and prefix dirs
   put <local> <dst> [-m]   Upload file; supports local globs; multi-file dst must end with /
+  cp <src> <dst> [--local] Copy local file or hf:// source; --local downloads/uploads one file
   get <src> [out]          Download file(s); supports prefix/globs; optional --cache-dir, --move, --flat
   snapshot <subcmd> ...    Snapshot management
   help                     Show this help
@@ -241,7 +242,7 @@ EOF
       [[ -x "$venv/bin/python" && -x "$hff_py" ]] || install_user_hff
       "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" snapshot --snapdir "$snapdir" "$@"; rc=$?
       ;;
-    ls|mkdir|mv|rm|put|get)
+    ls|mkdir|mv|rm|put|cp|get)
       [[ -x "$venv/bin/python" && -x "$hff_py" ]] || install_user_hff
       "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" "$cmd" "$@"; rc=$?
       ;;
