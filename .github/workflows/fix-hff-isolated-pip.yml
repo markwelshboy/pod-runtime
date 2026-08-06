@@ -1,3 +1,4 @@
+# Triggered patch workflow; removes itself after success.
 name: Fix isolated HFF pip bootstrap
 
 on:
