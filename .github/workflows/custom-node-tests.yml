@@ -1,0 +1,39 @@
+name: Custom-node installer tests
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - bin/custom_nodes.py
+      - bin/custom_nodes_profiled.py
+      - bin/custom_nodes_profile_report.py
+      - custom_nodes_manifest.json
+      - helpers.sh
+      - tests/test_custom_nodes_profile_report.py
+      - .github/workflows/custom-node-tests.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install test tools
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Check syntax
+        run: |
+          bash -n helpers.sh
+          python -m py_compile \
+            bin/custom_nodes.py \
+            bin/custom_nodes_profiled.py \
+            bin/custom_nodes_profile_report.py
+
+      - name: Validate manifest through profiled wrapper
+        run: python bin/custom_nodes_profiled.py --manifest custom_nodes_manifest.json validate
+
+      - name: Test profiling recommendations
+        run: python -m pytest -q tests/test_custom_nodes_profile_report.py
