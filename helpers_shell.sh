@@ -25,6 +25,15 @@ _hff_info() { echo "[hff] $*" >&2; }
 _hff_warn() { echo "[hff] WARN: $*" >&2; }
 _hff_err()  { echo "[hff] ERROR: $*" >&2; }
 
+_hff_pip() {
+  # Keep the HFF venv isolated from ComfyUI's global pip constraints.
+  env \
+    -u PIP_CONSTRAINT \
+    -u PIP_BUILD_CONSTRAINT \
+    PIP_CONFIG_FILE=/dev/null \
+    "${HFF_VENV}/bin/python" -m pip "$@"
+}
+
 # -------- venv bootstrap (LAN-friendly) --------
 _hff_is_home_network() {
   case "${HFF_ENVIRONMENT:-}" in
@@ -55,7 +64,7 @@ ensure_hf_tools_venv() {
   fi
 
   export HFF_VENV="$venv"
-  "$venv/bin/python" -m pip install -U pip >/dev/null || return 1
+  _hff_pip install -U pip >/dev/null || return 1
 
   if [[ -n "${HFF_HUB_VER:-}" ]]; then
     hub_spec="huggingface-hub==${HFF_HUB_VER}"
@@ -73,10 +82,7 @@ ensure_hf_tools_venv() {
     install_mode="conservative fallback"
   fi
 
-  : "${HFF_XFER_VER:=0.1.9}"
-  "$venv/bin/python" -m pip install -U \
-    "$hub_spec" \
-    "hf-transfer==${HFF_XFER_VER}" >/dev/null || return 1
+  _hff_pip install -U "$hub_spec" >/dev/null || return 1
 
   installed_version="$(
     "$venv/bin/python" -c 'import huggingface_hub; print(huggingface_hub.__version__)'
