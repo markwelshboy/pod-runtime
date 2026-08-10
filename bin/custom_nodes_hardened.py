@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import importlib.util
-import json
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -21,6 +21,7 @@ _SPEC.loader.exec_module(profiled)
 base = profiled.base
 
 _STATUS_LOCK = threading.Lock()
+_ORIGINAL_STATUS_PRINTER = profiled._ORIGINAL_PRINT_STATUS
 
 
 def _timeout_seconds(kind: str) -> float | None:
@@ -56,20 +57,28 @@ def _terminate_process_group(process: subprocess.Popen[Any], log) -> None:
     try:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        print(f"WARN: process group {process.pid} survived SIGKILL wait", file=log or sys.stderr, flush=True)
+        print(
+            f"WARN: process group {process.pid} survived SIGKILL wait",
+            file=log or sys.stderr,
+            flush=True,
+        )
 
 
 def hardened_raw_run_command(command: list[str], *, cwd=None, env=None, log=None) -> int:
     kind = profiled.classify_command(command)
     timeout = _timeout_seconds(kind)
-    environment = (env or os.environ).copy()
+    environment = env.copy() if env is not None else os.environ.copy()
     if kind.startswith("git_") or kind == "git_other":
         environment.setdefault("GIT_TERMINAL_PROMPT", "0")
         environment.setdefault("GCM_INTERACTIVE", "never")
 
-    print("+", profiled.shlex.join(command), file=log or sys.stderr, flush=True)
+    print("+", shlex.join(command), file=log or sys.stderr, flush=True)
     if timeout:
-        print(f"[custom-nodes] timeout={timeout:g}s kind={kind}", file=log or sys.stderr, flush=True)
+        print(
+            f"[custom-nodes] timeout={timeout:g}s kind={kind}",
+            file=log or sys.stderr,
+            flush=True,
+        )
 
     process = subprocess.Popen(
         command,
@@ -83,7 +92,8 @@ def hardened_raw_run_command(command: list[str], *, cwd=None, env=None, log=None
         return process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         print(
-            f"ERROR: {kind} command timed out after {timeout:g}s; terminating process group {process.pid}",
+            f"ERROR: {kind} command timed out after {timeout:g}s; "
+            f"terminating process group {process.pid}",
             file=log or sys.stderr,
             flush=True,
         )
@@ -230,7 +240,7 @@ def hardened_install(args, manifest: dict) -> int:
 
 
 def print_status(report: dict, status_path: Path) -> None:
-    profiled._ORIGINAL_PRINT_STATUS(report, status_path)
+    _ORIGINAL_STATUS_PRINTER(report, status_path)
     summary = report.get("summary", {})
     if "running" in summary:
         print(f"Running now: {summary.get('running', 0)}")
