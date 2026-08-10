@@ -68,9 +68,13 @@ def hardened_raw_run_command(command: list[str], *, cwd=None, env=None, log=None
     kind = profiled.classify_command(command)
     timeout = _timeout_seconds(kind)
     environment = env.copy() if env is not None else os.environ.copy()
-    if kind.startswith("git_") or kind == "git_other":
-        environment.setdefault("GIT_TERMINAL_PROMPT", "0")
-        environment.setdefault("GCM_INTERACTIVE", "never")
+
+    # Apply these to every command, not only top-level git invocations. Pip may
+    # spawn git itself for VCS requirements, and those children inherit this
+    # environment.
+    environment.setdefault("GIT_TERMINAL_PROMPT", "0")
+    environment.setdefault("GCM_INTERACTIVE", "never")
+    environment.setdefault("PIP_NO_INPUT", "1")
 
     print("+", shlex.join(command), file=log or sys.stderr, flush=True)
     if timeout:
