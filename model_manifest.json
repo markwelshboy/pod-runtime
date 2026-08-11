@@ -1111,6 +1111,10 @@
       {
         "url": "https://huggingface.co/Kutches/Kr3a/resolve/main/krea2_raw_to_turbo_r256_comfy.safetensors",
         "path": "{LORAS_DIR}/Krea-2/krea2_raw_to_turbo_lora_rank_256_comfy.safetensors"
+      },
+      { 
+        "url": "https://huggingface.co/NO8D/HighResolution/resolve/main/high%20quality%20for%20Krea2.safetensors",
+        "path": "{LORAS_DIR}/Krea-2/high_quality_for_Krea2.safetensors"
       }
     ],
     "download_krea2_siobhan_loras": [

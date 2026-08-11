@@ -381,11 +381,30 @@
     "krea2-multi-character-lora-node-w-bounding-box": {
       "remote": "https://github.com/CliffNodes/Krea2-Multi-Character-Lora-Node-w-bounding-box",
       "local": "Krea2-Multi-Character-Lora-Node-w-bounding-box"
+    },
+    "comfyui-starnodes": {
+      "remote": "https://github.com/Starnodes2024/ComfyUI_StarNodes",
+      "local": "ComfyUI_StarNodes"
+    },
+    "comfyui-linkspotlight": {
+      "remote": "https://github.com/Ding-sl/ComfyUI-LinkSpotlight",
+      "local": "ComfyUI-LinkSpotlight"
+    },
+    "minimax-h3-hybrid-conditioning": {
+      "remote": "https://github.com/kitsune123150/Minimax-H3-Hybrid-Conditioning",
+      "local": "Minimax-H3-Hybrid-Conditioning"
+    },
+    "krea2-multi-character-lora-node-with-bounding-box-scene-and-outfit-edit": {
+      "remote": "https://github.com/CliffNodes/Krea2-Multi-Character-Lora-Node-with-bounding-box-Scene-and-Outfit-Edit",
+      "local": "Krea2-Multi-Character-Lora-Node-with-bounding-box-Scene-and-Outfit-Edit"
+    },
+    "comfyui-minimax-h3-hybrid-loader": {
+      "remote": "https://github.com/scottmudge/ComfyUI_MinimaxH3HybridLoader",
+      "local": "ComfyUI_MinimaxH3HybridLoader"
     }
   },
   "sets": {
     "default": [
-      "comfyui-ultimatesdupscale",
       "comfyui-kjnodes",
       "rgthree-comfy",
       "comfyui-jps-nodes",
@@ -394,7 +413,6 @@
       "comfyui-videohelpersuite",
       "mikey-nodes",
       "comfyui-impact-pack",
-      "comfyui-controlnet-aux",
       "comfyui-easy-use",
       "comfyui-latentsyncwrapper",
       "was-node-suite-comfyui",
@@ -403,13 +421,10 @@
       "cg-image-picker",
       "comfyui-layerstyle",
       "cg-use-everywhere",
-      "comfyui-segment-anything-2",
       "res4lyf",
       "comfyui-frame-interpolation",
-      "comfyui-detail-daemon",
       "comfyui-layerstyle-advance",
       "masquerade-nodes-comfyui",
-      "comfyui-rmbg",
       "comfyliterals",
       "comfyui-fsampler",
       "comfyui-vae-utils",
@@ -418,27 +433,36 @@
       "comfyui-crystools",
       "comfyui-prompt-control",
       "comfyui-manager",
-      "comfyui-seedvr2-videoupscaler",
-      "comfyui-seedvr2-tilingupscaler",
-      "comfyui-inpaint-cropandstitch",
-      "comfyui-enricos-nodes",
       "comfyui-tinyterranodes",
       "sd-perturbed-attention",
       "controlaltai-nodes",
       "comfyui-vrgamedevgirl",
       "comfyui-vintageeffect",
-      "comfyui-inspyrenet-rembg",
       "comfyui-crosshairguidelines",
       "comfyui-various",
       "comfyui-y7nodes",
       "comfyui-fbcnn",
       "comfyui-nag",
       "comfyui-pixaroma",
-      "vantagelongwanvideo",
       "comfyui-resolution-master",
       "comfyui-editutils",
       "comfyui-huggingface",
-      "comfyui-basic_data_handling"
+      "comfyui-basic_data_handling",
+      "comfyui-linkspotlight"
+    ],
+    "imagedit": [
+      "comfyui-inpaint-cropandstitch",
+      "comfyui-enricos-nodes",
+      "comfyui-rmbg",
+      "comfyui-inspyrenet-rembg",
+      "comfyui-detail-daemon",
+      "comfyui-segment-anything-2",
+      "comfyui-controlnet-aux"
+    ],
+    "upscale": [
+      "comfyui-ultimatesdupscale",
+      "comfyui-seedvr2-videoupscaler",
+      "comfyui-seedvr2-tilingupscaler"
     ],
     "wanvideo": [
       "comfyui-wanvideowrapper",
@@ -461,7 +485,9 @@
       "crt-nodes",
       "krea2-bbox-prompter",
       "custom-nodes-krea2-bbox-pose-gesture-v1",
-      "krea2-multi-character-lora-node-w-bounding-box"
+      "krea2-multi-character-lora-node-w-bounding-box",
+      "comfyui-starnodes",
+      "krea2-multi-character-lora-node-with-bounding-box-scene-and-outfit-edit"
     ],
     "krea2-lonecat": [
       "comfyui-florence2",
@@ -482,6 +508,11 @@
       "sam3-smartinpainter",
       "comfyui-krea2-style-refrence",
       "comfyui-qwenvl-mod"
+    ],
+    "minimax": [
+      "comfyui-starnodes",
+      "minimax-h3-hybrid-conditioning",
+      "comfyui-minimax-h3-hybrid-loader"
     ]
   }
 }
