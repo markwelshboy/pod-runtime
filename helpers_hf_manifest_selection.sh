@@ -33,18 +33,10 @@ _hf_manifest_split_csv() {
 }
 
 hf_manifest_sections_for_families() {
-  local manifest="${1:?manifest}" families="${2:-}" suffix="${3:?suffix}"
+  local manifest_source="${1:-}" families="${2:-}" suffix="${3:?suffix}"
   [[ "$suffix" == "base" || "$suffix" == "loras" ]] || {
     echo "[hf-manifest] Invalid family suffix '$suffix'; expected base or loras." >&2
     return 2
-  }
-  command -v jq >/dev/null 2>&1 || {
-    echo "[hf-manifest] jq is required to resolve model families." >&2
-    return 1
-  }
-  [[ -f "$manifest" ]] || {
-    echo "[hf-manifest] Manifest not found while resolving families: $manifest" >&2
-    return 1
   }
 
   local family section
@@ -59,12 +51,23 @@ hf_manifest_sections_for_families() {
       return 2
     }
     section="${family}_${suffix}"
-    if ! jq -e --arg section "$section" '.sections[$section] != null' "$manifest" >/dev/null 2>&1; then
-      echo "[hf-manifest] Requested family '$family' has no section '$section'." >&2
-      echo "[hf-manifest] Available *_${suffix} sections:" >&2
-      jq -r --arg suffix "_${suffix}" '.sections // {} | keys[] | select(endswith($suffix)) | "[hf-manifest]   " + .' "$manifest" >&2
-      return 2
+
+    # If the caller supplied an already-local manifest, fail early on a typo.
+    # Normal RunPod startup uses a remote MODEL_MANIFEST_URL, in which case the
+    # exact section is validated after hf_download_from_manifest fetches it.
+    if [[ -n "$manifest_source" && -f "$manifest_source" ]]; then
+      command -v jq >/dev/null 2>&1 || {
+        echo "[hf-manifest] jq is required to validate model families." >&2
+        return 1
+      }
+      if ! jq -e --arg section "$section" '.sections[$section] != null' "$manifest_source" >/dev/null 2>&1; then
+        echo "[hf-manifest] Requested family '$family' has no section '$section'." >&2
+        echo "[hf-manifest] Available *_${suffix} sections:" >&2
+        jq -r --arg suffix "_${suffix}" '.sections // {} | keys[] | select(endswith($suffix)) | "[hf-manifest]   " + .' "$manifest_source" >&2
+        return 2
+      fi
     fi
+
     [[ -n "${seen[$section]:-}" ]] && continue
     seen[$section]=1
     resolved+=("$section")
