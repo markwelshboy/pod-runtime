@@ -188,29 +188,10 @@ section 3 "Git Auth Bootstrap"
 git_auth_bootstrap || true
 
 #------------------------------------------------------------------------
-section 4 "Move Upscalers"
-#----------------------------------------------
-# Move 4xLSDIR.pth into upscale_models if 
-#   present
-#----------------------------------------------
-
-if [[ -f "/4xLSDIR.pth" && ! -f "$UPSCALE_DIR/4xLSDIR.pth" ]]; then
-  echo "Moving 4xLSDIR.pth into $UPSCALE_DIR..."
-  mv /4xLSDIR.pth "$UPSCALE_DIR/4xLSDIR.pth"
-elif [[ -f "$UPSCALE_DIR/4xLSDIR.pth" ]]; then
-  echo "4xLSDIR.pth already in place, skipping move."
-else
-  echo "4xLSDIR.pth not found; skipping."
-fi
-
-#------------------------------------------------------------------------
-section 5 "Huggingface (Models) & CivitAI (Loras/Checkpoints) Download"
+section 4 "Huggingface (Models) download"
 #----------------------------------------------
 # Models via model_manifest.json
 #----------------------------------------------
-
-#helpers_have_aria2_rpc || aria2_start_daemon
-#aria2_clear_results >/dev/null 2>&1 || true
 
 if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}" == "true" ]]; then
   echo "Using model manifest: $MODEL_MANIFEST_URL"
@@ -221,20 +202,10 @@ else
   echo "ENABLE_MODEL_MANIFEST_DOWNLOAD=false → skipping model downloader."
 fi
 
-if [[ "${ENABLE_CIVITAI_DOWNLOAD:-true}" == "true" ]]; then
-  echo "Attempting to download CivitAI assets from env IDs... "
-  echo "LORAS:${LORAS_IDS_TO_DOWNLOAD}, CHECKPOINTS:${CHECKPOINT_IDS_TO_DOWNLOAD}"
-  if ! aria2_download_civitai_from_environment_vars; then
-    echo "⚠️ aria2_download_civitai_from_environment_vars reported issues; see CivitAI log."
-  fi
-else
-  echo "ENABLE_CIVITAI_DOWNLOAD=false → skipping CivitAI downloader."
-fi
-
 hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
-section 6 "SageAttention: Pull (if available) or Build from Source"
+section 5 "SageAttention: Pull (if available) or Build from Source"
 #----------------------------------------------
 # Prefer pull of SageAttention for speed. Build
 #   if not.
@@ -254,7 +225,7 @@ fi
 hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
-section 7 "Install Custom Nodes"
+section 6 "Install Custom Nodes"
 #----------------------------------------------
 # Install all Custom Nodes from Manifest
 #----------------------------------------------
@@ -272,20 +243,10 @@ fi
 hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
-section 8 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
-#----------------------------------------------
-# Optional Hearmeman workflows/assets sync
-#----------------------------------------------
+section 7 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
 
 #----------------------------------------------
-# Synchronize Hearmeman WAN git repo (and copy workflows into ComfyUI - merge with existing 'workflows' dir)
-
-init_repo --git "$GIT_HEARMEMAN_WAN_REPO_ID" "$GIT_HEARMEMAN_WAN_REPO_LOCAL" || true
-rsync_or_symlink_source_to_destination rsync "$GIT_HEARMEMAN_WAN_REPO_LOCAL/workflows/" \
-                                             "$COMFY_HOME/user/default/"
-
-#----------------------------------------------
-# Synchronize My WAN git repo (and copy workflows into ComfyUI - subdirs under 'workflows/MyWorkflows')
+# Synchronize git repo (and copy workflows into ComfyUI - subdirs under 'workflows/MyWorkflows')
 
 if [[ "${ENABLE_MY_WORKFLOWS_DOWNLOAD:-false}" == "true" ]]; then
 
@@ -308,22 +269,7 @@ fi
 hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
-section 9 "Jupyter Launch"
-#----------------------------------------------
-# Optionally start Jupyter if requested
-#----------------------------------------------
-
-if [[ "${LAUNCH_JUPYTER:-false}" == "true" ]]; then
-  echo "Launching Jupyter. Trying from port 8888..."
-  jupyter-lab --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --ServerApp.allow_origin='*' --ServerApp.allow_credentials=True --notebook-dir=/workspace &>/workspace/logs/jupyter.log &
-else
-  echo "LAUNCH_JUPYTER=0 → skipping Jupyter launch..."
-fi
-
-hf_download_show_snapshot || true
-
-#------------------------------------------------------------------------
-section 10 "ComfyUI"
+section 8 "ComfyUI"
 #----------------------------------------------
 # Report the Custom Nodes being used for this 
 #   session. Use tmux's to launch ComfyUI
@@ -337,7 +283,7 @@ snapshot_custom_nodes_state --summary "before-comfy-launch" || true
 # Check health/status before launching ComfyUI
 #----------------------------------------------
 
-section 10.1 "Pre-ComfyUI Launch: Confirming Stack Health"
+section 8.1 "Pre-ComfyUI Launch: Confirming Stack Health"
 
 confirm_stack_health_or_stop || true
 
@@ -348,7 +294,7 @@ if [[ -f /workspace/logs/stack_broken ]]; then
   tail -f /dev/null
 fi
 
-section 10.2 "ComfyUI Launch..."
+section 8.2 "ComfyUI Launch..."
 
 cd "${COMFY_APP:-/opt/ComfyUI}"
 
@@ -367,7 +313,7 @@ fi
 hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
-section 11 "Pull my model repo from Huggingface and symlink into ComfyUI"
+section 9 "Pull my model repo from Huggingface and symlink into ComfyUI"
 #----------------------------------------------
 # Synchronize "HF_MY_REPO_*" from HF to local 
 #   cache repo (and symlink into ComfyUI)
@@ -393,7 +339,7 @@ fi
 
 
 #------------------------------------------------------------------------
-section 12 "Disk Watcher"
+section 10 "Disk Watcher"
 #----------------------------------------------
 # Start disk watcher to monitor disk usage
 # Defaults to checking every 10 minutes, warning at 85%,
