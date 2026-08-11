@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,11 +23,19 @@ _ORIGINAL_EFFECTIVE_CPUS = telemetry._effective_cpus
 _ORIGINAL_INSTALL_WITH_QUALITY = base.install
 _ORIGINAL_RUNTIME_POLICIES = telemetry.hardened._apply_runtime_policies
 _CONTEXT_START: dict[str, Any] = {}
+_CPU_PROBE_START: dict[str, Any] = {}
 
 
 def _float_env(name: str, default: float) -> float:
     try:
         return float(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
     except (TypeError, ValueError):
         return default
 
@@ -99,6 +108,37 @@ def effective_cpus_with_cpuset() -> float:
     if cpuset is not None:
         effective = min(effective, float(cpuset))
     return max(0.01, effective)
+
+
+def _cpu_probe() -> dict[str, Any]:
+    """Measure single-thread CPU speed and how continuously this process is scheduled.
+
+    Absolute iterations/sec helps compare like-for-like hosts. The CPU/wall ratio is
+    deliberately hardware-independent: a CPU-bound thread should be near 1.0 when it
+    is continuously scheduled and falls when the container is being descheduled.
+    """
+    iterations = max(0, _int_env("CUSTOM_NODE_QUALITY_CPU_PROBE_ITERATIONS", 1_500_000))
+    if iterations == 0:
+        return {"enabled": False}
+
+    cpu_clock = getattr(time, "thread_time", time.process_time)
+    value = 0x12345678
+    wall_start = time.perf_counter()
+    cpu_start = cpu_clock()
+    for index in range(iterations):
+        value = (value * 1664525 + 1013904223 + index) & 0xFFFFFFFF
+        value ^= value >> 13
+    cpu_seconds = max(0.0, cpu_clock() - cpu_start)
+    wall_seconds = max(1e-9, time.perf_counter() - wall_start)
+    return {
+        "enabled": True,
+        "iterations": iterations,
+        "wall_seconds": round(wall_seconds, 6),
+        "thread_cpu_seconds": round(cpu_seconds, 6),
+        "thread_cpu_to_wall_ratio": round(min(1.0, cpu_seconds / wall_seconds), 4),
+        "iterations_per_wall_second": round(iterations / wall_seconds, 1),
+        "checksum": int(value),
+    }
 
 
 def _hf_manifest_context() -> dict[str, Any]:
@@ -228,6 +268,7 @@ def quality_profile_with_runtime_context(report: dict) -> dict:
     host["cpuset_effective_cpus"] = _cpuset_count()
 
     context_end = _hf_manifest_context()
+    cpu_probe_end = _cpu_probe()
     hf_concurrent = bool(_CONTEXT_START.get("active") or context_end.get("active"))
     context_flags: list[str] = []
     if hf_concurrent:
@@ -240,6 +281,8 @@ def quality_profile_with_runtime_context(report: dict) -> dict:
         "hf_manifest_start": dict(_CONTEXT_START),
         "hf_manifest_end": context_end,
         "observed_build_count": build_count,
+        "cpu_probe_start": dict(_CPU_PROBE_START),
+        "cpu_probe_end": cpu_probe_end,
     }
 
     # Host-global /proc/pressure is useful evidence but should not by itself mark a
@@ -257,6 +300,24 @@ def quality_profile_with_runtime_context(report: dict) -> dict:
             if quality.get("classification") == "degraded" and not reasons:
                 quality["classification"] = "healthy"
                 quality["include_in_performance_baseline"] = True
+
+    # Reject only strong direct evidence that our own CPU-bound thread could not stay
+    # scheduled. Absolute probe throughput is intentionally recorded but not gated,
+    # because different RunPod/Vast/etc. CPU models legitimately run at different speeds.
+    probe_ratio_limit = _float_env("CUSTOM_NODE_QUALITY_CPU_PROBE_SCHED_RATIO", 0.65)
+    probe_ratios = []
+    for probe in (_CPU_PROBE_START, cpu_probe_end):
+        if probe.get("enabled"):
+            try:
+                probe_ratios.append(float(probe.get("thread_cpu_to_wall_ratio", 0.0)))
+            except (TypeError, ValueError):
+                pass
+    if probe_ratios and min(probe_ratios) < probe_ratio_limit:
+        if "cpu_probe_scheduling_contention" not in reasons:
+            reasons.append("cpu_probe_scheduling_contention")
+        if quality.get("classification") not in {"non-comparable", "unknown"}:
+            quality["classification"] = "degraded"
+        quality["include_in_performance_baseline"] = False
 
     slow_rate_limit = _float_env("CUSTOM_NODE_QUALITY_SLOW_TRANSFER_BPS", 5_000_000.0)
     long_git_limit = _float_env("CUSTOM_NODE_QUALITY_LONG_GIT_SECONDS", 60.0)
@@ -276,12 +337,14 @@ def quality_profile_with_runtime_context(report: dict) -> dict:
     quality.setdefault("thresholds", {})["host_cpu_load_per_effective_cpu"] = _float_env(
         "CUSTOM_NODE_QUALITY_CPU_LOAD_LIMIT", 0.8
     )
+    quality.setdefault("thresholds", {})["cpu_probe_scheduling_ratio"] = probe_ratio_limit
     return quality
 
 
 def install_with_runtime_context(args, manifest: dict) -> int:
-    global _CONTEXT_START
+    global _CONTEXT_START, _CPU_PROBE_START
     _CONTEXT_START = _hf_manifest_context()
+    _CPU_PROBE_START = _cpu_probe()
     disabled = sorted(_disabled_node_ids())
     if disabled:
         print(
