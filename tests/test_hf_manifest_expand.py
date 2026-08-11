@@ -41,7 +41,7 @@ def _manifest(include: list[str]) -> dict:
         "vars": {"COMFY_HOME": "/workspace/ComfyUI"},
         "paths": {"LORAS_DIR": "{COMFY_HOME}/models/loras"},
         "sections": {
-            "download_krea2": [
+            "krea2_loras": [
                 {
                     "id": "krea2-loras",
                     "mode": "tree",
@@ -62,10 +62,10 @@ def test_recursive_tree_preserves_relative_paths() -> None:
     api = FakeApi()
     expanded = module.expand_manifest(
         _manifest(["models/loras/krea2/**"]),
-        environ={"download_krea2": "true"},
+        environ={"krea2_loras": "true"},
         api=api,
     )
-    entries = expanded["sections"]["download_krea2"]
+    entries = expanded["sections"]["krea2_loras"]
 
     assert [entry["path"] for entry in entries] == [
         "/workspace/ComfyUI/models/loras/Krea-2/a.safetensors",
@@ -79,10 +79,10 @@ def test_recursive_tree_preserves_relative_paths() -> None:
 def test_single_star_does_not_cross_directory_boundaries() -> None:
     expanded = module.expand_manifest(
         _manifest(["models/loras/krea2/*.safetensors"]),
-        environ={"download_krea2": "true"},
+        environ={"krea2_loras": "true"},
         api=FakeApi(),
     )
-    entries = expanded["sections"]["download_krea2"]
+    entries = expanded["sections"]["krea2_loras"]
     assert [entry["repo_file"] for entry in entries] == [
         "models/loras/krea2/a.safetensors"
     ]
@@ -95,7 +95,7 @@ def test_disabled_tree_section_is_not_queried() -> None:
 
     manifest = {
         "sections": {
-            "download_optional": [
+            "optional_loras": [
                 {
                     "mode": "tree",
                     "repo_id": "owner/repo",
