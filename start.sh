@@ -30,7 +30,6 @@ PERSIST_GLOBS=(
   "GIT_*"
   "LAUNCH_*"
   "TELEGRAM_*"
-  "download_*"
   "*_URL"
   "*_IDS_TO_DOWNLOAD"
 )
@@ -112,104 +111,81 @@ fi
 source "$HELPERS"
 
 # Install hf-tools into system
-
 install_system_hff || {
   echo "[fatal] hf-tools installation failed." >&2
   exit 1
 }
 
 # Move dotfiles into root home for other SSH connections
-
 install_root_shell_dotfiles || true
 
-# make sure dirs exist (Comfy home, models, logs, etc.)
-
+# Make sure dirs exist (Comfy home, models, logs, etc.)
 ensure_comfy_dirs
 link_comfy_state_into_app
 
 #------------------------------------------------------------------------
 section 0 "Prepare Session Logging"
-#----------------------------------------------
-# 0) Create startup log
-#----------------------------------------------
+#------------------------------------------------------------------------
 
 STARTUP_LOG="${COMFY_LOGS}/startup.log"
-
-# Duplicate all further stdout/stderr to both Vast log and a file
 exec > >(tee -a "$STARTUP_LOG") 2>&1
 
 echo "[bootstrap] Logging to: ${STARTUP_LOG}"
 
 #------------------------------------------------------------------------
 section 0.1 "Start-up Telegram Message"
-#----------------------------------------------
+#------------------------------------------------------------------------
 
 tg "▶️ Starting bootstrap of ComfyUI inference session" || true
 
 #------------------------------------------------------------------------
 section 0.5 "Basic Housekeeping"
-#----------------------------------------------
+#------------------------------------------------------------------------
 
-#----------------------------------------------
-# Install fast HF backend (safe, quiet) into ComfyUI venv
-#----------------------------------------------
-
-# Map helper knobs into hf_transfer / hub vars
 hf_transfer_tune
-
-# Install / verify hf download backend
 hf_transfer_install
 hf_transfer_verify
 
 #------------------------------------------------------------------------
 section 1 "Status/Configuration Overview"
-#----------------------------------------------
-# Pretty boot banner for Vast / RunPod logs
-#----------------------------------------------
+#------------------------------------------------------------------------
 
 on_start_comfy_banner
 
+echo "HF base families : ${HF_BASE_DOWNLOADS:-<none>}"
+echo "HF LoRA families : ${HF_LORA_DOWNLOADS:-<none>}"
+
 #------------------------------------------------------------------------
 section 2 "Configure SSH"
-#----------------------------------------------
-# Configure SSH using SSH* environment 
-#   variables
-#----------------------------------------------
+#------------------------------------------------------------------------
 
 setup_ssh || true
 
 #------------------------------------------------------------------------
 section 3 "Git Auth Bootstrap"
-#----------------------------------------------
-# If GITHUB_DEPLOY_KEY_COMFYUI_TEMPLATES is set, use it to set up git auth 
-#   for that repo 
-#----------------------------------------------
+#------------------------------------------------------------------------
 
 git_auth_bootstrap || true
 
 #------------------------------------------------------------------------
-section 4 "Huggingface (Models) download"
-#----------------------------------------------
-# Models via model_manifest.json
-#----------------------------------------------
+section 4 "Install Custom Nodes"
+#------------------------------------------------------------------------
+# Keep this phase free of bulk model downloads. Custom-node pip installs are
+# latency/I/O sensitive, while the HF/Xet model phase is throughput-oriented.
 
-if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}" == "true" ]]; then
-  echo "Using model manifest: $MODEL_MANIFEST_URL"
-  if ! hf_download_from_manifest; then
-    echo "⚠️ hf_download_from_manifest failed; see logs."
+if [[ "${INSTALL_CUSTOM_NODES:-true}" == "true" ]]; then
+  echo "Installing custom nodes. Trying ${CUSTOM_NODES_MANIFEST_URL}..."
+  if ! install_custom_nodes; then
+    echo "⚠️ install_custom_nodes reported errors; custom-node extras may be incomplete."
   fi
+  snapshot_custom_nodes_state "after-install_custom_nodes" || true
 else
-  echo "ENABLE_MODEL_MANIFEST_DOWNLOAD=false → skipping model downloader."
+  echo "INSTALL_CUSTOM_NODES=false → skipping extra custom node installation."
 fi
-
-hf_download_show_snapshot || true
 
 #------------------------------------------------------------------------
 section 5 "SageAttention: Pull (if available) or Build from Source"
-#----------------------------------------------
-# Prefer pull of SageAttention for speed. Build
-#   if not.
-#----------------------------------------------
+#------------------------------------------------------------------------
 
 if [[ "${ENABLE_SAGE:-true}" == "true" ]]; then
   echo "Ensuring SageAttention (bundle or build)..."
@@ -222,38 +198,48 @@ else
   echo "ENABLE_SAGE=false → skipping SageAttention setup."
 fi
 
-hf_download_show_snapshot || true
-
 #------------------------------------------------------------------------
-section 6 "Install Custom Nodes"
-#----------------------------------------------
-# Install all Custom Nodes from Manifest
-#----------------------------------------------
+section 6 "Hugging Face Base Models"
+#------------------------------------------------------------------------
+# HF_BASE_DOWNLOADS is a comma/space-separated family list. Each family maps
+# directly to <family>_base in model_manifest.json. Base downloads are started
+# only after custom-node/Sage setup, then may overlap the lightweight workflow
+# sync below.
 
-if [[ "${INSTALL_CUSTOM_NODES:-true}" == "true" ]]; then
-  echo "Installing custom nodes. Trying ${CUSTOM_NODES_MANIFEST_URL}..."
-  if ! install_custom_nodes; then
-    echo "⚠️ install_custom_nodes reported errors; custom-node extras may be incomplete."
+HF_BASE_STATE="${HF_MANIFEST_STATE_DIR}/base"
+HF_LORA_STATE="${HF_MANIFEST_STATE_DIR}/loras"
+base_download_started=false
+
+if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}" == "true" ]]; then
+  if [[ -n "${HF_BASE_DOWNLOADS:-}" ]]; then
+    base_sections="$(hf_manifest_sections_for_families "$MODEL_MANIFEST_URL" "$HF_BASE_DOWNLOADS" base)" || {
+      echo "[fatal] Could not resolve HF_BASE_DOWNLOADS='${HF_BASE_DOWNLOADS}'." >&2
+      exit 2
+    }
+    echo "Using model manifest: $MODEL_MANIFEST_URL"
+    echo "[models] Base families : ${HF_BASE_DOWNLOADS}"
+    echo "[models] Base sections : ${base_sections}"
+    if hf_download_from_manifest "$MODEL_MANIFEST_URL" "$HF_BASE_STATE" "$base_sections"; then
+      base_download_started=true
+    else
+      echo "⚠️ Base manifest download failed to start; see logs."
+    fi
+  else
+    echo "[models] HF_BASE_DOWNLOADS is empty; no base model families requested."
   fi
-  snapshot_custom_nodes_state "after-install_custom_nodes" || true
 else
-  echo "INSTALL_CUSTOM_NODES=false → skipping extra custom node installation."
+  echo "ENABLE_MODEL_MANIFEST_DOWNLOAD=false → skipping manifest model downloads."
 fi
 
-hf_download_show_snapshot || true
-
 #------------------------------------------------------------------------
-section 7 "Relevant/Needed Repo Files Pull and Symlink/Rsync"
-
-#----------------------------------------------
-# Synchronize git repo (and copy workflows into ComfyUI - subdirs under 'workflows/MyWorkflows')
+section 7 "Workflow Repository"
+#------------------------------------------------------------------------
+# This small setup phase is intentionally allowed to overlap the base model
+# downloader once the I/O-sensitive custom-node phase has completed.
 
 if [[ "${ENABLE_MY_WORKFLOWS_DOWNLOAD:-false}" == "true" ]]; then
-
   init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
-  # Stash (symlink) the repo into /workspace for easy access/viewing
   rsync_or_symlink_source_to_destination symlink "$GIT_MYWORKFLOWS_REPO_LOCAL" "/workspace"
-  # Create a specific subdir for these workflows to avoid mixing with WAN's workflows; use symlinks for easy updates
   _sync_info "✅ Linking files from $GIT_MYWORKFLOWS_REPO_LOCAL into ComfyUI directories via symlinks..."
   mkdir -p "$COMFY_HOME/user/default/workflows/MyWorkflows"
   ln -sfn $GIT_MYWORKFLOWS_REPO_LOCAL/* "$COMFY_HOME/user/default/workflows/MyWorkflows/"
@@ -261,27 +247,28 @@ if [[ "${ENABLE_MY_WORKFLOWS_DOWNLOAD:-false}" == "true" ]]; then
   _sync_info "Ensuring git auth for MyWorkflows repo for future updates (pull/push)..."
   git_repo_use_deploy_key \
     "$GIT_MYWORKFLOWS_REPO_LOCAL" "$GIT_MYWORKFLOWS_REPO_KEY" "$GIT_MYWORKFLOWS_REPO_ID"
-
 else
   echo "ENABLE_MY_WORKFLOWS_DOWNLOAD=false → skipping MyWorkflows sync."
 fi
 
-hf_download_show_snapshot || true
+# Base models are blocking: do not advertise the pod as ready until this phase
+# has finished. A failed item is reported loudly, but ComfyUI is still launched
+# so the pod remains usable for diagnosis/manual recovery.
+if [[ "$base_download_started" == true ]]; then
+  echo "[models] Waiting for requested base model families..."
+  if hf_download_wait "$HF_BASE_STATE"; then
+    echo "[models] Base model families are ready."
+  else
+    echo "⚠️ One or more base model downloads failed; launching ComfyUI for diagnosis." >&2
+    hf_download_show_snapshot "$HF_BASE_STATE" || true
+  fi
+fi
 
 #------------------------------------------------------------------------
 section 8 "ComfyUI"
-#----------------------------------------------
-# Report the Custom Nodes being used for this 
-#   session. Use tmux's to launch ComfyUI
-#   Send telegram message if configured
-#----------------------------------------------
+#------------------------------------------------------------------------
 
-# Final snapshot of custom_nodes before ComfyUI launch
 snapshot_custom_nodes_state --summary "before-comfy-launch" || true
-
-#----------------------------------------------
-# Check health/status before launching ComfyUI
-#----------------------------------------------
 
 section 8.1 "Pre-ComfyUI Launch: Confirming Stack Health"
 
@@ -290,7 +277,6 @@ confirm_stack_health_or_stop || true
 if [[ -f /workspace/logs/stack_broken ]]; then
   echo "⚠️ Stack broken; NOT launching ComfyUI."
   echo "    You can SSH in and inspect /workspace/logs/stack_health_report.txt"
-  # Keep container alive
   tail -f /dev/null
 fi
 
@@ -310,17 +296,37 @@ else
   tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}." || true
 fi
 
-hf_download_show_snapshot || true
+#------------------------------------------------------------------------
+section 9 "Optional Hugging Face LoRAs"
+#------------------------------------------------------------------------
+# HF_LORA_DOWNLOADS maps each family to <family>_loras. These are deliberately
+# non-blocking and begin only after ComfyUI is up, so optional libraries do not
+# delay time-to-ready.
+
+if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}" == "true" && -n "${HF_LORA_DOWNLOADS:-}" ]]; then
+  lora_sections="$(hf_manifest_sections_for_families "$MODEL_MANIFEST_URL" "$HF_LORA_DOWNLOADS" loras)" || {
+    echo "⚠️ Could not resolve HF_LORA_DOWNLOADS='${HF_LORA_DOWNLOADS}'; optional LoRAs will not be downloaded." >&2
+    lora_sections=""
+  }
+  if [[ -n "$lora_sections" ]]; then
+    echo "[loras] Families : ${HF_LORA_DOWNLOADS}"
+    echo "[loras] Sections : ${lora_sections}"
+    if hf_download_from_manifest "$MODEL_MANIFEST_URL" "$HF_LORA_STATE" "$lora_sections"; then
+      echo "[loras] Optional LoRA provisioning is running in the background."
+      hf_download_show_snapshot "$HF_LORA_STATE" || true
+    else
+      echo "⚠️ Optional LoRA downloader failed to start." >&2
+    fi
+  fi
+else
+  echo "[loras] No optional LoRA families requested."
+fi
 
 #------------------------------------------------------------------------
-section 9 "Pull my model repo from Huggingface and symlink into ComfyUI"
-#----------------------------------------------
-# Synchronize "HF_MY_REPO_*" from HF to local 
-#   cache repo (and symlink into ComfyUI)
-#----------------------------------------------
+section 10 "Pull my model repo from Hugging Face and symlink into ComfyUI"
+#------------------------------------------------------------------------
 
 if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
-
   export HF_EXCLUDE_GLOBS="${HF_MY_REPO_EXCLUDE_GLOBS:-training/** snapshot/** models/loras/** deleteme/** latestimages/**}"
   export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS:-models/ultralytics/** models/upscale_models/**}"
 
@@ -332,28 +338,21 @@ if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
   else
     _sync_warn "HF repo download failed for $HF_MY_REPO_ID at '$HF_MY_REPO_LOCAL'."
   fi
-
 else
   echo "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
 fi
 
-
 #------------------------------------------------------------------------
-section 10 "Disk Watcher"
-#----------------------------------------------
-# Start disk watcher to monitor disk usage
-# Defaults to checking every 10 minutes, warning at 85%,
-#   critical at 92%
-#----------------------------------------------
-disk_watch_start --path / --log /workspace/logs/disk_watch.log || true
+section 11 "Disk Watcher"
+#------------------------------------------------------------------------
 
+disk_watch_start --path / --log /workspace/logs/disk_watch.log || true
 pod_nag --interval 3600 || true
 
 echo ""
 echo "Bootstrap complete. Bootstrap log: ${COMFY_LOGS}/startup.log"
 echo "General logs: ${COMFY_LOGS}"
 echo ""
-
 echo "=== Bootstrap done: $(date) ==="
 
 sleep infinity
