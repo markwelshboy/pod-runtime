@@ -6,7 +6,12 @@ on:
     paths:
       - helpers.sh
       - helpers_hf_manifest.sh
+      - helpers_hf_manifest_selection.sh
+      - helpers_hf_manifest_tree.sh
       - helpers_hf_manifest.d/**
+      - bin/hf_manifest_expand.py
+      - tests/test_hf_manifest_expand.py
+      - start.sh
       - .github/workflows/hf-manifest-tests.yml
 
 permissions:
@@ -22,9 +27,9 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
 
       - name: Check shell syntax
-        run: bash -n helpers.sh helpers_hf_manifest.sh helpers_hf_manifest.d/*.sh
+        run: bash -n helpers.sh helpers_hf_manifest.sh helpers_hf_manifest_selection.sh helpers_hf_manifest_tree.sh helpers_hf_manifest.d/*.sh start.sh
 
-      - name: Test background downloads and status
+      - name: Test explicit selection, background downloads, and status
         shell: bash
         run: |
           set -euo pipefail
@@ -69,26 +74,47 @@ jobs:
 
           export HFF_VENV="$test_root/hff"
           export COMFY_LOGS="$test_root/logs"
-          export download_test=true
           source ./helpers_hf_manifest.sh
 
           HF_DOWNLOADER=false aria2_download_from_manifest | grep -q ARIA2_ORIGINAL
 
           head -c 65536 /dev/zero > "$test_root/source.bin"
           cat > "$test_root/generic.json" <<JSON
-          {"sections":{"download_test":[{"url":"file://$test_root/source.bin","path":"$test_root/generic-out.bin","bytes":65536}]}}
+          {
+            "sections": {
+              "test_base": [
+                {"url":"file://$test_root/source.bin","path":"$test_root/generic-out.bin","bytes":65536}
+              ],
+              "test_loras": []
+            }
+          }
           JSON
+
+          [[ "$(hf_manifest_sections_for_families "$test_root/generic.json" test base)" == "test_base" ]]
+          [[ "$(hf_manifest_sections_for_families "$test_root/generic.json" test loras)" == "test_loras" ]]
+          if hf_manifest_sections_for_families "$test_root/generic.json" missing base >/dev/null 2>&1; then
+            echo "missing family unexpectedly resolved" >&2
+            exit 1
+          fi
+
           export HF_DOWNLOADER=true
-          hf_download_from_manifest "$test_root/generic.json" "$test_root/generic-state"
+          hf_download_from_manifest "$test_root/generic.json" "$test_root/generic-state" "test_base"
           hf_download_wait "$test_root/generic-state"
           generic_status="$(hf_download_status_json "$test_root/generic-state")"
           jq -e '.completed == 1 and .failed == 0 and .percent == 100' <<<"$generic_status" >/dev/null
           cmp "$test_root/source.bin" "$test_root/generic-out.bin"
 
+          # Old download_<section> aliases must not select a section anymore.
+          export download_test_base=true
+          hf_download_from_manifest "$test_root/generic.json" "$test_root/legacy-state" ""
+          legacy_status="$(hf_download_status_json "$test_root/legacy-state")"
+          jq -e '.total == 0 and .completed == 0 and .failed == 0' <<<"$legacy_status" >/dev/null
+          unset download_test_base
+
           cat > "$test_root/hf.json" <<JSON
-          {"sections":{"download_test":[{"url":"https://huggingface.co/acme/demo/resolve/main/models/fake.bin","path":"$test_root/hf-out.bin","bytes":65536}]}}
+          {"sections":{"test_base":[{"url":"https://huggingface.co/acme/demo/resolve/main/models/fake.bin","path":"$test_root/hf-out.bin","bytes":65536}]}}
           JSON
-          hf_download_from_manifest "$test_root/hf.json" "$test_root/hf-state"
+          hf_download_from_manifest "$test_root/hf.json" "$test_root/hf-state" "test_base"
           sleep 0.30
           live_status="$(hf_download_status_json "$test_root/hf-state")"
           jq -e '.running == 1 and .items[0].observed_bytes > 0 and .items[0].observed_bytes < .items[0].total_bytes' <<<"$live_status" >/dev/null
