@@ -97,3 +97,43 @@ PY
     return 1
   fi
 }
+
+# Keep the normal hff dispatcher from helpers_shell.sh, then add one pod-runtime
+# command without duplicating the rest of hff's command parsing here.
+if declare -F hff >/dev/null 2>&1 && ! declare -F _hff_base_dispatch >/dev/null 2>&1; then
+  eval "$(declare -f hff | sed '1s/^hff /_hff_base_dispatch /')"
+fi
+
+hff() {
+  if [[ "${1:-}" == "telemetry" ]]; then
+    shift || true
+
+    local telemetry_py
+    telemetry_py="${HFF_TELEMETRY_PY:-${POD_RUNTIME_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)}/bin/hff_telemetry.py}"
+
+    [[ $# -gt 0 ]] || {
+      _hff_err "usage: hff telemetry <file> [--prefix PATH] [-m MESSAGE]"
+      return 2
+    }
+    [[ -f "$telemetry_py" ]] || {
+      _hff_err "telemetry helper not found: $telemetry_py"
+      return 1
+    }
+
+    [[ -x "${HFF_VENV}/bin/python" ]] || install_user_hff || return $?
+
+    "${HFF_VENV}/bin/python" "$telemetry_py" \
+      --repo "${HFF_REPO}" \
+      --type "${HFF_REPO_TYPE}" \
+      "$@"
+    return $?
+  fi
+
+  if declare -F _hff_base_dispatch >/dev/null 2>&1; then
+    _hff_base_dispatch "$@"
+    return $?
+  fi
+
+  _hff_err "base hff dispatcher is unavailable"
+  return 1
+}
