@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
+import importlib.metadata
 import importlib.util
 import json
 import os
@@ -24,6 +26,7 @@ _ORIGINAL_INSTALL_WITH_QUALITY = base.install
 _ORIGINAL_RUNTIME_POLICIES = telemetry.hardened._apply_runtime_policies
 _CONTEXT_START: dict[str, Any] = {}
 _CPU_PROBE_START: dict[str, Any] = {}
+_STACK_START: dict[str, Any] = {}
 
 
 def _float_env(name: str, default: float) -> float:
@@ -38,6 +41,54 @@ def _int_env(name: str, default: int) -> int:
         return int(os.environ.get(name, str(default)))
     except (TypeError, ValueError):
         return default
+
+
+def _normalize_dist_name(name: str) -> str:
+    return "-".join(part for part in name.strip().lower().replace("_", "-").split("-") if part)
+
+
+def _package_stack_profile() -> dict[str, Any]:
+    packages: list[tuple[str, str]] = []
+    try:
+        for dist in importlib.metadata.distributions():
+            name = str(dist.metadata.get("Name") or "").strip()
+            if not name:
+                continue
+            packages.append((_normalize_dist_name(name), str(dist.version or "")))
+    except Exception as error:
+        return {"error": str(error)}
+
+    packages.sort()
+    payload = "\n".join(f"{name}=={version}" for name, version in packages)
+    versions = {name: version for name, version in packages}
+    selected = [
+        "torch",
+        "torchvision",
+        "torchaudio",
+        "numpy",
+        "opencv-python",
+        "opencv-python-headless",
+        "opencv-contrib-python",
+        "onnxruntime",
+        "onnxruntime-gpu",
+        "transformers",
+        "diffusers",
+        "accelerate",
+        "comfy-aimdo",
+        "comfy-kitchen",
+    ]
+    return {
+        "package_count": len(packages),
+        "package_fingerprint_sha256": hashlib.sha256(payload.encode()).hexdigest(),
+        "selected_versions": {name: versions.get(name, "") for name in selected},
+        "python_executable": sys.executable,
+        "manifest_url": os.environ.get("CUSTOM_NODES_MANIFEST_URL", ""),
+        "requested_sets": os.environ.get("CUSTOM_NODE_SETS", ""),
+        "comfy_app": os.environ.get("COMFY_APP", ""),
+        "comfy_state": os.environ.get("COMFY_STATE", os.environ.get("COMFY_HOME", "")),
+        "comfyui_path": os.environ.get("COMFYUI_PATH", ""),
+        "constraints": os.environ.get("PIP_CONSTRAINT", os.environ.get("CONSTRAINTS_FILE", "")),
+    }
 
 
 def _parse_pressure_text(text: str) -> dict[str, dict[str, float]]:
@@ -275,14 +326,17 @@ def quality_profile_with_runtime_context(report: dict) -> dict:
         context_flags.append("concurrent_model_provisioning")
     if build_count > 0:
         context_flags.append("native_or_wheel_build_activity")
+    stack_fingerprint = str(_STACK_START.get("package_fingerprint_sha256") or "")
     quality["measurement_context"] = {
         "comparison_group": "startup-with-hf-downloads" if hf_concurrent else "custom-nodes-only",
+        "stack_cohort": stack_fingerprint[:16] if stack_fingerprint else "unknown",
         "flags": context_flags,
         "hf_manifest_start": dict(_CONTEXT_START),
         "hf_manifest_end": context_end,
         "observed_build_count": build_count,
         "cpu_probe_start": dict(_CPU_PROBE_START),
         "cpu_probe_end": cpu_probe_end,
+        "package_stack_start": dict(_STACK_START),
     }
 
     # Host-global /proc/pressure is useful evidence but should not by itself mark a
@@ -303,7 +357,7 @@ def quality_profile_with_runtime_context(report: dict) -> dict:
 
     # Reject only strong direct evidence that our own CPU-bound thread could not stay
     # scheduled. Absolute probe throughput is intentionally recorded but not gated,
-    # because different RunPod/Vast/etc. CPU models legitimately run at different speeds.
+    # because different provider CPU models legitimately run at different speeds.
     probe_ratio_limit = _float_env("CUSTOM_NODE_QUALITY_CPU_PROBE_SCHED_RATIO", 0.65)
     probe_ratios = []
     for probe in (_CPU_PROBE_START, cpu_probe_end):
@@ -342,9 +396,10 @@ def quality_profile_with_runtime_context(report: dict) -> dict:
 
 
 def install_with_runtime_context(args, manifest: dict) -> int:
-    global _CONTEXT_START, _CPU_PROBE_START
+    global _CONTEXT_START, _CPU_PROBE_START, _STACK_START
     _CONTEXT_START = _hf_manifest_context()
     _CPU_PROBE_START = _cpu_probe()
+    _STACK_START = _package_stack_profile()
     disabled = sorted(_disabled_node_ids())
     if disabled:
         print(
