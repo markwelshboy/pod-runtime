@@ -122,3 +122,16 @@ jobs:
           final_status="$(hf_download_status_json "$test_root/hf-state")"
           jq -e '.completed == 1 and .failed == 0 and .percent == 100' <<<"$final_status" >/dev/null
           [[ "$(stat -c %s "$test_root/hf-out.bin")" -eq 65536 ]]
+
+          # HTTP URLs may percent-encode repository filenames; hf download must
+          # receive the decoded repo path. This mirrors the real NO8D/Krea2 case.
+          cat > "$test_root/encoded.json" <<JSON
+          {"sections":{"encoded_base":[{"url":"https://huggingface.co/NO8D/HighResolution/resolve/main/high%20quality%20for%20Krea2.safetensors","path":"$test_root/high-quality-krea2.safetensors","bytes":65536}]}}
+          JSON
+          hf_download_from_manifest "$test_root/encoded.json" "$test_root/encoded-state" "encoded_base"
+          hf_download_wait "$test_root/encoded-state"
+          encoded_status="$(hf_download_status_json "$test_root/encoded-state")"
+          jq -e '.completed == 1 and .failed == 0 and .percent == 100' <<<"$encoded_status" >/dev/null
+          encoded_log="$(jq -r '.items[0].log' <<<"$encoded_status")"
+          grep -Fq 'high quality for Krea2.safetensors' "$encoded_log"
+          ! grep -Fq 'high%20quality%20for%20Krea2.safetensors' "$encoded_log"
