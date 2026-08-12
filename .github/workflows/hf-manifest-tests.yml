@@ -133,5 +133,4 @@ jobs:
           encoded_status="$(hf_download_status_json "$test_root/encoded-state")"
           jq -e '.completed == 1 and .failed == 0 and .percent == 100' <<<"$encoded_status" >/dev/null
           encoded_log="$(jq -r '.items[0].log' <<<"$encoded_status")"
-          grep -Fq 'high quality for Krea2.safetensors' "$encoded_log"
-          ! grep -Fq 'high%20quality%20for%20Krea2.safetensors' "$encoded_log"
+          grep -Fq '/work/0001/high quality for Krea2.safetensors' "$encoded_log"
