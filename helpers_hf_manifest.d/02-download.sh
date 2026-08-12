@@ -5,6 +5,16 @@ _hf_manifest_work_bytes() {
     | awk '{s+=$1} END {printf "%.0f\n", s+0}'
 }
 
+_hf_manifest_url_decode() {
+  local value="${1:-}" py
+  py="$(_hf_manifest_python)" || return 1
+  "$py" - "$value" <<'PY'
+import sys
+from urllib.parse import unquote
+print(unquote(sys.argv[1]))
+PY
+}
+
 _hf_manifest_kill_tree() {
   local parent="${1:-}" signal="${2:-TERM}" child
   [[ "$parent" =~ ^[0-9]+$ ]] || return 0
@@ -38,6 +48,18 @@ _hf_manifest_download_item() {
     cli="$(_hf_manifest_cli)" || {
       echo "hf CLI not found" >>"$log"
       return 127
+    }
+
+    # Manifest entries use ordinary HTTP URLs, where repository filenames may
+    # contain percent-encoded characters such as spaces. The hf CLI expects the
+    # actual repository path, not the URL-encoded representation.
+    repo_file="$(_hf_manifest_url_decode "$repo_file")" || {
+      echo "failed to URL-decode Hugging Face repo path: $repo_file" >>"$log"
+      return 1
+    }
+    revision="$(_hf_manifest_url_decode "$revision")" || {
+      echo "failed to URL-decode Hugging Face revision: $revision" >>"$log"
+      return 1
     }
 
     local -a args=(download "$repo_id" "$repo_file" --revision "$revision" --local-dir "$work_dir")
