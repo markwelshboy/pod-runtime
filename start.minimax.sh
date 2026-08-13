@@ -7,6 +7,11 @@ PROFILE_DIR=/opt/comfyui-minimax
 source "${PROFILE_DIR}/src/.env.minimax"
 source "${POD_RUNTIME_DIR}/helpers.sh"
 
+# MiniMax uses the model catalog from the checked-out pod-runtime revision.
+# The image-local manifest is retained only for older images and is not used by
+# this launcher. MINIMAX_MODEL_MANIFEST_URL remains an escape hatch for testing.
+export MODEL_MANIFEST_URL="${MINIMAX_MODEL_MANIFEST_URL:-${POD_RUNTIME_DIR}/model_manifest.json}"
+
 STARTUP_LOG="${COMFY_LOGS}/startup-minimax.log"
 exec > >(tee -a "${STARTUP_LOG}") 2>&1
 
@@ -57,34 +62,61 @@ if [[ "${MINIMAX_QUANT}" == nvfp4 && ! "${compute_cap}" =~ ^12\. ]]; then
   echo "WARNING: nvfp4 is intended for Blackwell; FP8 is safer on compute capability '${compute_cap:-unknown}'."
 fi
 
-minimax_sections=""
-append_minimax_section() {
-  local section="${1:?section}"
-  if [[ -n "$minimax_sections" ]]; then
-    minimax_sections+=","
+# HF_BASE_DOWNLOADS normally contains concrete model families whose manifest
+# sections are <family>_base. MiniMax additionally accepts the deliberately
+# non-manifest meta-family "minimax_h3_meta" and expands it here according to
+# MINIMAX_QUANT and MINIMAX_TASKS before handing the result to the generic
+# family resolver.
+minimax_requested_base_families="${HF_BASE_DOWNLOADS:-minimax_h3_meta}"
+minimax_expanded_base_families=""
+
+append_minimax_base_family() {
+  local family="${1:?family}"
+  case ",${minimax_expanded_base_families}," in
+    *",${family},"*) return 0 ;;
+  esac
+  if [[ -n "${minimax_expanded_base_families}" ]]; then
+    minimax_expanded_base_families+=","
   fi
-  minimax_sections+="$section"
+  minimax_expanded_base_families+="${family}"
 }
 
-if [[ "${DOWNLOAD_MINIMAX_MODELS}" == true ]]; then
-  append_minimax_section download_minimax_h3_common
+minimax_transformer_quant="${MINIMAX_QUANT}"
+case "${MINIMAX_QUANT}" in
+  fp8|int8)
+    minimax_text_encoder_family="minimax_h3_text_encoder_int8"
+    ;;
+  nvfp4)
+    # Current NVFP4 profile uses the NVFP4 text encoder with FP8 transformers.
+    minimax_text_encoder_family="minimax_h3_text_encoder_nvfp4"
+    minimax_transformer_quant=fp8
+    ;;
+esac
 
-  minimax_transformer_quant="${MINIMAX_QUANT}"
-  case "${MINIMAX_QUANT}" in
-    fp8|int8)
-      append_minimax_section download_minimax_h3_text_encoder_int8
-      ;;
-    nvfp4)
-      minimax_transformer_quant=fp8
-      append_minimax_section download_minimax_h3_text_encoder_nvfp4
-      ;;
-  esac
+for minimax_family in ${minimax_requested_base_families//,/ }; do
+  minimax_family="${minimax_family,,}"
+  minimax_family="${minimax_family//[[:space:]]/}"
+  [[ -n "${minimax_family}" ]] || continue
+
+  if [[ "${minimax_family}" != "minimax_h3_meta" ]]; then
+    append_minimax_base_family "${minimax_family}"
+    continue
+  fi
+
+  append_minimax_base_family minimax_h3_common
+  append_minimax_base_family "${minimax_text_encoder_family}"
 
   IFS=',' read -r -a minimax_task_items <<<"${MINIMAX_TASKS}"
   for minimax_task in "${minimax_task_items[@]}"; do
-    append_minimax_section "download_minimax_h3_${minimax_task}_${minimax_transformer_quant}"
+    append_minimax_base_family "minimax_h3_${minimax_task}_${minimax_transformer_quant}"
   done
-fi
+done
+
+export HF_BASE_DOWNLOADS="${minimax_expanded_base_families}"
+echo "HF base request   : ${minimax_requested_base_families:-<none>}"
+echo "HF base expanded  : ${HF_BASE_DOWNLOADS:-<none>}"
+echo "HF LoRA families  : ${HF_LORA_DOWNLOADS:-<none>}"
+echo "Model manifest    : ${MODEL_MANIFEST_URL}"
 
 mkdir -p /root/.secrets
 chmod 700 /root/.secrets
@@ -95,6 +127,7 @@ chmod 700 /root/.secrets
   printf 'export COMFY_HOME=%q\n' "${COMFY_HOME}"
   printf 'export MINIMAX_QUANT=%q\n' "${MINIMAX_QUANT}"
   printf 'export MINIMAX_TASKS=%q\n' "${MINIMAX_TASKS}"
+  printf 'export HF_BASE_DOWNLOADS=%q\n' "${HF_BASE_DOWNLOADS}"
   env | awk -F= '/^(HF_TOKEN|HUGGINGFACE_HUB_TOKEN|GIT_DEPLOY_KEY_|SSH_|TELEGRAM_)/ {print}' \
     | while IFS='=' read -r key value; do printf 'export %s=%q\n' "${key}" "${value}"; done
 } > /root/.secrets/env.current
@@ -138,13 +171,25 @@ PY
   fi
 fi
 
-model_download_started=false
+base_download_started=false
 MINIMAX_HF_STATE="${HF_MANIFEST_STATE_DIR}/base"
-if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD}" == true && "${DOWNLOAD_MINIMAX_MODELS}" == true ]]; then
-  echo "[models] Starting manifest download: ${MODEL_MANIFEST_URL}"
-  echo "[models] Sections: ${minimax_sections}"
-  hf_download_from_manifest "${MODEL_MANIFEST_URL}" "$MINIMAX_HF_STATE" "$minimax_sections"
-  model_download_started=true
+if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD}" == true ]]; then
+  if [[ -n "${HF_BASE_DOWNLOADS:-}" ]]; then
+    base_sections="$(hf_manifest_sections_for_families "${MODEL_MANIFEST_URL}" "${HF_BASE_DOWNLOADS}" base)" || {
+      echo "ERROR: Could not resolve HF_BASE_DOWNLOADS='${HF_BASE_DOWNLOADS}'." >&2
+      exit 2
+    }
+    echo "[models] Starting manifest download: ${MODEL_MANIFEST_URL}"
+    echo "[models] Base families: ${HF_BASE_DOWNLOADS}"
+    echo "[models] Base sections: ${base_sections}"
+    if hf_download_from_manifest "${MODEL_MANIFEST_URL}" "$MINIMAX_HF_STATE" "$base_sections"; then
+      base_download_started=true
+    else
+      echo "WARNING: Base manifest download failed to start; see logs." >&2
+    fi
+  else
+    echo "[models] HF_BASE_DOWNLOADS is empty; no base models requested."
+  fi
 else
   echo "[models] Model provisioning disabled."
 fi
@@ -162,10 +207,14 @@ fi
 
 source "${PROFILE_DIR}/src/prepare_sage.sh"
 
-if [[ "${model_download_started}" == true ]]; then
-  echo "[models] Waiting for selected MiniMax-H3 weights..."
-  hf_download_wait "$MINIMAX_HF_STATE"
-  echo "[models] Selected weights are ready."
+if [[ "${base_download_started}" == true ]]; then
+  echo "[models] Waiting for selected base weights..."
+  if hf_download_wait "$MINIMAX_HF_STATE"; then
+    echo "[models] Selected base weights are ready."
+  else
+    echo "WARNING: One or more base model downloads failed; continuing for diagnosis." >&2
+    hf_download_show_snapshot "$MINIMAX_HF_STATE" || true
+  fi
 fi
 
 python - <<'PY'
@@ -196,6 +245,28 @@ if "${POD_RUNTIME_DIR}/run_comfy_mux.sh" start; then
 else
   echo "ERROR: ComfyUI failed to become healthy; see ${COMFY_LOGS}/comfyui-8188.log" >&2
   exit 1
+fi
+
+# Optional LoRA families use the same generic family resolver and start only
+# after ComfyUI is healthy, so they never delay time-to-ready.
+MINIMAX_LORA_HF_STATE="${HF_MANIFEST_STATE_DIR}/loras"
+if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD}" == true && -n "${HF_LORA_DOWNLOADS:-}" ]]; then
+  lora_sections="$(hf_manifest_sections_for_families "${MODEL_MANIFEST_URL}" "${HF_LORA_DOWNLOADS}" loras)" || {
+    echo "WARNING: Could not resolve HF_LORA_DOWNLOADS='${HF_LORA_DOWNLOADS}'; optional LoRAs will not be downloaded." >&2
+    lora_sections=""
+  }
+  if [[ -n "${lora_sections}" ]]; then
+    echo "[loras] Families: ${HF_LORA_DOWNLOADS}"
+    echo "[loras] Sections: ${lora_sections}"
+    if hf_download_from_manifest "${MODEL_MANIFEST_URL}" "$MINIMAX_LORA_HF_STATE" "$lora_sections"; then
+      echo "[loras] Optional LoRA provisioning is running in the background."
+      hf_download_show_snapshot "$MINIMAX_LORA_HF_STATE" || true
+    else
+      echo "WARNING: Optional LoRA downloader failed to start." >&2
+    fi
+  fi
+else
+  echo "[loras] No optional LoRA families requested."
 fi
 
 disk_watch_start --path / --log "${COMFY_LOGS}/disk_watch.log" || true
