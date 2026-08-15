@@ -1,28 +1,91 @@
 #!/usr/bin/env bash
 # HFF bootstrap policy override.
-# Loaded after helpers_core.sh so it replaces the legacy implementation from helpers_shell.sh.
+# Loaded after helpers_core.sh so it replaces legacy logging/tooling functions.
+
+_runtime_secret_preview() {
+  # Show enough of a secret to identify which credential is loaded without
+  # making logs useful for credential theft. Very short values get no preview.
+  local value="${1:-}"
+  local length=${#value}
+
+  if (( length == 0 )); then
+    printf '%s' '<unset>'
+  elif (( length <= 12 )); then
+    printf '<set:%d chars>' "$length"
+  else
+    printf '%s…%s' "${value:0:8}" "${value: -4}"
+  fi
+}
+
+_runtime_env_name_is_sensitive() {
+  local name="${1:-}"
+  case "$name" in
+    *_TOKEN|*_TOKEN_*|TOKEN_*|*_SECRET|*_SECRET_*|SECRET_*|*_PASSWORD|*_PASSWORD_*|PASSWORD_*|\
+    *_CREDENTIAL|*_CREDENTIAL_*|CREDENTIAL_*|*_PRIVATE_KEY|*_PRIVATE_KEY_*|PRIVATE_KEY_*|\
+    *_CLIENT_KEY|*_CLIENT_KEY_*|*_KEY_B64|*_KEY_B64_*|*_COOKIE|*_COOKIE_*|COOKIE_*|\
+    *_BEARER|*_BEARER_*|BEARER_*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 # The legacy report printed HF_TOKEN verbatim. Keep the useful transfer tuning
-# diagnostics but redact anything credential-shaped before it reaches startup
-# logs, provider consoles, or copied troubleshooting output.
+# diagnostics but only log a non-reversible head/tail fingerprint for secrets.
 hf_transfer_options_report() {
   local key value
   echo "=== hf_transfer / hub config ==="
   while IFS='=' read -r key value; do
-    case "$key" in
-      *TOKEN*|*SECRET*|*PASSWORD*|*CREDENTIAL*|*PRIVATE*|*KEY*)
-        printf '%s=<redacted>\n' "$key"
-        ;;
-      *)
-        printf '%s=%s\n' "$key" "$value"
-        ;;
-    esac
+    if _runtime_env_name_is_sensitive "$key"; then
+      printf '%s=%s\n' "$key" "$(_runtime_secret_preview "$value")"
+    else
+      printf '%s=%s\n' "$key" "$value"
+    fi
   done < <(env | grep -E '^HF_(HUB_|TOKEN|HUB_ENABLE|HUB_MAX_|SPLIT=|MCONN=|CHUNK=|AUTH_MODE=)' | sort)
   echo "==============================="
 }
 
+# Override the legacy show_env() from helpers_core.sh. Preserve its useful
+# layout/status probes, but include only masked credential fingerprints.
+show_env() {
+  echo "========================================================================"
+  echo "🧠 ComfyUI Environment Summary — $(date -Is)"
+  echo "========================================================================"
+  echo ""
+  echo " COMFY_HOME:            ${COMFY_HOME:-<unset>}"
+  echo " Comfy version:         $(probe_comfy_version || echo unknown)"
+  echo ""
+  echo " Custom nodes dir:      ${CUSTOM_DIR:-<unset>}"
+  echo " Cache dir:             ${CACHE_DIR:-<unset>}"
+  echo " Logs dir:              ${COMFY_LOGS:-<unset>}"
+  echo " Output dir:            ${OUTPUT_DIR:-<unset>}"
+  echo " Bundles dir:           ${BUNDLES_DIR:-<unset>}"
+  echo " Bundle tag:            ${CUSTOM_NODES_BUNDLE_TAG:-<unset>}"
+  echo " Workflow dir:          ${WORKFLOW_DIR:-<unset>}"
+  echo " Model manifest URL:    ${MODEL_MANIFEST_URL:-<unset>}"
+  echo ""
+  echo " MODELS_DIR:            ${MODELS_DIR:-<unset>}"
+  echo " DIFFUSION_MODELS_DIR:  ${DIFFUSION_MODELS_DIR:-<unset>}"
+  echo " TEXT_ENCODERS_DIR:     ${TEXT_ENCODERS_DIR:-<unset>}"
+  echo " CLIP_VISION_DIR:       ${CLIP_VISION_DIR:-<unset>}"
+  echo " VAE_DIR:               ${VAE_DIR:-<unset>}"
+  echo " LORAS_DIR:             ${LORAS_DIR:-<unset>}"
+  echo " DETECTION_DIR:         ${DETECTION_DIR:-<unset>}"
+  echo " CTRLNET_DIR:           ${CTRLNET_DIR:-<unset>}"
+  echo " CTRLNET_UNION_DIR:     ${CTRLNET_UNION_DIR:-<unset>}"
+  echo " UPSCALE_DIR:           ${UPSCALE_DIR:-<unset>}"
+  echo " ULTRALYTICS_DIR:       ${ULTRALYTICS_DIR:-<unset>}"
+  echo ""
+  echo " HF_TOKEN:              $(hf_token_status) [$(_runtime_secret_preview "${HF_TOKEN:-}")]"
+  echo " CIVITAI_TOKEN:         $(civitai_token_status) [$(_runtime_secret_preview "${CIVITAI_TOKEN:-}")]"
+  echo " CHECKPOINT_IDS:        ${CHECKPOINT_IDS_TO_DOWNLOAD:-Empty}"
+  echo " LORAS_IDS:             ${LORAS_IDS_TO_DOWNLOAD:-Empty}"
+  echo ""
+  echo "======================================="
+  echo ""
+  echo ""
+}
+
 _hff_pip() {
-  # HFF has its own venv and must not inherit ComfyUI's stack constraints or pip.conf.
+  # HFF has its own venv and must not inherit ComfyUI's global pip constraints or pip.conf.
   env \
     -u PIP_CONSTRAINT \
     -u PIP_BUILD_CONSTRAINT \
