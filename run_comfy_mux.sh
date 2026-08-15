@@ -21,6 +21,12 @@ set -euo pipefail
 #   START_TIMEOUT=seconds       (default 60)  # wait for 8188
 #   GPU_PORT_BASE=8288          (default 8288) # gpu0=8288, gpu1=8388, ...
 #   MAX_GPU_SESSIONS=4          (default 4)    # how many gpu sessions to spawn max
+#   COMFY_CORS_MODE=auto|off|wildcard
+#       auto (default): on RunPod, allow only this pod+port's proxy origin
+#       off:            retain ComfyUI's default origin-only protection
+#       wildcard:       --enable-cors-header '*' (least restrictive; avoid if possible)
+#   COMFY_CORS_ORIGIN=https://host
+#       Explicit origin override. {port} and {pod_id} placeholders are supported.
 #
 # Output (on start):
 #   Prints a machine-readable line:
@@ -47,6 +53,7 @@ LOGS="${COMFY_LOGS}"
 START_TIMEOUT="${START_TIMEOUT:-120}"
 GPU_PORT_BASE="${GPU_PORT_BASE:-8288}"
 MAX_GPU_SESSIONS="${MAX_GPU_SESSIONS:-4}"
+COMFY_CORS_MODE="${COMFY_CORS_MODE:-auto}"
 
 need_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "ERROR: $1 not found in PATH" >&2; exit 1; }; }
 need_cmd python
@@ -59,6 +66,76 @@ sage_attention=$({ [[ "${ENABLE_SAGE:-true}" == "true" ]] && printf '%s' --use-s
 
 gpus="$(python -c 'import torch; print(torch.cuda.device_count() if torch.cuda.is_available() else 0)')"
 printf "INFO: Available GPUs: %s\n" "${gpus}"
+
+# ---- RunPod proxy / CORS compatibility ----
+#
+# Recent ComfyUI versions reject requests carrying Sec-Fetch-Site: cross-site
+# unless --enable-cors-header is enabled. Following an HTTP-service link from
+# the RunPod console can legitimately arrive that way.
+#
+# Do not default to '*'. A RunPod Pod already tells us its pod ID, so each
+# ComfyUI process can allow only its own public proxy origin. Supplying the flag
+# also replaces ComfyUI's origin-only middleware, which is what avoids the 403.
+comfy_cors_origin_for_port() {
+  local port="${1:?port}"
+  local mode="${COMFY_CORS_MODE,,}"
+  local origin="${COMFY_CORS_ORIGIN:-}"
+
+  case "$mode" in
+    off|false|none|0)
+      return 1
+      ;;
+    wildcard|all|'*')
+      printf '%s\n' '*'
+      return 0
+      ;;
+    auto|true|on|1)
+      if [[ -n "$origin" ]]; then
+        :
+      elif [[ -n "${RUNPOD_POD_ID:-}" ]]; then
+        origin="https://${RUNPOD_POD_ID}-${port}.proxy.runpod.net"
+      else
+        # Non-RunPod environments keep ComfyUI's default protection unless an
+        # explicit origin was supplied.
+        return 1
+      fi
+      ;;
+    *)
+      echo "WARN: unknown COMFY_CORS_MODE='${COMFY_CORS_MODE}'; keeping ComfyUI default origin protection." >&2
+      return 1
+      ;;
+  esac
+
+  origin="${origin//\{port\}/$port}"
+  origin="${origin//\{pod_id\}/${RUNPOD_POD_ID:-}}"
+
+  # CORS requires an origin, not a URL path. Restrict the accepted syntax so
+  # this value is also safe to embed into the tmux shell command below.
+  if [[ ! "$origin" =~ ^https?://[A-Za-z0-9._:-]+$ ]]; then
+    echo "WARN: invalid COMFY_CORS_ORIGIN for :${port}: '${origin}'. Expected scheme://host[:port]; keeping default protection." >&2
+    return 1
+  fi
+
+  printf '%s\n' "$origin"
+}
+
+comfy_cors_args_for_port() {
+  local port="${1:?port}" origin
+  if origin="$(comfy_cors_origin_for_port "$port")"; then
+    # Origin validation above guarantees no shell-significant characters other
+    # than ':' '/' '.' '-' and alphanumerics.
+    printf -- "--enable-cors-header '%s'" "$origin"
+  fi
+}
+
+log_cors_mode_for_port() {
+  local port="${1:?port}" origin
+  if origin="$(comfy_cors_origin_for_port "$port")"; then
+    echo "INFO: ComfyUI :${port} allowed browser origin: ${origin}"
+  else
+    echo "INFO: ComfyUI :${port} using default origin-only protection."
+  fi
+}
 
 # ---- bitmask helpers ----
 
@@ -163,6 +240,8 @@ prestart_cleanup() {
 
 start_one() {
   local sess="$1" port="$2" gvar="$3" out="$4" cache="$5"
+  local cors_args
+  cors_args="$(comfy_cors_args_for_port "$port")"
   mkdir -p "${out}" "${cache}" "${LOGS}"
 
   if tmux has-session -t "${sess}" >/dev/null 2>&1; then
@@ -174,15 +253,18 @@ start_one() {
     return 1
   fi
 
+  log_cors_mode_for_port "$port"
   tmux new-session -d -s "${sess}" \
     "cd \"${APP}\" && CUDA_VISIBLE_DEVICES=${gvar} PYTHONUNBUFFERED=1 \
-     python \"${APP}/main.py\" --listen --port ${port} \
+     python \"${APP}/main.py\" --listen --port ${port} ${cors_args} \
        ${sage_attention} \
        --output-directory \"${out}\" --temp-directory \"${cache}\" --preview-method latent2rgb \
        >> \"${LOGS}/comfyui-${port}.log\" 2>&1"
 }
 
 start_8188() {
+  local cors_args
+  cors_args="$(comfy_cors_args_for_port 8188)"
   mkdir -p "${STATE}/output" "${STATE}/cache" "${LOGS}"
 
   if tmux has-session -t "comfy-8188" >/dev/null 2>&1; then
@@ -194,9 +276,10 @@ start_8188() {
     return 1
   fi
 
+  log_cors_mode_for_port 8188
   tmux new-session -d -s comfy-8188 \
     "cd \"${APP}\" && PYTHONUNBUFFERED=1 \
-     python \"${APP}/main.py\" --listen --port 8188 ${sage_attention} \
+     python \"${APP}/main.py\" --listen --port 8188 ${cors_args} ${sage_attention} \
        --output-directory \"${STATE}/output\" --temp-directory \"${STATE}/cache\" --preview-method latent2rgb \
        >> \"${LOGS}/comfyui-8188.log\" 2>&1"
 }
