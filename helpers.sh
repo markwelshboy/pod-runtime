@@ -7,6 +7,8 @@ _helpers_entry_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=/dev/null
 source "${_helpers_entry_dir}/helpers_core.sh"
 # shellcheck source=/dev/null
+[[ -f "${_helpers_entry_dir}/helpers_network.sh" ]] && source "${_helpers_entry_dir}/helpers_network.sh"
+# shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/helpers_hff_runtime.sh" ]] && source "${_helpers_entry_dir}/helpers_hff_runtime.sh"
 # shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/helpers_hf_repo_sync.sh" ]] && source "${_helpers_entry_dir}/helpers_hf_repo_sync.sh"
