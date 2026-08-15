@@ -39,22 +39,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for launcher in start.sh start.minimax.sh; do
-            test -s "$launcher"
-            test -x "$launcher"
-            head -n 1 "$launcher" | grep -qx '#!/usr/bin/env bash'
-            bash -n "$launcher"
+          python3 - <<'PY'
+          import stat
+          from pathlib import Path
 
-            ssh_line="$(awk '/^[[:space:]]*setup_ssh([[:space:]]|$)/ {print NR; exit}' "$launcher")"
-            probe_line="$(awk '/^[[:space:]]*network_probe_startup_guarded([[:space:]]|$)/ {print NR; exit}' "$launcher")"
-            printf '%s: setup_ssh=%s network_probe=%s\n' "$launcher" "${ssh_line:-missing}" "${probe_line:-missing}"
-            [[ "$ssh_line" =~ ^[0-9]+$ ]]
-            [[ "$probe_line" =~ ^[0-9]+$ ]]
-            if (( ssh_line >= probe_line )); then
-              echo "$launcher: SSH recovery must be configured before network qualification" >&2
-              exit 1
-            fi
-          done
+          for name in ("start.sh", "start.minimax.sh"):
+              path = Path(name)
+              data = path.read_text(encoding="utf-8")
+              lines = data.splitlines()
+
+              assert data, f"{name}: launcher is empty"
+              assert lines[0] == "#!/usr/bin/env bash", f"{name}: bad shebang: {lines[0]!r}"
+              assert path.stat().st_mode & stat.S_IXUSR, f"{name}: launcher is not executable"
+
+              ssh = next((i for i, line in enumerate(lines, 1) if line.strip().startswith("setup_ssh")), None)
+              probe = next((i for i, line in enumerate(lines, 1) if line.strip().startswith("network_probe_startup_guarded")), None)
+              print(f"{name}: setup_ssh={ssh} network_probe={probe}")
+
+              assert ssh is not None, f"{name}: setup_ssh call missing"
+              assert probe is not None, f"{name}: network_probe_startup_guarded call missing"
+              assert ssh < probe, f"{name}: SSH recovery must start before network qualification"
+          PY
 
       - name: Test session clock
         shell: bash
@@ -73,18 +78,38 @@ jobs:
           ! grep -q '^Uptime:' <<<"$summary"
           grep -Eq '^Time:.* P[DS]T$' <<<"$summary"
 
-      - name: Test credential redaction
+      - name: Test credential masking
         shell: bash
         run: |
           set -euo pipefail
           source ./helpers_hff_runtime.sh
-          export HF_TOKEN='definitely-not-safe-to-log'
+
+          export HF_TOKEN='hf_1234567890abcdefghijkl'
+          export CIVITAI_TOKEN='civitai_1234567890mnopqrstuv'
           export HF_HUB_MAX_WORKERS=4
+
+          hf_preview="$(_runtime_secret_preview "$HF_TOKEN")"
+          civitai_preview="$(_runtime_secret_preview "$CIVITAI_TOKEN")"
+          [[ "$hf_preview" == 'hf_12345…ijkl' ]]
+          [[ "$civitai_preview" == 'civitai_…stuv' ]]
+
           report="$(hf_transfer_options_report)"
-          grep -q '^HF_TOKEN=<redacted>$' <<<"$report"
+          grep -Fq "HF_TOKEN=${hf_preview}" <<<"$report"
           grep -q '^HF_HUB_MAX_WORKERS=4$' <<<"$report"
-          if grep -q 'definitely-not-safe-to-log' <<<"$report"; then
+          if grep -Fq "$HF_TOKEN" <<<"$report"; then
             echo 'HF credential leaked by hf_transfer_options_report' >&2
+            exit 1
+          fi
+
+          probe_comfy_version() { echo test-version; }
+          hf_token_status() { echo 'valid'; }
+          civitai_token_status() { echo 'valid'; }
+          export COMFY_HOME=/workspace/ComfyUI
+          summary="$(show_env)"
+          grep -Fq "HF_TOKEN:              valid [${hf_preview}]" <<<"$summary"
+          grep -Fq "CIVITAI_TOKEN:         valid [${civitai_preview}]" <<<"$summary"
+          if grep -Fq "$HF_TOKEN" <<<"$summary" || grep -Fq "$CIVITAI_TOKEN" <<<"$summary"; then
+            echo 'Credential leaked by show_env' >&2
             exit 1
           fi
 
