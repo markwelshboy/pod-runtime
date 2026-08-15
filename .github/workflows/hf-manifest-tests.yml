@@ -7,6 +7,7 @@ on:
       - helpers.sh
       - helpers_session.sh
       - helpers_network.sh
+      - helpers_network_transfers.sh
       - helpers_network_guard.sh
       - helpers_hf_manifest.sh
       - helpers_hf_manifest_selection.sh
@@ -31,7 +32,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
 
       - name: Check shell syntax
-        run: bash -n helpers.sh helpers_session.sh helpers_network.sh helpers_network_guard.sh helpers_hf_manifest.sh helpers_hf_manifest_selection.sh helpers_hf_manifest_tree.sh helpers_hf_manifest.d/*.sh start.sh start.minimax.sh
+        run: bash -n helpers.sh helpers_session.sh helpers_network.sh helpers_network_transfers.sh helpers_network_guard.sh helpers_hf_manifest.sh helpers_hf_manifest_selection.sh helpers_hf_manifest_tree.sh helpers_hf_manifest.d/*.sh start.sh start.minimax.sh
 
       - name: Guard runtime launchers
         shell: bash
