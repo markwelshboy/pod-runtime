@@ -7,6 +7,7 @@ on:
       - helpers.sh
       - helpers_session.sh
       - helpers_network.sh
+      - helpers_network_guard.sh
       - helpers_hf_manifest.sh
       - helpers_hf_manifest_selection.sh
       - helpers_hf_manifest_tree.sh
@@ -30,7 +31,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
 
       - name: Check shell syntax
-        run: bash -n helpers.sh helpers_session.sh helpers_network.sh helpers_hf_manifest.sh helpers_hf_manifest_selection.sh helpers_hf_manifest_tree.sh helpers_hf_manifest.d/*.sh start.sh start.minimax.sh
+        run: bash -n helpers.sh helpers_session.sh helpers_network.sh helpers_network_guard.sh helpers_hf_manifest.sh helpers_hf_manifest_selection.sh helpers_hf_manifest_tree.sh helpers_hf_manifest.d/*.sh start.sh start.minimax.sh
 
       - name: Guard runtime launchers
         shell: bash
@@ -41,6 +42,12 @@ jobs:
             test -x "$launcher"
             head -n 1 "$launcher" | grep -qx '#!/usr/bin/env bash'
             bash -n "$launcher"
+
+            ssh_line="$(grep -n -m1 '^[[:space:]]*setup_ssh' "$launcher" | cut -d: -f1)"
+            probe_line="$(grep -n -m1 '^[[:space:]]*network_probe_startup_guarded' "$launcher" | cut -d: -f1)"
+            test -n "$ssh_line"
+            test -n "$probe_line"
+            (( ssh_line < probe_line ))
           done
 
       - name: Test session clock
