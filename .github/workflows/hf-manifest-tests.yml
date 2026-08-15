@@ -131,16 +131,33 @@ jobs:
 
           [[ "$(hf_manifest_sections_for_families "$test_root/generic.json" test base)" == "test_base" ]]
           [[ "$(hf_manifest_sections_for_families "$test_root/generic.json" test loras)" == "test_loras" ]]
-          if hf_manifest_sections_for_families "$test_root/generic.json" missing base >/dev/null 2>&1; then
-            echo "missing family unexpectedly resolved" >&2
-            exit 1
-          fi
+
+          # Unknown editable-template families are warnings, not fatal. Valid
+          # siblings must still resolve and provision normally.
+          missing="$(hf_manifest_sections_for_families "$test_root/generic.json" missing base 2>"$test_root/missing.err")"
+          [[ -z "$missing" ]]
+          grep -q "WARNING: requested family 'missing'" "$test_root/missing.err"
+
+          mixed="$(hf_manifest_sections_for_families "$test_root/generic.json" 'test,missing' base 2>"$test_root/mixed.err")"
+          [[ "$mixed" == "test_base" ]]
+          grep -q "WARNING: requested family 'missing'" "$test_root/mixed.err"
 
           export HF_DOWNLOADER=true
           hf_download_from_manifest "$test_root/generic.json" "$test_root/generic-state" "test_base"
           hf_download_wait "$test_root/generic-state"
           generic_status="$(hf_download_status_json "$test_root/generic-state")"
           jq -e '.completed == 1 and .failed == 0 and .percent == 100' <<<"$generic_status" >/dev/null
+          cmp "$test_root/source.bin" "$test_root/generic-out.bin"
+
+          # The post-fetch selector follows the same tolerant policy. This
+          # covers regular launchers that resolve families before a remote
+          # manifest has been downloaded locally.
+          rm -f "$test_root/generic-out.bin"
+          hf_download_from_manifest "$test_root/generic.json" "$test_root/mixed-state" "test_base,missing_base" 2>"$test_root/mixed-download.err"
+          hf_download_wait "$test_root/mixed-state"
+          mixed_status="$(hf_download_status_json "$test_root/mixed-state")"
+          jq -e '.completed == 1 and .failed == 0 and .percent == 100' <<<"$mixed_status" >/dev/null
+          grep -q "WARNING: unknown requested section 'missing_base'" "$test_root/mixed-download.err"
           cmp "$test_root/source.bin" "$test_root/generic-out.bin"
 
           # Old download_<section> aliases must not select a section anymore.
