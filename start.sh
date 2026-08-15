@@ -80,7 +80,7 @@ SECRET_NAME_RE='(TOKEN|SECRET|PASSWORD|PASS|KEY|CREDENTIAL|COOKIE|BEARER|AUTH|PR
   echo "Generated: $(date -Is)"
   for k in "${__persist_names[@]}"; do
     [[ "$k" =~ $SECRET_NAME_RE ]] && continue
-    if [[ ${!k+set} ]]; then
+    if [[ ${!k+set ]]; then
       printf '%-32s = %s\n' "$k" "${!k}"
     fi
   done
@@ -109,6 +109,10 @@ if [[ ! -f "$HELPERS" ]]; then
 fi
 # shellcheck source=/dev/null
 source "$HELPERS"
+
+# Qualify network performance before package installs, custom nodes, or models.
+# This is advisory only; the helper sends warnings and never aborts startup.
+network_probe_startup || true
 
 # Install hf-tools into system
 install_system_hff || {
