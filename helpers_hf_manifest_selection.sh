@@ -2,13 +2,17 @@
 # Explicit selection and reporting layer for the background HF manifest downloader.
 #
 # Public configuration is family-oriented:
-#   HF_BASE_DOWNLOADS=wan22,krea
-#   HF_LORA_DOWNLOADS=wan22,krea
+#   HF_BASE_DOWNLOADS=wan22,krea2
+#   HF_LORA_DOWNLOADS=wan22,krea2
 #
-# Startup resolves those to exact manifest sections (wan22_base, krea_base,
-# wan22_loras, krea_loras) and passes the resulting CSV to
+# Startup resolves those to exact manifest sections (wan22_base, krea2_base,
+# wan22_loras, krea2_loras) and passes the resulting CSV to
 # hf_download_from_manifest as its third argument. Per-section download_* flags
 # are intentionally no longer a supported interface.
+#
+# Unknown family/section names are warnings, not startup-fatal errors. This is
+# deliberate for editable pod-template lists: valid requested families continue
+# provisioning while a typo is skipped and reported clearly.
 
 if [[ -n "${__HF_MANIFEST_SELECTION_LOADED:-}" ]]; then
   return 0 2>/dev/null || exit 0
@@ -32,6 +36,17 @@ _hf_manifest_split_csv() {
   done
 }
 
+_hf_manifest_family_hints() {
+  local manifest="${1:?manifest}" family="${2:?family}" suffix="${3:?suffix}"
+  jq -r --arg family "$family" --arg suffix "_${suffix}" '
+    .sections // {}
+    | keys[]
+    | select(endswith($suffix))
+    | rtrimstr($suffix)
+    | select(startswith($family))
+  ' "$manifest" 2>/dev/null | paste -sd, -
+}
+
 hf_manifest_sections_for_families() {
   local manifest_source="${1:-}" families="${2:-}" suffix="${3:?suffix}"
   [[ "$suffix" == "base" || "$suffix" == "loras" ]] || {
@@ -39,7 +54,7 @@ hf_manifest_sections_for_families() {
     return 2
   }
 
-  local family section
+  local family section hints
   local -a resolved=()
   declare -A seen=()
 
@@ -52,19 +67,22 @@ hf_manifest_sections_for_families() {
     }
     section="${family}_${suffix}"
 
-    # If the caller supplied an already-local manifest, fail early on a typo.
-    # Normal RunPod startup uses a remote MODEL_MANIFEST_URL, in which case the
-    # exact section is validated after hf_download_from_manifest fetches it.
+    # If the caller supplied an already-local manifest, validate now. A missing
+    # family is non-fatal: skip it while preserving every valid family in the
+    # same request. Normal remote-manifest startup validates after download in
+    # _hf_manifest_export_selection(), which follows the same policy.
     if [[ -n "$manifest_source" && -f "$manifest_source" ]]; then
       command -v jq >/dev/null 2>&1 || {
         echo "[hf-manifest] jq is required to validate model families." >&2
         return 1
       }
       if ! jq -e --arg section "$section" '.sections[$section] != null' "$manifest_source" >/dev/null 2>&1; then
-        echo "[hf-manifest] Requested family '$family' has no section '$section'." >&2
-        echo "[hf-manifest] Available *_${suffix} sections:" >&2
-        jq -r --arg suffix "_${suffix}" '.sections // {} | keys[] | select(endswith($suffix)) | "[hf-manifest]   " + .' "$manifest_source" >&2
-        return 2
+        echo "[hf-manifest] WARNING: requested family '$family' has no section '$section'; skipping it." >&2
+        hints="$(_hf_manifest_family_hints "$manifest_source" "$family" "$suffix" || true)"
+        if [[ -n "$hints" ]]; then
+          echo "[hf-manifest] Possible ${suffix} family match(es): ${hints}" >&2
+        fi
+        continue
       fi
     fi
 
@@ -110,10 +128,8 @@ _hf_manifest_export_selection() {
   while IFS= read -r section; do
     [[ -n "$section" ]] || continue
     if ! jq -e --arg section "$section" '.sections[$section] != null' "$manifest" >/dev/null 2>&1; then
-      echo "[hf-manifest] Unknown requested section: $section" >&2
-      echo "[hf-manifest] Available sections:" >&2
-      jq -r '.sections // {} | keys[] | "[hf-manifest]   " + .' "$manifest" >&2
-      return 2
+      echo "[hf-manifest] WARNING: unknown requested section '$section'; skipping it." >&2
+      continue
     fi
     [[ "$section" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
       echo "[hf-manifest] Section '$section' is not a valid shell identifier." >&2
