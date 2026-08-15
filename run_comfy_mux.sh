@@ -69,6 +69,26 @@ printf "INFO: Available GPUs: %s\n" "${gpus}"
 
 # ---- RunPod proxy / CORS compatibility ----
 #
+# SSH sessions may not inherit provider-injected RUNPOD_* variables even though
+# PID 1 still has the original container environment. Recover only the specific
+# non-secret identity values we need; never import RUNPOD_API_KEY or arbitrary
+# RUNPOD_* variables.
+runpod_recover_identity_from_pid1() {
+  local name value
+  [[ -r /proc/1/environ ]] || return 0
+
+  for name in RUNPOD_POD_ID RUNPOD_POD_HOSTNAME; do
+    [[ -n "${!name:-}" ]] && continue
+    value="$(tr '\0' '\n' < /proc/1/environ | awk -F= -v key="$name" '$1 == key {sub(/^[^=]*=/, ""); print; exit}')"
+    if [[ -n "$value" ]]; then
+      printf -v "$name" '%s' "$value"
+      export "$name"
+    fi
+  done
+}
+
+runpod_recover_identity_from_pid1 || true
+
 # Recent ComfyUI versions reject requests carrying Sec-Fetch-Site: cross-site
 # unless --enable-cors-header is enabled. Following an HTTP-service link from
 # the RunPod console can legitimately arrive that way.
