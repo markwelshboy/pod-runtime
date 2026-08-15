@@ -19,6 +19,10 @@ echo "=== MiniMax-H3 bootstrap: $(date -Is) ==="
 echo "Application: ${COMFY_APP}"
 echo "State: ${COMFY_STATE}"
 
+# Qualify network performance before hf-tools, custom nodes, or model weights.
+# This is advisory only; the helper sends warnings and never aborts startup.
+network_probe_startup || true
+
 case "${MINIMAX_QUANT}" in
   fp8|int8|nvfp4) ;;
   *) echo "ERROR: MINIMAX_QUANT must be fp8, int8, or nvfp4; got '${MINIMAX_QUANT}'." >&2; exit 2 ;;
@@ -255,10 +259,10 @@ if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD}" == true && -n "${HF_LORA_DOWNLOADS:-}"
     echo "WARNING: Could not resolve HF_LORA_DOWNLOADS='${HF_LORA_DOWNLOADS}'; optional LoRAs will not be downloaded." >&2
     lora_sections=""
   }
-  if [[ -n "${lora_sections}" ]]; then
+  if [[ -n "$lora_sections" ]]; then
     echo "[loras] Families: ${HF_LORA_DOWNLOADS}"
     echo "[loras] Sections: ${lora_sections}"
-    if hf_download_from_manifest "${MODEL_MANIFEST_URL}" "$MINIMAX_LORA_HF_STATE" "$lora_sections"; then
+    if hf_download_from_manifest "$MODEL_MANIFEST_URL" "$MINIMAX_LORA_HF_STATE" "$lora_sections"; then
       echo "[loras] Optional LoRA provisioning is running in the background."
       hf_download_show_snapshot "$MINIMAX_LORA_HF_STATE" || true
     else
