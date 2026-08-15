@@ -2,6 +2,25 @@
 # HFF bootstrap policy override.
 # Loaded after helpers_core.sh so it replaces the legacy implementation from helpers_shell.sh.
 
+# The legacy report printed HF_TOKEN verbatim. Keep the useful transfer tuning
+# diagnostics but redact anything credential-shaped before it reaches startup
+# logs, provider consoles, or copied troubleshooting output.
+hf_transfer_options_report() {
+  local key value
+  echo "=== hf_transfer / hub config ==="
+  while IFS='=' read -r key value; do
+    case "$key" in
+      *TOKEN*|*SECRET*|*PASSWORD*|*CREDENTIAL*|*PRIVATE*|*KEY*)
+        printf '%s=<redacted>\n' "$key"
+        ;;
+      *)
+        printf '%s=%s\n' "$key" "$value"
+        ;;
+    esac
+  done < <(env | grep -E '^HF_(HUB_|TOKEN|HUB_ENABLE|HUB_MAX_|SPLIT=|MCONN=|CHUNK=|AUTH_MODE=)' | sort)
+  echo "==============================="
+}
+
 _hff_pip() {
   # HFF has its own venv and must not inherit ComfyUI's stack constraints or pip.conf.
   env \
