@@ -9,6 +9,7 @@ on:
       - helpers_network.sh
       - helpers_network_transfers.sh
       - helpers_network_guard.sh
+      - helpers_hff_runtime.sh
       - helpers_hf_manifest.sh
       - helpers_hf_manifest_selection.sh
       - helpers_hf_manifest_tree.sh
@@ -32,7 +33,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
 
       - name: Check shell syntax
-        run: bash -n helpers.sh helpers_session.sh helpers_network.sh helpers_network_transfers.sh helpers_network_guard.sh helpers_hf_manifest.sh helpers_hf_manifest_selection.sh helpers_hf_manifest_tree.sh helpers_hf_manifest.d/*.sh start.sh start.minimax.sh
+        run: bash -n helpers.sh helpers_session.sh helpers_network.sh helpers_network_transfers.sh helpers_network_guard.sh helpers_hff_runtime.sh helpers_hf_manifest.sh helpers_hf_manifest_selection.sh helpers_hf_manifest_tree.sh helpers_hf_manifest.d/*.sh start.sh start.minimax.sh
 
       - name: Guard runtime launchers
         shell: bash
@@ -44,11 +45,15 @@ jobs:
             head -n 1 "$launcher" | grep -qx '#!/usr/bin/env bash'
             bash -n "$launcher"
 
-            ssh_line="$(grep -n -m1 '^[[:space:]]*setup_ssh' "$launcher" | cut -d: -f1)"
-            probe_line="$(grep -n -m1 '^[[:space:]]*network_probe_startup_guarded' "$launcher" | cut -d: -f1)"
-            test -n "$ssh_line"
-            test -n "$probe_line"
-            (( ssh_line < probe_line ))
+            ssh_line="$(awk '/^[[:space:]]*setup_ssh([[:space:]]|$)/ {print NR; exit}' "$launcher")"
+            probe_line="$(awk '/^[[:space:]]*network_probe_startup_guarded([[:space:]]|$)/ {print NR; exit}' "$launcher")"
+            printf '%s: setup_ssh=%s network_probe=%s\n' "$launcher" "${ssh_line:-missing}" "${probe_line:-missing}"
+            [[ "$ssh_line" =~ ^[0-9]+$ ]]
+            [[ "$probe_line" =~ ^[0-9]+$ ]]
+            if (( ssh_line >= probe_line )); then
+              echo "$launcher: SSH recovery must be configured before network qualification" >&2
+              exit 1
+            fi
           done
 
       - name: Test session clock
@@ -67,6 +72,21 @@ jobs:
           grep -q '^Session age:  1h 2m$' <<<"$summary"
           ! grep -q '^Uptime:' <<<"$summary"
           grep -Eq '^Time:.* P[DS]T$' <<<"$summary"
+
+      - name: Test credential redaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          source ./helpers_hff_runtime.sh
+          export HF_TOKEN='definitely-not-safe-to-log'
+          export HF_HUB_MAX_WORKERS=4
+          report="$(hf_transfer_options_report)"
+          grep -q '^HF_TOKEN=<redacted>$' <<<"$report"
+          grep -q '^HF_HUB_MAX_WORKERS=4$' <<<"$report"
+          if grep -q 'definitely-not-safe-to-log' <<<"$report"; then
+            echo 'HF credential leaked by hf_transfer_options_report' >&2
+            exit 1
+          fi
 
       - name: Test explicit selection, background downloads, and status
         shell: bash
