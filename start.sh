@@ -80,7 +80,7 @@ SECRET_NAME_RE='(TOKEN|SECRET|PASSWORD|PASS|KEY|CREDENTIAL|COOKIE|BEARER|AUTH|PR
   echo "Generated: $(date -Is)"
   for k in "${__persist_names[@]}"; do
     [[ "$k" =~ $SECRET_NAME_RE ]] && continue
-    if [[ ${!k+set ]]; then
+    if [[ ${!k+set} ]]; then
       printf '%-32s = %s\n' "$k" "${!k}"
     fi
   done
