@@ -5,6 +5,8 @@ on:
   push:
     paths:
       - helpers.sh
+      - helpers_session.sh
+      - helpers_network.sh
       - helpers_hf_manifest.sh
       - helpers_hf_manifest_selection.sh
       - helpers_hf_manifest_tree.sh
@@ -12,6 +14,7 @@ on:
       - bin/hf_manifest_expand.py
       - tests/test_hf_manifest_expand.py
       - start.sh
+      - start.minimax.sh
       - .github/workflows/hf-manifest-tests.yml
 
 permissions:
@@ -27,7 +30,35 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
 
       - name: Check shell syntax
-        run: bash -n helpers.sh helpers_hf_manifest.sh helpers_hf_manifest_selection.sh helpers_hf_manifest_tree.sh helpers_hf_manifest.d/*.sh start.sh
+        run: bash -n helpers.sh helpers_session.sh helpers_network.sh helpers_hf_manifest.sh helpers_hf_manifest_selection.sh helpers_hf_manifest_tree.sh helpers_hf_manifest.d/*.sh start.sh start.minimax.sh
+
+      - name: Guard runtime launchers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for launcher in start.sh start.minimax.sh; do
+            test -s "$launcher"
+            test -x "$launcher"
+            head -n 1 "$launcher" | grep -qx '#!/usr/bin/env bash'
+            bash -n "$launcher"
+          done
+
+      - name: Test session clock
+        shell: bash
+        run: |
+          set -euo pipefail
+          export POD_TIMEZONE=America/Los_Angeles
+          export POD_SESSION_STARTED_AT_EPOCH="$(( $(date +%s) - 3723 ))"
+          source ./helpers_session.sh
+          [[ "$TZ" == "America/Los_Angeles" ]]
+          age="$(pod_session_age_seconds)"
+          (( age >= 3723 && age < 3730 ))
+          pod_session_age_human | grep -Eq '^1h 2m$'
+          summary="$(pod_usage_summary /definitely/not/a/model/path)"
+          grep -q '^Session start:' <<<"$summary"
+          grep -q '^Session age:  1h 2m$' <<<"$summary"
+          ! grep -q '^Uptime:' <<<"$summary"
+          grep -Eq '^Time:.* P[DS]T$' <<<"$summary"
 
       - name: Test explicit selection, background downloads, and status
         shell: bash
