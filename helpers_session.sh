@@ -12,8 +12,9 @@
 export POD_TIMEZONE
 export TZ="${POD_TIMEZONE}"
 
-# Launchers set this at their first executable lines. Keep a fallback so any
-# other pod-runtime launcher that sources helpers.sh also gets session timing.
+# A launcher may provide an earlier epoch if it wants to define the session
+# boundary explicitly. Otherwise, sourcing helpers.sh marks the runtime session
+# start, which occurs before provisioning work begins.
 if [[ -z "${POD_SESSION_STARTED_AT_EPOCH:-}" ]]; then
   export POD_SESSION_STARTED_AT_EPOCH="$(date +%s)"
 fi
