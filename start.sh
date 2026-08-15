@@ -80,7 +80,7 @@ SECRET_NAME_RE='(TOKEN|SECRET|PASSWORD|PASS|KEY|CREDENTIAL|COOKIE|BEARER|AUTH|PR
   echo "Generated: $(date -Is)"
   for k in "${__persist_names[@]}"; do
     [[ "$k" =~ $SECRET_NAME_RE ]] && continue
-    if [[ ${!k+set} ]]; then
+    if [[ ${!k+set ]]; then
       printf '%-32s = %s\n' "$k" "${!k}"
     fi
   done
@@ -110,9 +110,15 @@ fi
 # shellcheck source=/dev/null
 source "$HELPERS"
 
+# SSH is a recovery path, not an application service. Bring it up before any
+# external network diagnostics or provisioning so a stalled probe cannot lock
+# us out of the pod.
+echo "[bootstrap] Bringing up SSH recovery access before network qualification..."
+setup_ssh || true
+
 # Qualify network performance before package installs, custom nodes, or models.
-# This is advisory only; the helper sends warnings and never aborts startup.
-network_probe_startup || true
+# The guarded helper has a hard outer wall-clock ceiling and never aborts startup.
+network_probe_startup_guarded || true
 
 # Install hf-tools into system
 install_system_hff || {
@@ -160,10 +166,10 @@ echo "HF base families : ${HF_BASE_DOWNLOADS:-<none>}"
 echo "HF LoRA families : ${HF_LORA_DOWNLOADS:-<none>}"
 
 #------------------------------------------------------------------------
-section 2 "Configure SSH"
+section 2 "SSH Recovery Access"
 #------------------------------------------------------------------------
 
-setup_ssh || true
+echo "[ssh] SSH was configured during early bootstrap."
 
 #------------------------------------------------------------------------
 section 3 "Git Auth Bootstrap"
