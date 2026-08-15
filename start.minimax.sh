@@ -19,9 +19,14 @@ echo "=== MiniMax-H3 bootstrap: $(date -Is) ==="
 echo "Application: ${COMFY_APP}"
 echo "State: ${COMFY_STATE}"
 
+# SSH is the recovery path. It must be available before any diagnostic or bulk
+# network activity so a broken probe/download cannot make the pod inaccessible.
+echo "[bootstrap] Bringing up SSH recovery access before network qualification..."
+setup_ssh || true
+
 # Qualify network performance before hf-tools, custom nodes, or model weights.
-# This is advisory only; the helper sends warnings and never aborts startup.
-network_probe_startup || true
+# The guarded helper has a hard outer wall-clock ceiling and never aborts startup.
+network_probe_startup_guarded || true
 
 case "${MINIMAX_QUANT}" in
   fp8|int8|nvfp4) ;;
@@ -141,7 +146,6 @@ install_system_hff
 install_root_shell_dotfiles || true
 ensure_comfy_dirs
 link_comfy_state_into_app
-setup_ssh || true
 git_auth_bootstrap || true
 hf_transfer_tune
 hf_transfer_install
