@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+HELPERS="$ROOT/helpers_shell.sh"
+VCP_PY="$ROOT/bin/vcp.py"
+
+if [[ ! -f "$HELPERS" ]]; then
+  echo "[vcp] ERROR: helpers_shell.sh not found next to vcp: $HELPERS" >&2
+  exit 1
+fi
+if [[ ! -f "$VCP_PY" ]]; then
+  echo "[vcp] ERROR: bin/vcp.py not found: $VCP_PY" >&2
+  exit 1
+fi
+
+# Reuse hff's isolated Hugging Face environment, but do not upgrade it on
+# every vcp invocation when it is already healthy.
+# shellcheck disable=SC1090
+source "$HELPERS"
+if [[ ! -x "$HFF_VENV/bin/python" ]] || ! "$HFF_VENV/bin/python" -c 'import huggingface_hub' >/dev/null 2>&1; then
+  ensure_hf_tools_venv
+fi
+
+export VCP_HFF_PY="${VCP_HFF_PY:-$ROOT/bin/hff.py}"
+exec "$HFF_VENV/bin/python" "$VCP_PY" "$@"
