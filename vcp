@@ -31,11 +31,12 @@ fi
 
 export VCP_HFF_PY="${VCP_HFF_PY:-$ROOT/bin/hff.py}"
 
-# vcp is intentionally a local-controller command.  The pod may not expose
-# platform-injected HF_TOKEN values to a non-interactive SSH shell, so wrap
-# bin/vcp.py and inject the local token into the SSH-fed script in memory.
-# The token is sent only inside the encrypted SSH stdin stream; it is not added
-# to argv, ~/.config/vcp/config.json, or a file on the pod.
+# vcp is intentionally a local-controller command. The pod may not expose
+# platform-injected HF_TOKEN values to a non-interactive SSH shell. Inject the
+# controller token into the generated remote HFF bootstrap *after* the pod's
+# environment/secrets files have been sourced, so those files cannot clobber it.
+# The token exists only in the encrypted SSH stdin stream for that command; it
+# is not added to argv, ~/.config/vcp/config.json, or written to a pod file.
 exec "$HFF_VENV/bin/python" - "$VCP_PY" "$@" <<'PY'
 import importlib.util
 import os
@@ -52,19 +53,28 @@ if spec is None or spec.loader is None:
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 
-_original_ssh = mod._ssh
+_original_remote_hff_bootstrap = mod._remote_hff_bootstrap
 
-def _ssh_with_controller_token(cfg, script, *, capture=False):
+
+def _remote_hff_bootstrap_with_controller_token(repo, repo_type):
+    bootstrap = _original_remote_hff_bootstrap(repo, repo_type)
     token = os.environ.get("HF_TOKEN", "")
-    if token:
-        prefix = (
-            "export HF_TOKEN=" + shlex.quote(token) + "\n"
-            "export HUGGINGFACE_HUB_TOKEN=\"$HF_TOKEN\"\n"
-        )
-        script = prefix + script
-    return _original_ssh(cfg, script, capture=capture)
+    if not token:
+        return bootstrap
 
-mod._ssh = _ssh_with_controller_token
+    marker = "source_if_exists /root/.secrets/env.current\n"
+    if marker not in bootstrap:
+        raise mod.VcpError("could not locate remote credential bootstrap marker")
+
+    injection = (
+        marker
+        + "export HF_TOKEN=" + shlex.quote(token) + "\n"
+        + "export HUGGINGFACE_HUB_TOKEN=\"$HF_TOKEN\"\n"
+    )
+    return bootstrap.replace(marker, injection, 1)
+
+
+mod._remote_hff_bootstrap = _remote_hff_bootstrap_with_controller_token
 sys.argv = [module_path, *vcp_argv]
 
 try:
