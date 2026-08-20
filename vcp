@@ -33,8 +33,9 @@ export VCP_HFF_PY="${VCP_HFF_PY:-$ROOT/bin/hff.py}"
 
 # vcp is intentionally a local-controller command. The pod may not expose
 # platform-injected HF_TOKEN values to a non-interactive SSH shell. Inject the
-# controller token into the generated remote HFF bootstrap *after* the pod's
-# environment/secrets files have been sourced, so those files cannot clobber it.
+# controller token into the generated remote HFF bootstrap only after the pod's
+# environment/secrets and helpers_shell.sh have all been sourced. This is the
+# final point before HFF checks/uses the credential, so nothing can clobber it.
 # The token exists only in the encrypted SSH stdin stream for that command; it
 # is not added to argv, ~/.config/vcp/config.json, or written to a pod file.
 exec "$HFF_VENV/bin/python" - "$VCP_PY" "$@" <<'PY'
@@ -62,9 +63,9 @@ def _remote_hff_bootstrap_with_controller_token(repo, repo_type):
     if not token:
         return bootstrap
 
-    marker = "source_if_exists /root/.secrets/env.current\n"
+    marker = 'source "$_vcp_runtime/helpers_shell.sh"\n'
     if marker not in bootstrap:
-        raise mod.VcpError("could not locate remote credential bootstrap marker")
+        raise mod.VcpError("could not locate remote helper bootstrap marker")
 
     injection = (
         marker
