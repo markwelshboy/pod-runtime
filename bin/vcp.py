@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """vcp - copy between this machine and one configured SSH remote via Hugging Face.
 
-The command is intentionally controlled from the local machine.  Remote paths are
+The command is intentionally controlled from the local machine. Remote paths are
 written as r:/absolute/path; the remote never needs an SSH route back to local.
 """
 from __future__ import annotations
@@ -16,12 +16,14 @@ import sys
 import time
 import uuid
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple
+from typing import Dict, Iterable, List, Sequence, Tuple
 
 
 DEFAULT_HF_REPO = "markwelshboyx/hf-scratchpad"
 DEFAULT_HF_TYPE = "dataset"
 CONFIG_PATH = Path(os.environ.get("VCP_CONFIG", "~/.config/vcp/config.json")).expanduser()
+TIMING_PREFIX = "__VCP_TIMING__"
+BYTES_PREFIX = "__VCP_BYTES__"
 
 
 class VcpError(RuntimeError):
@@ -35,6 +37,43 @@ def info(msg: str) -> None:
 def die(msg: str, code: int = 2) -> None:
     print(f"[vcp] ERROR: {msg}", file=sys.stderr)
     raise SystemExit(code)
+
+
+class StageTiming:
+    def __init__(self, name: str, seconds: float, byte_count: int | None = None) -> None:
+        self.name = name
+        self.seconds = seconds
+        self.byte_count = byte_count
+
+
+class TransferStats:
+    def __init__(self) -> None:
+        self.started = time.perf_counter()
+        self.stages: List[StageTiming] = []
+        self.logical_bytes: int | None = None
+
+    def add(self, name: str, seconds: float, byte_count: int | None = None) -> None:
+        self.stages.append(StageTiming(name, max(0.0, seconds), byte_count))
+        if byte_count is not None and self.logical_bytes is None:
+            self.logical_bytes = byte_count
+
+    def set_logical_bytes(self, byte_count: int | None) -> None:
+        if byte_count is not None and byte_count >= 0:
+            self.logical_bytes = byte_count
+
+    def print_summary(self) -> None:
+        total = max(0.0, time.perf_counter() - self.started)
+        info("Transfer summary:")
+        for stage in self.stages:
+            detail = f"{stage.seconds:7.2f}s"
+            if stage.byte_count and stage.seconds > 0:
+                rate = stage.byte_count / stage.seconds / 1_000_000
+                detail += f"  {rate:7.1f} MB/s"
+            info(f"  {stage.name:<24} {detail}")
+        info(f"  {'Total':<24} {total:7.2f}s")
+        if self.logical_bytes and total > 0:
+            effective = self.logical_bytes / total / 1_000_000
+            info(f"  {'Effective throughput':<24} {effective:7.1f} MB/s")
 
 
 def _read_config() -> dict:
@@ -143,25 +182,81 @@ def _run(cmd: Sequence[str], *, check: bool = True, capture: bool = False) -> su
     )
 
 
-def _ssh(cfg: dict, script: str, *, capture: bool = False) -> subprocess.CompletedProcess:
+def _parse_remote_markers(stdout: str, timing_sink: Dict[str, float] | None, byte_sink: Dict[str, int] | None) -> str:
+    visible: List[str] = []
+    for line in stdout.splitlines(keepends=True):
+        stripped = line.rstrip("\r\n")
+        if stripped.startswith(TIMING_PREFIX + " "):
+            parts = stripped.split()
+            if len(parts) == 3 and timing_sink is not None:
+                try:
+                    timing_sink[parts[1]] = int(parts[2]) / 1_000_000_000
+                except ValueError:
+                    pass
+            continue
+        if stripped.startswith(BYTES_PREFIX + " "):
+            parts = stripped.split()
+            if len(parts) == 3 and byte_sink is not None:
+                try:
+                    byte_sink[parts[1]] = int(parts[2])
+                except ValueError:
+                    pass
+            continue
+        visible.append(line)
+    return "".join(visible)
+
+
+def _ssh(
+    cfg: dict,
+    script: str,
+    *,
+    capture: bool = False,
+    timing_sink: Dict[str, float] | None = None,
+    byte_sink: Dict[str, int] | None = None,
+) -> subprocess.CompletedProcess:
     cmd = ["ssh", *_ssh_argv(cfg), "bash", "-s"]
-    return subprocess.run(
+    result = subprocess.run(
         cmd,
         input=script,
         text=True,
-        check=True,
-        stdout=subprocess.PIPE if capture else None,
+        check=False,
+        stdout=subprocess.PIPE,
         stderr=subprocess.PIPE if capture else None,
     )
+    cleaned_stdout = _parse_remote_markers(result.stdout or "", timing_sink, byte_sink)
+    result.stdout = cleaned_stdout
+    if not capture and cleaned_stdout:
+        sys.stdout.write(cleaned_stdout)
+        sys.stdout.flush()
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            cmd,
+            output=cleaned_stdout,
+            stderr=result.stderr,
+        )
+    return result
 
 
 def _shell_array(values: Iterable[str]) -> str:
     return " ".join(shlex.quote(v) for v in values)
 
 
-def _remote_hff_bootstrap(repo: str, repo_type: str) -> str:
-    # Do not send the local HF token.  The pod loads its own runtime/secrets and
-    # uses the HFF toolchain already supplied by pod-runtime.
+def _remote_timer_helpers() -> str:
+    return f"""
+_vcp_ns() {{ date +%s%N; }}
+_vcp_timing() {{
+  local _name=\"$1\" _start=\"$2\" _end
+  _end=\"$(_vcp_ns)\"
+  printf '{TIMING_PREFIX} %s %s\\n' \"$_name\" \"$((_end - _start))\"
+}}
+"""
+
+
+def _remote_hff_bootstrap(repo: str, repo_type: str, token: str) -> str:
+    # vcp is local-controller-only. Supply the controller credential only after
+    # the pod's environment and helper files are loaded so they cannot clobber
+    # it. The token travels in encrypted SSH stdin, never argv or a pod file.
     return f"""
 source_if_exists() {{ if [[ -f \"$1\" ]]; then set +u; source \"$1\"; set -u; fi; }}
 source_if_exists /etc/rp_environment
@@ -182,23 +277,27 @@ fi
 }}
 export POD_RUNTIME_DIR=\"$_vcp_runtime\"
 source \"$_vcp_runtime/helpers_shell.sh\"
+export HF_TOKEN={shlex.quote(token)}
+export HUGGINGFACE_HUB_TOKEN=\"$HF_TOKEN\"
 export HFF_REPO={shlex.quote(repo)}
 export HFF_REPO_TYPE={shlex.quote(repo_type)}
 export HF_XET_HIGH_PERFORMANCE=1
-[[ -n \"${{HF_TOKEN:-${{HUGGINGFACE_HUB_TOKEN:-}}}}\" ]] || {{
-  echo '[vcp] ERROR: HF_TOKEN is not available on remote' >&2
-  exit 2
-}}
-if [[ -z \"${{HF_TOKEN:-}}\" && -n \"${{HUGGINGFACE_HUB_TOKEN:-}}\" ]]; then
-  export HF_TOKEN=\"$HUGGINGFACE_HUB_TOKEN\"
-fi
 """
 
 
-def _remote_pack_and_upload(cfg: dict, repo: str, repo_type: str, scratch_path: str, remote_sources: Sequence[str], transfer_id: str) -> None:
+def _remote_pack_and_upload(
+    cfg: dict,
+    repo: str,
+    repo_type: str,
+    token: str,
+    scratch_path: str,
+    remote_sources: Sequence[str],
+    transfer_id: str,
+    timing_sink: Dict[str, float],
+    byte_sink: Dict[str, int],
+) -> None:
     _validate_unique_basenames(remote_sources)
     archive = f"/workspace/.vcp/{transfer_id}.tar"
-    # Build tar fragments explicitly so each absolute source lands at archive root.
     tar_parts: List[str] = []
     checks: List[str] = []
     for src in remote_sources:
@@ -211,40 +310,65 @@ def _remote_pack_and_upload(cfg: dict, repo: str, repo_type: str, scratch_path: 
 
     script = f"""set -euo pipefail
 umask 077
+{_remote_timer_helpers()}
 mkdir -p /workspace/.vcp
 archive={shlex.quote(archive)}
 trap 'rm -f \"$archive\"' EXIT
 {os.linesep.join(checks)}
 echo '[vcp] Packing on remote...' >&2
+_vcp_start=\"$(_vcp_ns)\"
 tar -cf \"$archive\" {_shell_array(tar_parts)}
+_vcp_timing remote_pack \"$_vcp_start\"
+_vcp_bytes=\"$(stat -c %s \"$archive\")\"
+printf '{BYTES_PREFIX} archive %s\\n' \"$_vcp_bytes\"
 echo \"[vcp] Remote archive: $(du -h \"$archive\" | awk '{{print $1}}')\" >&2
-{_remote_hff_bootstrap(repo, repo_type)}
+{_remote_hff_bootstrap(repo, repo_type, token)}
 echo '[vcp] Uploading remote archive to Hugging Face...' >&2
+_vcp_start=\"$(_vcp_ns)\"
 hff put \"$archive\" {shlex.quote(scratch_path)}
+_vcp_timing remote_hf_upload \"$_vcp_start\"
 """
-    _ssh(cfg, script)
+    _ssh(cfg, script, timing_sink=timing_sink, byte_sink=byte_sink)
 
 
-def _remote_download_and_copy(cfg: dict, repo: str, repo_type: str, scratch_path: str, source_names: Sequence[str], remote_dest: str, transfer_id: str) -> None:
+def _remote_download_and_copy(
+    cfg: dict,
+    repo: str,
+    repo_type: str,
+    token: str,
+    scratch_path: str,
+    source_names: Sequence[str],
+    remote_dest: str,
+    transfer_id: str,
+    timing_sink: Dict[str, float],
+    byte_sink: Dict[str, int],
+) -> None:
     archive = f"/workspace/.vcp/{transfer_id}.tar"
     stage = f"/workspace/.vcp/{transfer_id}.extract"
     srcs = [f"{stage}/{name}" for name in source_names]
     script = f"""set -euo pipefail
 umask 077
+{_remote_timer_helpers()}
 mkdir -p /workspace/.vcp
 archive={shlex.quote(archive)}
 stage={shlex.quote(stage)}
 cleanup() {{ rm -f \"$archive\"; rm -rf \"$stage\"; }}
 trap cleanup EXIT
-{_remote_hff_bootstrap(repo, repo_type)}
+{_remote_hff_bootstrap(repo, repo_type, token)}
 echo '[vcp] Downloading archive from Hugging Face on remote...' >&2
+_vcp_start=\"$(_vcp_ns)\"
 hff get {shlex.quote(scratch_path)} \"$archive\"
+_vcp_timing remote_hf_download \"$_vcp_start\"
+_vcp_bytes=\"$(stat -c %s \"$archive\")\"
+printf '{BYTES_PREFIX} archive %s\\n' \"$_vcp_bytes\"
+_vcp_start=\"$(_vcp_ns)\"
 mkdir -p \"$stage\"
 tar -xf \"$archive\" -C \"$stage\"
 echo '[vcp] Copying into remote destination...' >&2
 cp -a -- {_shell_array(srcs)} {shlex.quote(remote_dest)}
+_vcp_timing remote_copy \"$_vcp_start\"
 """
-    _ssh(cfg, script)
+    _ssh(cfg, script, timing_sink=timing_sink, byte_sink=byte_sink)
 
 
 def _local_tmp_root() -> Path:
@@ -294,7 +418,7 @@ def _hff(repo: str, repo_type: str, args: Sequence[str], *, capture: bool = Fals
 
 
 def _hf_upload(repo: str, repo_type: str, local_file: Path, scratch_path: str, token: str) -> None:
-    _ = token  # hff.py reads HF_TOKEN from the environment
+    _ = token
     info(f"Uploading to hf://datasets/{repo}/{scratch_path} ...")
     _hff(repo, repo_type, ["put", str(local_file), scratch_path, "-m", f"vcp stage {Path(scratch_path).name}"])
 
@@ -322,7 +446,7 @@ def _hf_delete(repo: str, repo_type: str, scratch_path: str, token: str) -> None
 
 def _copy(args: argparse.Namespace) -> None:
     cfg = _read_config()
-    _ssh_argv(cfg)  # fail before spending time tarring anything
+    _ssh_argv(cfg)
     repo = _hf_repo(cfg)
     repo_type = _hf_type(cfg)
     token = _need_token()
@@ -344,16 +468,36 @@ def _copy(args: argparse.Namespace) -> None:
     scratch_path = f"vcp/{transfer_id}.tar"
     local_archive: Path | None = None
     staged = False
+    completed = False
+    stats = TransferStats()
 
     try:
         if src_remote[0]:
             remote_sources = [_remote_path(s) for s in sources]
             names = _validate_unique_basenames(remote_sources)
-            _remote_pack_and_upload(cfg, repo, repo_type, scratch_path, remote_sources, transfer_id)
+            remote_timings: Dict[str, float] = {}
+            remote_bytes: Dict[str, int] = {}
+            _remote_pack_and_upload(
+                cfg, repo, repo_type, token, scratch_path, remote_sources, transfer_id,
+                remote_timings, remote_bytes,
+            )
+            archive_bytes = remote_bytes.get("archive")
+            stats.set_logical_bytes(archive_bytes)
+            if "remote_pack" in remote_timings:
+                stats.add("Remote pack", remote_timings["remote_pack"], archive_bytes)
+            if "remote_hf_upload" in remote_timings:
+                stats.add("HF upload (remote)", remote_timings["remote_hf_upload"], archive_bytes)
             staged = True
+
+            started = time.perf_counter()
             cached = _hf_download(repo, repo_type, scratch_path, token, transfer_id)
+            stats.add("HF download (local)", time.perf_counter() - started, cached.stat().st_size)
+            if stats.logical_bytes is None:
+                stats.set_logical_bytes(cached.stat().st_size)
             try:
+                started = time.perf_counter()
                 _local_copy_from_archive(cached, names, dest, transfer_id)
+                stats.add("Extract/copy (local)", time.perf_counter() - started, cached.stat().st_size)
             finally:
                 try:
                     cached.unlink()
@@ -361,12 +505,30 @@ def _copy(args: argparse.Namespace) -> None:
                     pass
         else:
             remote_dest = _remote_path(dest)
+            started = time.perf_counter()
             local_archive, names = _local_pack(sources, transfer_id)
-            _hf_upload(repo, repo_type, local_archive, scratch_path, token)
-            staged = True
-            _remote_download_and_copy(cfg, repo, repo_type, scratch_path, names, remote_dest, transfer_id)
+            archive_bytes = local_archive.stat().st_size
+            stats.set_logical_bytes(archive_bytes)
+            stats.add("Local pack", time.perf_counter() - started, archive_bytes)
 
-        info("Copy complete")
+            started = time.perf_counter()
+            _hf_upload(repo, repo_type, local_archive, scratch_path, token)
+            stats.add("HF upload (local)", time.perf_counter() - started, archive_bytes)
+            staged = True
+
+            remote_timings = {}
+            remote_bytes = {}
+            _remote_download_and_copy(
+                cfg, repo, repo_type, token, scratch_path, names, remote_dest, transfer_id,
+                remote_timings, remote_bytes,
+            )
+            remote_archive_bytes = remote_bytes.get("archive", archive_bytes)
+            if "remote_hf_download" in remote_timings:
+                stats.add("HF download (remote)", remote_timings["remote_hf_download"], remote_archive_bytes)
+            if "remote_copy" in remote_timings:
+                stats.add("Extract/copy (remote)", remote_timings["remote_copy"], remote_archive_bytes)
+
+        completed = True
     finally:
         if local_archive is not None:
             try:
@@ -377,7 +539,13 @@ def _copy(args: argparse.Namespace) -> None:
             if args.keep:
                 info(f"Keeping scratch archive: hf://datasets/{repo}/{scratch_path}")
             else:
+                started = time.perf_counter()
                 _hf_delete(repo, repo_type, scratch_path, token)
+                stats.add("HF cleanup", time.perf_counter() - started)
+
+    if completed:
+        info("Copy complete")
+        stats.print_summary()
 
 
 def _config_command(argv: Sequence[str]) -> None:
@@ -424,7 +592,7 @@ def _config_command(argv: Sequence[str]) -> None:
 def _usage() -> str:
     return f"""vcp — copy local↔SSH-remote through a Hugging Face scratch dataset
 
-Remote paths use r:/absolute/path.  vcp is run on the local controller only;
+Remote paths use r:/absolute/path. vcp is run on the local controller only;
 the configured remote never needs to SSH back to this machine.
 
 Usage:
@@ -443,7 +611,7 @@ Defaults:
   Config file:        {CONFIG_PATH}
 
 Environment:
-  HF_TOKEN             local Hugging Face token (never written to vcp config)
+  HF_TOKEN             local Hugging Face token used for both HF legs
   VCP_HF_REPO          override scratch OWNER/REPO
   VCP_CONFIG           override config path
   VCP_TMP_DIR          local temporary archive/extract directory
