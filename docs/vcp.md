@@ -45,7 +45,7 @@ vcp config hf-repo markwelshboyx/hf-scratchpad
 
 Or per shell with `VCP_HF_REPO`.
 
-`HF_TOKEN` must be available locally. On the pod, `vcp` uses the pod's own `HF_TOKEN`/runtime secrets through the existing `pod-runtime` `hff` toolchain; the local token is not copied to the pod and is not stored in the `vcp` config.
+`HF_TOKEN` must be available on the local/controller machine. The same credential is supplied ephemerally to the remote Hugging Face operation through the encrypted SSH stdin stream. It is not placed in SSH argv, written to `~/.config/vcp/config.json`, or persisted to a file on the pod. This avoids depending on platform environment variables being visible to non-interactive SSH shells.
 
 ## Copy from pod to local
 
@@ -57,7 +57,7 @@ The local controller:
 
 1. SSHes to the pod.
 2. Creates a plain `.tar` under `/workspace/.vcp/` containing `report.txt` and `logs/`.
-3. Uses the pod's existing `hff` tooling to upload that tar to the scratch dataset.
+3. Uses the pod's existing `hff` tooling plus the controller-supplied HF credential to upload that tar to the scratch dataset.
 4. Downloads the tar locally with `bin/hff.py`.
 5. Extracts to a temporary directory and runs normal `cp -a` into the requested destination.
 6. Removes the temporary Hugging Face object.
@@ -75,7 +75,7 @@ The local controller:
 1. Creates a plain local tar.
 2. Uploads it with `bin/hff.py`.
 3. SSHes to the pod.
-4. Uses the pod's `hff` tooling to download it.
+4. Uses the pod's `hff` tooling plus the controller-supplied HF credential to download it.
 5. Extracts it and uses `cp -a` into `/workspace/`.
 6. Removes the temporary Hugging Face object.
 
@@ -97,7 +97,7 @@ The staged object lives under `vcp/<timestamp>_<random>.tar` in the scratch data
 
 ## Environment variables
 
-- `HF_TOKEN` — required locally; also required independently on the pod.
+- `HF_TOKEN` — required on the local/controller machine and used for both HF legs.
 - `VCP_HF_REPO` — override the scratch dataset repository.
 - `VCP_CONFIG` — override the local config file (default `~/.config/vcp/config.json`).
 - `VCP_TMP_DIR` — override local temporary archive/extract storage (default `~/.cache/vcp`).
