@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -52,6 +53,32 @@ class VcpTests(unittest.TestCase):
             self.assertEqual((dest / "report.txt").read_text(encoding="utf-8"), "report")
             self.assertEqual((dest / "logs" / "run.log").read_text(encoding="utf-8"), "log")
 
+    def test_remote_bootstrap_injects_controller_token_after_helpers(self):
+        token = "token'withquote"
+        bootstrap = vcp._remote_hff_bootstrap("owner/repo", "dataset", token)
+        helper_line = 'source "$_vcp_runtime/helpers_shell.sh"'
+        token_line = "export HF_TOKEN="
+
+        self.assertLess(bootstrap.index(helper_line), bootstrap.index(token_line))
+        self.assertIn(shlex.quote(token), bootstrap)
+        self.assertIn('export HUGGINGFACE_HUB_TOKEN="$HF_TOKEN"', bootstrap)
+
+    def test_remote_marker_parser_extracts_timings_and_bytes(self):
+        timings = {}
+        sizes = {}
+        stdout = (
+            "ok\n"
+            "__VCP_TIMING__ remote_pack 1500000000\n"
+            "__VCP_BYTES__ archive 2147483648\n"
+            "path\n"
+        )
+
+        cleaned = vcp._parse_remote_markers(stdout, timings, sizes)
+
+        self.assertEqual(cleaned, "ok\npath\n")
+        self.assertAlmostEqual(timings["remote_pack"], 1.5)
+        self.assertEqual(sizes["archive"], 2147483648)
+
     def test_local_to_remote_route_uses_hf_then_ssh(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "item.txt"
@@ -59,11 +86,20 @@ class VcpTests(unittest.TestCase):
             args = type("Args", (), {"operands": [str(source), "r:/workspace/"], "keep": False})()
             calls = []
 
+            def remote_copy(*call_args):
+                calls.append("remote-copy")
+                timing_sink = call_args[-2]
+                byte_sink = call_args[-1]
+                timing_sink["remote_hf_download"] = 1.0
+                timing_sink["remote_copy"] = 0.5
+                byte_sink["archive"] = 10240
+
             with mock.patch.object(vcp, "_read_config", return_value={"ssh": ["root@host"]}), \
                  mock.patch.object(vcp, "_need_token", return_value="token"), \
                  mock.patch.object(vcp, "_hf_upload", side_effect=lambda *a: calls.append("upload")), \
-                 mock.patch.object(vcp, "_remote_download_and_copy", side_effect=lambda *a: calls.append("remote-copy")), \
+                 mock.patch.object(vcp, "_remote_download_and_copy", side_effect=remote_copy), \
                  mock.patch.object(vcp, "_hf_delete", side_effect=lambda *a: calls.append("delete")), \
+                 mock.patch.object(vcp.TransferStats, "print_summary", return_value=None), \
                  mock.patch.dict(os.environ, {"VCP_TMP_DIR": str(Path(tmp) / "cache")}):
                 vcp._copy(args)
 
