@@ -45,7 +45,7 @@ vcp config hf-repo markwelshboyx/hf-scratchpad
 
 Or per shell with `VCP_HF_REPO`.
 
-`HF_TOKEN` must be available on the local/controller machine. The same credential is supplied ephemerally to the remote Hugging Face operation through the encrypted SSH stdin stream. It is not placed in SSH argv, written to `~/.config/vcp/config.json`, or persisted to a file on the pod. This avoids depending on platform environment variables being visible to non-interactive SSH shells.
+`HF_TOKEN` must be available on the local/controller machine. `bin/vcp.py` supplies that same credential ephemerally to the remote Hugging Face operation through the encrypted SSH stdin stream, after the pod runtime environment and `helpers_shell.sh` have been loaded. The token is not placed in SSH argv, written to `~/.config/vcp/config.json`, or persisted to a file on the pod.
 
 ## Copy from pod to local
 
@@ -85,6 +85,27 @@ Multiple local sources work too:
 vcp image1.png image2.png captions/ r:/workspace/training/
 ```
 
+## Transfer timing
+
+Successful copies end with a timing summary. Remote commands emit internal timing markers for the individual tar/HF/copy stages; the local controller consumes those markers and does not show them directly.
+
+A pod-to-local transfer looks like:
+
+```text
+[vcp] Transfer summary:
+[vcp]   Remote pack                 2.80s    767.0 MB/s
+[vcp]   HF upload (remote)         20.50s    104.8 MB/s
+[vcp]   HF download (local)        25.20s     85.2 MB/s
+[vcp]   Extract/copy (local)        8.90s    241.5 MB/s
+[vcp]   HF cleanup                  1.10s
+[vcp]   Total                      65.70s
+[vcp]   Effective throughput       32.7 MB/s
+```
+
+Stage throughput is based on the logical tar size. For Xet-deduplicated uploads this is deliberately a logical rate: Hugging Face's own `New Data Upload` progress remains the authoritative view of how many novel bytes were physically uploaded.
+
+The total includes SSH/bootstrap overhead, Hugging Face transaction overhead, reconstruction, local/remote copy work, and scratch cleanup. Effective throughput is the logical archive size divided by total wall-clock time.
+
 ## Scratch retention
 
 Scratch objects are deleted automatically after the copy attempt completes. To keep one for troubleshooting:
@@ -106,7 +127,7 @@ The staged object lives under `vcp/<timestamp>_<random>.tar` in the scratch data
 
 ## Installation / PATH
 
-The repository-root `vcp` wrapper reuses the same isolated Hugging Face venv created by `helpers_shell.sh`/`hff` and launches `bin/vcp.py` from there.
+The repository-root `vcp` wrapper only resolves the repository location, loads the existing HFF virtual environment from `helpers_shell.sh`, and executes `bin/vcp.py`.
 
 If the `pod-runtime` repository root is already on `PATH`, simply run `vcp`. Otherwise link it once:
 
