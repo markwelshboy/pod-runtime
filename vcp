@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Resolve the real launcher path before deriving the repository root.  vcp is
-# normally exposed via ~/.local/bin/vcp -> ~/git/pod-runtime/vcp, so using
-# dirname(BASH_SOURCE[0]) directly would incorrectly make ~/.local/bin the root.
+# Resolve the real launcher path before deriving the repository root. vcp is
+# normally exposed via ~/.local/bin/vcp -> ~/git/pod-runtime/vcp.
 SCRIPT_PATH="${BASH_SOURCE[0]}"
 if command -v readlink >/dev/null 2>&1; then
   SCRIPT_PATH="$(readlink -f -- "$SCRIPT_PATH")"
@@ -31,4 +30,53 @@ if [[ ! -x "$HFF_VENV/bin/python" ]] || ! "$HFF_VENV/bin/python" -c 'import hugg
 fi
 
 export VCP_HFF_PY="${VCP_HFF_PY:-$ROOT/bin/hff.py}"
-exec "$HFF_VENV/bin/python" "$VCP_PY" "$@"
+
+# vcp is intentionally a local-controller command.  The pod may not expose
+# platform-injected HF_TOKEN values to a non-interactive SSH shell, so wrap
+# bin/vcp.py and inject the local token into the SSH-fed script in memory.
+# The token is sent only inside the encrypted SSH stdin stream; it is not added
+# to argv, ~/.config/vcp/config.json, or a file on the pod.
+exec "$HFF_VENV/bin/python" - "$VCP_PY" "$@" <<'PY'
+import importlib.util
+import os
+import shlex
+import subprocess
+import sys
+
+module_path = sys.argv[1]
+vcp_argv = sys.argv[2:]
+
+spec = importlib.util.spec_from_file_location("vcp_impl", module_path)
+if spec is None or spec.loader is None:
+    raise SystemExit(f"[vcp] ERROR: could not load {module_path}")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+_original_ssh = mod._ssh
+
+def _ssh_with_controller_token(cfg, script, *, capture=False):
+    token = os.environ.get("HF_TOKEN", "")
+    if token:
+        prefix = (
+            "export HF_TOKEN=" + shlex.quote(token) + "\n"
+            "export HUGGINGFACE_HUB_TOKEN=\"$HF_TOKEN\"\n"
+        )
+        script = prefix + script
+    return _original_ssh(cfg, script, capture=capture)
+
+mod._ssh = _ssh_with_controller_token
+sys.argv = [module_path, *vcp_argv]
+
+try:
+    mod.main()
+except mod.VcpError as exc:
+    mod.die(str(exc), 1)
+except subprocess.CalledProcessError as exc:
+    mod.die(f"command failed with exit status {exc.returncode}", exc.returncode or 1)
+except KeyboardInterrupt:
+    mod.die("interrupted", 130)
+except Exception as exc:
+    if os.environ.get("VCP_TRACEBACK") == "1":
+        raise
+    mod.die(str(exc), 1)
+PY
