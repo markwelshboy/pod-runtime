@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# Resolve the real launcher path before deriving the repository root.  vcp is
+# normally exposed via ~/.local/bin/vcp -> ~/git/pod-runtime/vcp, so using
+# dirname(BASH_SOURCE[0]) directly would incorrectly make ~/.local/bin the root.
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+if command -v readlink >/dev/null 2>&1; then
+  SCRIPT_PATH="$(readlink -f -- "$SCRIPT_PATH")"
+fi
+ROOT="$(cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd -P)"
+
 HELPERS="$ROOT/helpers_shell.sh"
 VCP_PY="$ROOT/bin/vcp.py"
 
 if [[ ! -f "$HELPERS" ]]; then
-  echo "[vcp] ERROR: helpers_shell.sh not found next to vcp: $HELPERS" >&2
+  echo "[vcp] ERROR: helpers_shell.sh not found in pod-runtime root: $HELPERS" >&2
   exit 1
 fi
 if [[ ! -f "$VCP_PY" ]]; then
