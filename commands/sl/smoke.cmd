@@ -1,8 +1,9 @@
 # sl:name smoke
-# sl:description SL transport, lifecycle, logging, and output smoke test
+# sl:description SL transport, lifecycle, logging, output, and memory-gate smoke test
 # sl:input 1
 # sl:output 2
 # sl:setup-version 1
+# sl:memcheck
 
 sl_run() {
   mkdir -p "$SL_ARG_2"
