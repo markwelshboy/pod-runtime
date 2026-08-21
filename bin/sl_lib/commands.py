@@ -17,6 +17,9 @@ class CommandSpec:
         self.name = self._one("name") or path.stem
         self.description = self._one("description") or ""
         self.setup_version = self._one("setup-version") or "1"
+        memcheck = self._one("memcheck")
+        self.memcheck = memcheck is not None
+        self.memcheck_default = memcheck or None
         self.inputs = self._indices("input")
         self.outputs = self._indices("output")
         overlap = set(self.inputs) & set(self.outputs)
@@ -96,6 +99,7 @@ def _build_run_script(
     remote_root: str,
     runtime_repo: str,
     runtime_ref: str,
+    memory_mib: int | None = None,
 ) -> str:
     job_dir = f"{remote_root}/jobs/{job_id}"
     cache_dir = f"{remote_root}/cache"
@@ -103,6 +107,7 @@ def _build_run_script(
     command_cache = f"{cache_dir}/commands/{spec.name}"
     arg_lines = [f"export SL_ARG_{idx}={shlex.quote(value)}" for idx, value in sorted(arg_values.items())]
     extras = _shell_array(extra_args)
+    memory_line = f"export SL_MEMORY_REQUIRED_MIB={memory_mib}" if memory_mib is not None else "unset SL_MEMORY_REQUIRED_MIB"
     return f"""#!/usr/bin/env bash
 set -uo pipefail
 
@@ -121,6 +126,7 @@ export SL_LOG_FILE="$SL_JOB_DIR/job.log"
 export SL_STATUS_FILE="$SL_JOB_DIR/status.json"
 {os.linesep.join(arg_lines)}
 SL_EXTRA_ARGS=({extras})
+{memory_line}
 export POD_RUNTIME_DIR="$SL_RUNTIME_DIR"
 export PYTHONUNBUFFERED=1
 
@@ -137,16 +143,62 @@ _sl_status() {{
     python3 - "$SL_STATUS_FILE" <<'PY_STATUS'
 import json, os, pathlib, sys
 p = pathlib.Path(sys.argv[1])
+required = os.environ.get("SL_MEMORY_REQUIRED_MIB")
+free = os.environ.get("SL_MEMORY_FREE_MIB")
 data = {{
     "state": os.environ["SL_STATE"],
     "exit_code": int(os.environ["SL_CODE"]) if os.environ.get("SL_CODE") not in (None, "") else None,
     "started_at": os.environ.get("SL_STARTED") or None,
     "completed_at": os.environ.get("SL_COMPLETED") or None,
+    "memory_required_mib": int(required) if required else None,
+    "memory_free_mib": int(free) if free else None,
 }}
 tmp = p.with_suffix(".tmp")
 tmp.write_text(json.dumps(data, indent=2) + "\\n")
 tmp.replace(p)
 PY_STATUS
+}}
+
+_sl_wait_for_memory() {{
+  local required="${{SL_MEMORY_REQUIRED_MIB:-}}" total free now last_log=0
+  [[ -n "$required" ]] || return 0
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    _sl_log "ERROR: --mem requested but nvidia-smi is unavailable"
+    _sl_status FAILED 127
+    return 127
+  fi
+  total="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -n1 | tr -d '[:space:]')"
+  if [[ ! "$total" =~ ^[0-9]+$ ]]; then
+    _sl_log "ERROR: could not query GPU memory total with nvidia-smi"
+    _sl_status FAILED 2
+    return 2
+  fi
+  if (( required > total )); then
+    _sl_log "ERROR: memory requirement ${{required}} MiB exceeds GPU total ${{total}} MiB"
+    _sl_status FAILED 2
+    return 2
+  fi
+  _sl_log "memory gate enabled: require ${{required}} MiB free GPU VRAM (GPU total ${{total}} MiB)"
+  while :; do
+    free="$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -n1 | tr -d '[:space:]')"
+    if [[ ! "$free" =~ ^[0-9]+$ ]]; then
+      _sl_log "ERROR: could not query free GPU memory with nvidia-smi"
+      _sl_status FAILED 2
+      return 2
+    fi
+    export SL_MEMORY_FREE_MIB="$free"
+    _sl_status WAITING_FOR_MEMORY
+    if (( free >= required )); then
+      _sl_log "memory gate satisfied: ${{free}} MiB free >= ${{required}} MiB required"
+      return 0
+    fi
+    now="$(date +%s)"
+    if (( last_log == 0 || now - last_log >= 30 )); then
+      _sl_log "waiting for GPU memory: ${{free}} MiB free, ${{required}} MiB required"
+      last_log="$now"
+    fi
+    sleep 5
+  done
 }}
 
 _sl_status PREPARING
@@ -225,6 +277,12 @@ if declare -F sl_setup >/dev/null 2>&1; then
   else
     _sl_log "warm setup cache hit for $SL_COMMAND_NAME (version $setup_version)"
   fi
+fi
+
+_sl_wait_for_memory
+rc=$?
+if [[ $rc -ne 0 ]]; then
+  exit "$rc"
 fi
 
 _sl_status RUNNING
