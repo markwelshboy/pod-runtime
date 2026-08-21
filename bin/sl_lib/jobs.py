@@ -7,8 +7,9 @@ import sys
 from pathlib import Path
 from typing import Dict
 
-from .commands import _build_arg_values, _build_run_script, _find_command, _manifest_for_job, _parse_command
-from .common import SlError, _cleanup_policy, _command_dirs, _job_id, _local_job_dir, _read_json, _remote_job_dir, _remote_root, _runtime_ref, _runtime_repo, _sl_config, _ssh, _ssh_argv, _state_dir, _write_json, info, warn
+from .commands import CommandSpec, _build_arg_values, _build_run_script, _find_command, _manifest_for_job, _parse_command
+from .common import SlError, _cleanup_policy, _command_dirs, _job_id, _local_job_dir, _read_json, _remote_job_dir, _remote_root, _runtime_ref, _runtime_repo, _sl_config, _ssh, _ssh_argv, _state_dir, _validate_job_id, _write_json, info, warn
+from .memory import format_memory_mib, parse_memory_mib
 from .remote import _clean_remote_job, _fetch_outputs, _follow_remote_log, _load_manifest, _local_status, _prepare_remote_job, _remote_status, _stage_inputs, _launch_job, _sync_metadata
 
 
@@ -44,6 +45,14 @@ def _run_job(args: argparse.Namespace) -> int:
     cfg = _sl_config()
     _ssh_argv()
     spec = _find_command(args.command, cfg)
+
+    requested_mem = args.mem
+    if requested_mem is not None and not spec.memcheck:
+        raise SlError(f"command {spec.name} does not declare '# sl:memcheck'; refusing --mem")
+    if requested_mem is None and spec.memcheck_default:
+        requested_mem = spec.memcheck_default
+    memory_mib = parse_memory_mib(requested_mem) if requested_mem else None
+
     operands = list(args.operands)
     job_id = _job_id()
     remote_root = _remote_root(cfg)
@@ -58,6 +67,11 @@ def _run_job(args: argparse.Namespace) -> int:
         remote_root=remote_root,
         arg_values=arg_values,
     )
+    manifest["memory"] = {
+        "memcheck": spec.memcheck,
+        "requested": requested_mem,
+        "required_mib": memory_mib,
+    }
     local_dir = _local_job_dir(job_id, cfg)
     local_dir.mkdir(parents=True, exist_ok=True)
     _write_json(local_dir / "manifest.json", manifest)
@@ -71,9 +85,12 @@ def _run_job(args: argparse.Namespace) -> int:
         remote_root=remote_root,
         runtime_repo=_runtime_repo(cfg),
         runtime_ref=_runtime_ref(cfg),
+        memory_mib=memory_mib,
     )
     info(f"job: {job_id}")
     info(f"command: {spec.name}")
+    if memory_mib is not None:
+        info(f"memory gate: require {format_memory_mib(memory_mib)} free GPU VRAM")
     _prepare_remote_job(job_id, spec, manifest, run_script, cfg)
     try:
         _stage_inputs(job_id, spec, operands, cfg)
@@ -132,11 +149,11 @@ PY_JOBS
             s = _read_json(d / "status.json", default={})
             if isinstance(m, dict) and isinstance(s, dict):
                 rows[d.name] = {"job_id": d.name, "command": m.get("command", "?"), "state": s.get("state", "?"), "exit_code": s.get("exit_code")}
-    print(f"{'JOB':<25} {'COMMAND':<18} {'STATE':<11} EXIT")
+    print(f"{'JOB':<25} {'COMMAND':<18} {'STATE':<20} EXIT")
     for job_id in sorted(rows, reverse=True):
         row = rows[job_id]
         code = "-" if row.get("exit_code") is None else str(row.get("exit_code"))
-        print(f"{job_id:<25} {str(row.get('command','?')):<18} {str(row.get('state','?')):<11} {code}")
+        print(f"{job_id:<25} {str(row.get('command','?')):<18} {str(row.get('state','?')):<20} {code}")
     return 0
 
 
@@ -156,6 +173,14 @@ def _status(job_id: str, cfg: dict) -> int:
     print(f"exit:      {status.get('exit_code') if status.get('exit_code') is not None else '-'}")
     print(f"created:   {manifest.get('created_at', '-')}")
     print(f"output:    {manifest.get('local_output_dir', '-')}")
+    memory = manifest.get("memory") if isinstance(manifest.get("memory"), dict) else {}
+    required = status.get("memory_required_mib")
+    if not isinstance(required, int):
+        required = memory.get("required_mib") if isinstance(memory.get("required_mib"), int) else None
+    free = status.get("memory_free_mib") if isinstance(status.get("memory_free_mib"), int) else None
+    if required is not None:
+        free_text = format_memory_mib(free) if free is not None else "unknown"
+        print(f"memory:    {free_text} free / {format_memory_mib(required)} required")
     return 0
 
 
@@ -204,12 +229,13 @@ def _commands(cfg: dict) -> int:
                 warn(str(exc))
                 continue
             found.setdefault(spec.name, spec)
-    print(f"{'COMMAND':<18} {'INPUTS':<10} {'OUTPUTS':<10} DESCRIPTION")
+    print(f"{'COMMAND':<18} {'INPUTS':<10} {'OUTPUTS':<10} {'MEMCHECK':<12} DESCRIPTION")
     for name in sorted(found):
         spec = found[name]
         inputs = ",".join(map(str, spec.inputs)) or "-"
         outputs = ",".join(map(str, spec.outputs)) or "-"
-        print(f"{name:<18} {inputs:<10} {outputs:<10} {spec.description}")
+        memcheck = spec.memcheck_default or ("yes" if spec.memcheck else "-")
+        print(f"{name:<18} {inputs:<10} {outputs:<10} {memcheck:<12} {spec.description}")
     return 0
 
 
@@ -221,6 +247,10 @@ def _command_show(name: str, cfg: dict) -> int:
     print(f"inputs:        {', '.join(map(str, spec.inputs)) or '-'}")
     print(f"outputs:       {', '.join(map(str, spec.outputs)) or '-'}")
     print(f"setup version: {spec.setup_version}")
+    if spec.memcheck:
+        print(f"memcheck:      {spec.memcheck_default or 'enabled (no default)'}")
+    else:
+        print("memcheck:      -")
     print("\n--- command ---")
     print(spec.text, end="" if spec.text.endswith("\n") else "\n")
     return 0
