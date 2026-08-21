@@ -9,7 +9,7 @@ from typing import Dict
 
 from .commands import CommandSpec, _build_arg_values, _build_run_script, _find_command, _manifest_for_job, _parse_command
 from .common import SlError, _cleanup_policy, _command_dirs, _job_id, _local_job_dir, _read_json, _remote_job_dir, _remote_root, _runtime_ref, _runtime_repo, _sl_config, _ssh, _ssh_argv, _state_dir, _validate_job_id, _write_json, info, warn
-from .memory import format_memory_mib, parse_memory_mib
+from .memory import ensure_remote_capacity, format_memory_mib, parse_memory_mib
 from .remote import _clean_remote_job, _fetch_outputs, _follow_remote_log, _load_manifest, _local_status, _prepare_remote_job, _remote_status, _stage_inputs, _launch_job, _sync_metadata
 
 
@@ -52,6 +52,7 @@ def _run_job(args: argparse.Namespace) -> int:
     if requested_mem is None and spec.memcheck_default:
         requested_mem = spec.memcheck_default
     memory_mib = parse_memory_mib(requested_mem) if requested_mem else None
+    gpu_total_mib = ensure_remote_capacity(memory_mib) if memory_mib is not None else None
 
     operands = list(args.operands)
     job_id = _job_id()
@@ -71,6 +72,7 @@ def _run_job(args: argparse.Namespace) -> int:
         "memcheck": spec.memcheck,
         "requested": requested_mem,
         "required_mib": memory_mib,
+        "gpu_total_mib": gpu_total_mib,
     }
     local_dir = _local_job_dir(job_id, cfg)
     local_dir.mkdir(parents=True, exist_ok=True)
@@ -90,7 +92,10 @@ def _run_job(args: argparse.Namespace) -> int:
     info(f"job: {job_id}")
     info(f"command: {spec.name}")
     if memory_mib is not None:
-        info(f"memory gate: require {format_memory_mib(memory_mib)} free GPU VRAM")
+        info(
+            f"memory gate: require {format_memory_mib(memory_mib)} free GPU VRAM "
+            f"({format_memory_mib(gpu_total_mib)} total)"
+        )
     _prepare_remote_job(job_id, spec, manifest, run_script, cfg)
     try:
         _stage_inputs(job_id, spec, operands, cfg)
