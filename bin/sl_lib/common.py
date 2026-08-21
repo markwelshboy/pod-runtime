@@ -20,7 +20,7 @@ DEFAULT_STATE_DIR = Path(os.environ.get("SL_STATE_DIR", "~/.local/state/sl/jobs"
 DEFAULT_RUNTIME_REPO = "https://github.com/markwelshboy/pod-runtime.git"
 DEFAULT_RUNTIME_REF = "main"
 TERMINAL_STATES = {"SUCCEEDED", "FAILED", "COMPLETE"}
-ACTIVE_STATES = {"CREATED", "STAGING", "PREPARING", "RUNNING", "FETCHING"}
+ACTIVE_STATES = {"CREATED", "STAGING", "PREPARING", "WAITING_FOR_MEMORY", "RUNNING", "FETCHING"}
 DIRECTIVE_RE = re.compile(r"^\s*#\s*sl:([a-zA-Z0-9_-]+)(?:\s+(.*?))?\s*$")
 JOB_ID_RE = re.compile(r"^[0-9]{8}_[0-9]{6}_[0-9a-f]{8}$")
 
