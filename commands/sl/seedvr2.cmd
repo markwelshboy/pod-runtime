@@ -3,6 +3,7 @@
 # sl:input 1
 # sl:output 2
 # sl:setup-version 1
+# sl:memcheck
 
 sl_prepare() {
   local cache="$SL_CACHE_DIR/seedvr2-tile"
