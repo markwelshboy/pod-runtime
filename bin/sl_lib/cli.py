@@ -68,8 +68,8 @@ def _usage() -> str:
     return """sl — durable GPU jobs on the vcp-configured pod
 
 Usage:
-  sl run [--detach] [--output-dir DIR] [--no-fetch] [--keep-remote] COMMAND <operands...> [-- <command args...>]
-  sl --command COMMAND <operands...> [-- <command args...>]
+  sl run [--detach] [--mem SIZE] [--output-dir DIR] [--no-fetch] [--keep-remote] COMMAND <operands...> [-- <command args...>]
+  sl --command COMMAND [--mem SIZE] <operands...> [-- <command args...>]
   sl jobs
   sl status JOB
   sl logs [-f] JOB
@@ -84,6 +84,9 @@ Usage:
 Transport/SSH are inherited from vcp. Successful synchronous jobs fetch declared
 outputs automatically and, by default, clean heavy remote workspace while keeping
 logs, manifest, status, command definition and runner metadata.
+
+For commands declaring '# sl:memcheck', --mem waits durably on the worker until
+that much free GPU VRAM is available (for example --mem 18G or --mem 18000M).
 """
 
 
@@ -99,6 +102,7 @@ def _parse_run(argv: Sequence[str], *, command_alias: str | None = None) -> argp
     front, extra = _split_run_argv(argv)
     parser = argparse.ArgumentParser(prog="sl run", add_help=True)
     parser.add_argument("--detach", action="store_true")
+    parser.add_argument("--mem", help="minimum free GPU VRAM before sl_run, e.g. 18G or 18000M")
     parser.add_argument("--output-dir", default=".")
     parser.add_argument("--no-fetch", action="store_true")
     parser.add_argument("--keep-remote", action="store_true")
