@@ -738,6 +738,52 @@
         "strip_prefix": "models/loras/characters/siobhan/wan/wan21-t2v",
         "path": "{LORAS_DIR}/characters/siobhan/wan"
       }
+    ],
+    "minimax_h3_common": [
+      {
+        "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors",
+        "path": "{VAE_DIR}/minimax_h3_audio_vae_fp32.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+        "path": "{VAE_DIR}/minimax_h3_video_vae_fp16.safetensors"
+      }
+    ],
+    "minimax_h3_text_encoder_int8": [
+      {
+        "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/qwen3vl_32b_minimax_h3_int8_convrot.safetensors"
+      }
+    ],
+    "minimax_h3_text_encoder_nvfp4": [
+      {
+        "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "path": "{TEXT_ENCODERS_DIR}/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+      }
+    ],
+    "minimax_h3_fl2va_fp8": [
+      {
+        "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_fp8_scaled.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/minimax_h3_fl2va_pruned_fp8_scaled.safetensors"
+      }
+    ],
+    "minimax_h3_ref2va_fp8": [
+      {
+        "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_fp8_scaled.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/minimax_h3_ref2va_pruned_fp8_scaled.safetensors"
+      }
+    ],
+    "minimax_h3_fl2va_int8": [
+      {
+        "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+      }
+    ],
+    "minimax_h3_ref2va_int8": [
+      {
+        "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+      }
     ]
   }
 }
