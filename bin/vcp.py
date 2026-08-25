@@ -363,7 +363,7 @@ _vcp_bytes=\"$(stat -c %s \"$archive\")\"
 printf '{BYTES_PREFIX} archive %s\\n' \"$_vcp_bytes\"
 _vcp_start=\"$(_vcp_ns)\"
 mkdir -p \"$stage\"
-tar -xf \"$archive\" -C \"$stage\"
+tar --no-same-owner -xf \"$archive\" -C \"$stage\"
 echo '[vcp] Copying into remote destination...' >&2
 cp -a -- {_shell_array(srcs)} {shlex.quote(remote_dest)}
 _vcp_timing remote_copy \"$_vcp_start\"
