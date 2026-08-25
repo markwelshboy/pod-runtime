@@ -54,6 +54,19 @@ pod_session_age_human() {
   fi
 }
 
+# Override the legacy helpers_core.sh implementation. Under `set -o pipefail`,
+# its `compgen | grep | while` pipeline returns 1 when there are no matching
+# variables, which can abort start.sh under `set -e`. An empty set of matching
+# variables is normal and must return success.
+show_download_environment_variables() {
+  local var_name
+  while IFS= read -r var_name; do
+    printf ' %-39s%s\n' "${var_name}:" "${!var_name}"
+  done < <(
+    compgen -A variable | grep 'download_' || true
+  )
+}
+
 # Override the legacy helpers_core.sh implementation. The disk watcher and
 # pod_nag already call pod_usage_summary(), so both automatically gain the
 # session clock without duplicating their notification logic.
