@@ -63,6 +63,32 @@ class VcpTests(unittest.TestCase):
         self.assertIn(shlex.quote(token), bootstrap)
         self.assertIn('export HUGGINGFACE_HUB_TOKEN="$HF_TOKEN"', bootstrap)
 
+    def test_remote_extract_does_not_restore_source_ownership(self):
+        captured = {}
+
+        def fake_ssh(cfg, script, **kwargs):
+            captured["script"] = script
+            return None
+
+        with mock.patch.object(vcp, "_ssh", side_effect=fake_ssh):
+            vcp._remote_download_and_copy(
+                {"ssh": ["root@host"]},
+                "owner/repo",
+                "dataset",
+                "token",
+                "vcp/test.tar",
+                ["source"],
+                "/workspace/dest/",
+                "test-transfer",
+                {},
+                {},
+            )
+
+        self.assertIn(
+            'tar --no-same-owner -xf "$archive" -C "$stage"',
+            captured["script"],
+        )
+
     def test_remote_marker_parser_extracts_timings_and_bytes(self):
         timings = {}
         sizes = {}
