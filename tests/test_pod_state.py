@@ -1,6 +1,5 @@
 import importlib.util
 import json
-import os
 import subprocess
 import tempfile
 import unittest
@@ -36,12 +35,16 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual(template["name"], "qwen3-captioning")
 
     def test_snapshot_dir_is_scoped_per_template(self):
-        self.assertEqual(pod_state.snapshot_dir("qwen3-captioning"), "pod-snapshots/qwen3-captioning")
+        self.assertEqual(pod_state.snapshot_dir("qwen3-captioning"), "snapshot/pods/qwen3-captioning")
+
+    def test_snapshot_dir_honors_hff_snapshot_dir(self):
+        with mock.patch.dict("os.environ", {"HFF_SNAPSHOT_DIR": "saved"}, clear=False):
+            self.assertEqual(pod_state.snapshot_dir("qwen3-captioning"), "saved/pods/qwen3-captioning")
 
     def test_latest_uses_first_hff_snapshot(self):
         with mock.patch.object(pod_state, "run_hff", return_value="20260901_120000__new\n20260901_110000__old\n") as hff:
             self.assertEqual(pod_state.latest_snapshot_id("qwen3-captioning"), "20260901_120000__new")
-        hff.assert_called_once_with(["snapshot", "--snapdir", "pod-snapshots/qwen3-captioning", "list"])
+        hff.assert_called_once_with(["snapshot", "--snapdir", "snapshot/pods/qwen3-captioning", "list"])
 
 
 class GitStateTests(unittest.TestCase):
