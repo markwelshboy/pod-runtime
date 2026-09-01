@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+PYTHON="${POD_STATE_PYTHON:-/usr/bin/python3}"
+[[ -x "$PYTHON" ]] || PYTHON="$(command -v python3)"
+exec "$PYTHON" "$SCRIPT_DIR/pod_state.py" snapshot "$@"
