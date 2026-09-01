@@ -47,19 +47,19 @@ Use `--dry-run` on either command to inspect the plan without changing project s
 
 ## Snapshot layout
 
-Each template gets a dedicated HFF snapshot directory:
+Each template gets a dedicated HFF snapshot directory beneath the existing snapshot root:
 
 ```text
-pod-snapshots/<template-name>/
+snapshot/pods/<template-name>/
 ```
 
 For `qwen3-captioning` this is:
 
 ```text
-pod-snapshots/qwen3-captioning/
+snapshot/pods/qwen3-captioning/
 ```
 
-That makes `--snapshot latest` simply the newest HFF snapshot in that project-specific directory.
+That makes `--snapshot latest` simply the newest HFF snapshot in that project-specific directory while retaining the existing `snapshot/**` HFF sync/exclusion policy. If `HFF_SNAPSHOT_DIR` is exported, that value replaces the leading `snapshot` component.
 
 `HFF_REPO` / `HFF_REPO_TYPE` are honored when set. Otherwise the same `HF_MY_REPO_ID` / `HF_MY_REPO_TYPE` defaults used by the existing pod-runtime HFF helpers are used.
 
