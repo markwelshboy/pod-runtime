@@ -222,7 +222,8 @@ def run_hff(args: list[str], *, capture: bool = True) -> str:
 
 
 def snapshot_dir(template_name: str) -> str:
-    return f"pod-snapshots/{template_name}"
+    base = os.environ.get("HFF_SNAPSHOT_DIR", "snapshot").strip("/") or "snapshot"
+    return f"{base}/pods/{template_name}"
 
 
 def latest_snapshot_id(template_name: str) -> str:
@@ -305,7 +306,7 @@ def ensure_repo(repo_cfg: dict[str, Any], recorded: dict[str, Any] | None, dry_r
     else:
         # A newly cloned repo is already on the remote default branch. For an
         # existing checkout, keep its current branch and only fast-forward it.
-        run(["git", "pull", "--ff-only"], cwd=path, check=False)
+        run(["git", "pull", "--ff-only"], cwd=path)
 
 
 def run_configure_scripts(repo_cfg: dict[str, Any], dry_run: bool = False) -> None:
