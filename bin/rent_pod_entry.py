@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bootstrap rent-pod HTTP identity, management commands, and env defaults.
+"""Bootstrap rent-pod HTTP identity, management commands, env defaults, and lifecycle probes.
 
 RunPod's API is fronted by Cloudflare. Python urllib's implicit
 ``Python-urllib/x.y`` User-Agent can be rejected by Cloudflare Browser Integrity
@@ -22,8 +22,8 @@ opener.addheaders = [("User-Agent", USER_AGENT)]
 urllib.request.install_opener(opener)
 
 # Management commands are parsed before persistent rental defaults are injected:
-# RENT_POD_CUDA_MIN, cloud, bandwidth floors, etc. are irrelevant to --show and
-# --kill and must not make those commands look like mixed-mode invocations.
+# RENT_POD_CUDA_MIN, cloud, bandwidth floors, etc. are irrelevant to --show,
+# --status/--watch and --kill and must not make those commands look mixed-mode.
 from rent_pod_manage import parse_management_args, run_management  # noqa: E402
 
 try:
@@ -51,6 +51,13 @@ try:
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
+
+# Swap the core rental wait/qualification display for the live lifecycle-aware
+# implementation. The underlying rent/delete/provision behavior remains in
+# rent_pod.py; these hooks only enrich how readiness is detected and reported.
+from rent_pod_lifecycle import install_core_hooks  # noqa: E402
+
+install_core_hooks()
 
 from rent_pod_frontend import main  # noqa: E402
 
