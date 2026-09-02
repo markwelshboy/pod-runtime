@@ -71,9 +71,6 @@ def load_template(name_or_path: str) -> dict[str, Any]:
     if yaml is not None:
         raw = yaml.safe_load(text)
     else:
-        # JSON is valid YAML 1.2. Keeping the built-in templates in the JSON
-        # subset means configure-pod works on a bare Python install while still
-        # allowing conventional YAML whenever PyYAML is available.
         try:
             raw = json.loads(text)
         except json.JSONDecodeError as exc:
@@ -124,14 +121,13 @@ def validate_template(template: dict[str, Any], path: Path | None = None) -> Non
     paths = snapshot.get("paths", [])
     if not isinstance(paths, list) or not all(isinstance(p, str) and p.startswith("/workspace/") for p in paths):
         raise PodStateError(f"snapshot.paths must be beneath /workspace{where}")
+    compress = snapshot.get("compress", "gz")
+    if compress not in {"gz", "none"}:
+        raise PodStateError(f"snapshot.compress must be 'gz' or 'none'{where}")
 
 
 def run(cmd: list[str], *, cwd: Path | None = None, capture: bool = False, check: bool = True) -> subprocess.CompletedProcess[str]:
-    kwargs: dict[str, Any] = {
-        "cwd": str(cwd) if cwd else None,
-        "text": True,
-        "check": check,
-    }
+    kwargs: dict[str, Any] = {"cwd": str(cwd) if cwd else None, "text": True, "check": check}
     if capture:
         kwargs["stdout"] = subprocess.PIPE
         kwargs["stderr"] = subprocess.PIPE
@@ -147,41 +143,24 @@ def repo_state(repo_cfg: dict[str, Any]) -> dict[str, Any]:
     repo = Path(repo_cfg["path"])
     if not (repo / ".git").exists():
         raise PodStateError(f"repo is missing or is not a git checkout: {repo}")
-
     commit = git(repo, "rev-parse", "HEAD")
     branch_proc = run(["git", "symbolic-ref", "--quiet", "--short", "HEAD"], cwd=repo, capture=True, check=False)
     branch = (branch_proc.stdout or "").strip() or None
     status = git(repo, "status", "--porcelain=v1", "--untracked-files=all")
     dirty = bool(status)
-
-    upstream_proc = run(
-        ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
-        cwd=repo,
-        capture=True,
-        check=False,
-    )
+    upstream_proc = run(["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], cwd=repo, capture=True, check=False)
     upstream = (upstream_proc.stdout or "").strip() or None
     ahead = behind = None
     if upstream:
-        counts = git(repo, "rev-list", "--left-right", "--count", f"{upstream}...HEAD")
-        left, right = counts.split()
+        left, right = git(repo, "rev-list", "--left-right", "--count", f"{upstream}...HEAD").split()
         behind = int(left)
         ahead = int(right)
-
     origin_proc = run(["git", "remote", "get-url", "origin"], cwd=repo, capture=True, check=False)
     origin = (origin_proc.stdout or "").strip() or repo_cfg["url"]
-
     return {
-        "name": repo_cfg["name"],
-        "path": str(repo),
-        "url": origin,
-        "branch": branch,
-        "commit": commit,
-        "upstream": upstream,
-        "ahead": ahead,
-        "behind": behind,
-        "dirty": dirty,
-        "status": status.splitlines() if status else [],
+        "name": repo_cfg["name"], "path": str(repo), "url": origin, "branch": branch,
+        "commit": commit, "upstream": upstream, "ahead": ahead, "behind": behind,
+        "dirty": dirty, "status": status.splitlines() if status else [],
     }
 
 
@@ -235,9 +214,7 @@ def latest_snapshot_id(template_name: str) -> str:
 
 
 def resolve_snapshot_id(template_name: str, requested: str) -> str:
-    if requested == "latest":
-        return latest_snapshot_id(template_name)
-    return requested
+    return latest_snapshot_id(template_name) if requested == "latest" else requested
 
 
 def state_manifest_path(template_name: str) -> Path:
@@ -247,13 +224,7 @@ def state_manifest_path(template_name: str) -> Path:
 def write_state_manifest(template: dict[str, Any], repo_states: list[dict[str, Any]], paths: list[str]) -> Path:
     path = state_manifest_path(template["name"])
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "schema_version": 1,
-        "template": template["name"],
-        "created_utc": utc_now(),
-        "repos": repo_states,
-        "snapshot_paths": paths,
-    }
+    payload = {"schema_version": 1, "template": template["name"], "created_utc": utc_now(), "repos": repo_states, "snapshot_paths": paths}
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path
 
@@ -280,7 +251,6 @@ def ensure_repo(repo_cfg: dict[str, Any], recorded: dict[str, Any] | None, dry_r
         target = recorded.get("commit") if recorded else "remote default branch"
         info(f"would configure repo {repo_cfg['name']}: {url} -> {path} @ {target}")
         return
-
     path.parent.mkdir(parents=True, exist_ok=True)
     if not (path / ".git").exists():
         if path.exists() and any(path.iterdir()):
@@ -289,9 +259,7 @@ def ensure_repo(repo_cfg: dict[str, Any], recorded: dict[str, Any] | None, dry_r
         run(["git", "clone", url, str(path)])
     else:
         info(f"using existing checkout: {path}")
-
     run(["git", "fetch", "--all", "--tags", "--prune"], cwd=path)
-
     if recorded:
         commit = recorded["commit"]
         branch = recorded.get("branch")
@@ -304,8 +272,6 @@ def ensure_repo(repo_cfg: dict[str, Any], recorded: dict[str, Any] | None, dry_r
         else:
             run(["git", "checkout", "--detach", commit], cwd=path)
     else:
-        # A newly cloned repo is already on the remote default branch. For an
-        # existing checkout, keep its current branch and only fast-forward it.
         run(["git", "pull", "--ff-only"], cwd=path)
 
 
@@ -332,62 +298,50 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
         info(f"refreshing git remote state: {repo_cfg['name']}")
         run(["git", "fetch", "--quiet", "--prune", "origin"], cwd=repo_path)
         repo_states.append(repo_state(repo_cfg))
-
     unsafe: list[tuple[str, str]] = []
     for state in repo_states:
         for issue in snapshot_safety_issues(state):
             unsafe.append((state["name"], issue))
-
     for state in repo_states:
         branch = state["branch"] or "DETACHED"
-        sync = ""
-        if state["upstream"]:
-            sync = f" ahead={state['ahead']} behind={state['behind']}"
+        sync = f" ahead={state['ahead']} behind={state['behind']}" if state["upstream"] else ""
         info(f"repo {state['name']}: {branch} @ {state['commit'][:12]} dirty={state['dirty']}{sync}")
-
     if unsafe and not args.force:
         for repo_name, issue in unsafe:
             warn(f"{repo_name}: {issue}")
         raise PodStateError("snapshot refused because source state is not safely recoverable; commit/push first or use --force")
-
-    declared_paths = list(template.get("snapshot", {}).get("paths", []))
+    snapshot_cfg = template.get("snapshot", {})
+    declared_paths = list(snapshot_cfg.get("paths", []))
+    compress = snapshot_cfg.get("compress", "gz")
     existing_paths: list[str] = []
     for raw in declared_paths:
         if Path(raw).exists():
             existing_paths.append(raw)
         else:
             warn(f"snapshot path does not exist; skipping: {raw}")
-
     manifest = state_manifest_path(template["name"])
     if args.dry_run:
         info(f"would write state manifest: {manifest}")
         for path in existing_paths:
             info(f"would snapshot: {path}")
+        info(f"compression: {compress}")
         info(f"remote snapshot dir: {snapshot_dir(template['name'])}")
         return 0
-
     manifest = write_state_manifest(template, repo_states, declared_paths)
     items = [str(manifest), *existing_paths]
     snap_name = args.name or template["name"]
-    info(f"creating HFF snapshot in {snapshot_dir(template['name'])}")
+    info(f"creating HFF snapshot in {snapshot_dir(template['name'])} (compression={compress})")
     with tempfile.TemporaryDirectory(prefix=f"snapshot-pod-{template['name']}-") as hff_tmp:
-        sid = run_hff(
-            [
-                "snapshot", "--snapdir", snapshot_dir(template["name"]), "create",
-                "--name", snap_name,
-                "--tmp-dir", hff_tmp,
-                *items,
-            ]
-        ).splitlines()[-1].strip()
+        sid = run_hff([
+            "snapshot", "--snapdir", snapshot_dir(template["name"]), "create",
+            "--name", snap_name, "--compress", compress, "--tmp-dir", hff_tmp, *items,
+        ]).splitlines()[-1].strip()
     if not sid:
         raise PodStateError("hff snapshot create did not return a snapshot id")
-
-    # Read it back so a successful command means the remote manifest is visible.
     shown = run_hff(["snapshot", "--snapdir", snapshot_dir(template["name"]), "show", sid])
     remote_meta = json.loads(shown)
     if remote_meta.get("id") != sid:
         raise PodStateError(f"snapshot verification failed for {sid}")
-
     info(f"snapshot: {sid}")
     if unsafe:
         warn("snapshot was forced with source-state safety issues; code may not be fully recoverable")
@@ -399,12 +353,10 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
 def cmd_configure(args: argparse.Namespace) -> int:
     template = load_template(args.template)
     Path(template["workspace"]).mkdir(parents=True, exist_ok=True) if not args.dry_run else None
-
     recorded_by_name: dict[str, dict[str, Any]] = {}
     staging_cm = None
     staging: Path | None = None
     sid: str | None = None
-
     try:
         if args.snapshot:
             sid = resolve_snapshot_id(template["name"], args.snapshot)
@@ -414,36 +366,24 @@ def cmd_configure(args: argparse.Namespace) -> int:
             else:
                 staging_cm = tempfile.TemporaryDirectory(prefix=f"configure-pod-{template['name']}-")
                 staging = Path(staging_cm.name)
-                run_hff(
-                    [
-                        "snapshot", "--snapdir", snapshot_dir(template["name"]), "get", sid,
-                        "--extract-dir", str(staging),
-                    ],
-                    capture=False,
-                )
+                run_hff(["snapshot", "--snapdir", snapshot_dir(template["name"]), "get", sid, "--extract-dir", str(staging)], capture=False)
                 manifest_path = find_staged_manifest(staging, template["name"])
                 state = json.loads(manifest_path.read_text(encoding="utf-8"))
                 if state.get("template") != template["name"]:
-                    raise PodStateError(
-                        f"snapshot template mismatch: expected {template['name']}, got {state.get('template')}"
-                    )
+                    raise PodStateError(f"snapshot template mismatch: expected {template['name']}, got {state.get('template')}")
                 recorded_by_name = {repo["name"]: repo for repo in state.get("repos", [])}
-
         for repo_cfg in template["repos"]:
             recorded = recorded_by_name.get(repo_cfg["name"]) if args.snapshot and not args.dry_run else None
             if args.snapshot and not args.dry_run and recorded is None:
                 raise PodStateError(f"snapshot manifest has no state for repo {repo_cfg['name']}")
             ensure_repo(repo_cfg, recorded, dry_run=args.dry_run)
-
         if staging is not None:
             info("hydrating saved project data into /workspace")
             hydrate_staging(staging)
         elif args.snapshot and args.dry_run:
             info("would hydrate saved project data into /workspace")
-
         for repo_cfg in template["repos"]:
             run_configure_scripts(repo_cfg, dry_run=args.dry_run)
-
         if args.dry_run:
             info("dry run complete")
         elif sid:
@@ -459,14 +399,12 @@ def cmd_configure(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pod-state")
     sub = parser.add_subparsers(dest="command", required=True)
-
     configure = sub.add_parser("configure")
     configure.add_argument("template", nargs="?", help="template name or YAML path")
     configure.add_argument("--template", dest="template_opt", default="", help="template name or YAML path")
     configure.add_argument("--snapshot", default="", help="snapshot id or 'latest'")
     configure.add_argument("--dry-run", action="store_true")
     configure.set_defaults(func=cmd_configure)
-
     snapshot = sub.add_parser("snapshot")
     snapshot.add_argument("template", nargs="?", help="template name or YAML path")
     snapshot.add_argument("--template", dest="template_opt", default="", help="template name or YAML path")
@@ -474,7 +412,6 @@ def build_parser() -> argparse.ArgumentParser:
     snapshot.add_argument("--force", action="store_true", help="allow dirty/unpushed source state")
     snapshot.add_argument("--dry-run", action="store_true")
     snapshot.set_defaults(func=cmd_snapshot)
-
     return parser
 
 
