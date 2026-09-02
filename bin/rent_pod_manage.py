@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any
 
 import rent_pod as core
+import rent_pod_lifecycle as lifecycle
 
 
 def parse_management_args(argv: list[str]) -> dict[str, Any] | None:
@@ -17,8 +19,15 @@ def parse_management_args(argv: list[str]) -> dict[str, Any] | None:
     def set_action(value: str) -> None:
         nonlocal action
         if action is not None:
-            raise ValueError("use only one of --show, --kill, or --kill-all")
+            raise ValueError(
+                "use only one of --show, --status, --watch, --kill, or --kill-all"
+            )
         action = value
+
+    def take_pod_id(flag: str, index: int) -> tuple[str, int]:
+        if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
+            raise ValueError(f"{flag} requires a pod ID")
+        return argv[index + 1], index + 2
 
     i = 0
     while i < len(argv):
@@ -27,12 +36,24 @@ def parse_management_args(argv: list[str]) -> dict[str, Any] | None:
             set_action("show")
             i += 1
             continue
-        if arg == "--kill":
-            set_action("kill")
-            if i + 1 >= len(argv) or argv[i + 1].startswith("-"):
-                raise ValueError("--kill requires a pod ID")
-            pod_id = argv[i + 1]
-            i += 2
+        if arg in {"--status", "--watch", "--kill"}:
+            action_name = arg[2:]
+            set_action(action_name)
+            pod_id, i = take_pod_id(arg, i)
+            continue
+        if arg.startswith("--status="):
+            set_action("status")
+            pod_id = arg.split("=", 1)[1].strip()
+            if not pod_id:
+                raise ValueError("--status requires a pod ID")
+            i += 1
+            continue
+        if arg.startswith("--watch="):
+            set_action("watch")
+            pod_id = arg.split("=", 1)[1].strip()
+            if not pod_id:
+                raise ValueError("--watch requires a pod ID")
+            i += 1
             continue
         if arg.startswith("--kill="):
             set_action("kill")
@@ -59,6 +80,8 @@ def parse_management_args(argv: list[str]) -> dict[str, Any] | None:
             "pod management commands cannot be combined with rental/list options: "
             + " ".join(extras)
         )
+    if assume_yes and action != "kill-all":
+        raise ValueError("--yes/-y/--force is only valid with --kill-all")
     return {"action": action, "pod_id": pod_id, "assume_yes": assume_yes}
 
 
@@ -151,6 +174,22 @@ def show_pods(api_key: str) -> int:
     return 0
 
 
+def management_ssh_key() -> str:
+    return (
+        os.environ.get("RENT_POD_SSH_KEY")
+        or os.environ.get("RUNPOD_SSH_KEY")
+        or core.DEFAULT_SSH_KEY
+    )
+
+
+def status_pod(api_key: str, pod_id: str) -> int:
+    return lifecycle.status_pod(api_key, pod_id.strip(), management_ssh_key())
+
+
+def watch_pod(api_key: str, pod_id: str) -> int:
+    return lifecycle.watch_pod(api_key, pod_id.strip(), management_ssh_key())
+
+
 def kill_pod(api_key: str, pod_id: str) -> int:
     pod_id = pod_id.strip()
     if not pod_id:
@@ -222,6 +261,10 @@ def run_management(api_key: str, request: dict[str, Any]) -> int:
     action = request["action"]
     if action == "show":
         return show_pods(api_key)
+    if action == "status":
+        return status_pod(api_key, str(request.get("pod_id") or ""))
+    if action == "watch":
+        return watch_pod(api_key, str(request.get("pod_id") or ""))
     if action == "kill":
         return kill_pod(api_key, str(request.get("pod_id") or ""))
     if action == "kill-all":
