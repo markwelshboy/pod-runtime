@@ -152,7 +152,7 @@ do
 done
 
 # -------------------------------------------------------------------
-# Runtime helpers / HFF
+# Runtime helpers / network qualification / HFF
 # -------------------------------------------------------------------
 
 echo "[provision] Loading runtime environment..."
@@ -173,6 +173,15 @@ fi
 if [[ -f "\$RUNTIME_DIR/helpers.sh" ]]; then
     # shellcheck disable=SC1090
     source "\$RUNTIME_DIR/helpers.sh"
+fi
+
+# Qualify network performance before package/toolchain installs. The guarded
+# helper has a hard outer wall-clock ceiling and never aborts provisioning.
+if declare -F network_probe_startup_guarded >/dev/null 2>&1; then
+    echo "[provision] Qualifying network performance..."
+    network_probe_startup_guarded || true
+else
+    echo "[provision] WARNING: guarded network probe unavailable; skipping qualification" >&2
 fi
 
 if declare -F hff >/dev/null 2>&1; then
