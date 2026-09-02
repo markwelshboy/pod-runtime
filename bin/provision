@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUNTIME_REPO_URL="${RUNTIME_REPO_URL:-https://github.com/markwelshboy/pod-runtime.git}"
+RUNTIME_DIR="${RUNTIME_DIR:-/workspace/pod-runtime}"
+GIT_HTTP_VERSION="${GIT_HTTP_VERSION:-HTTP/1.1}"
+
+if [[ -z "${HF_TOKEN:-}" ]]; then
+    echo "ERROR: HF_TOKEN is not set in the local environment." >&2
+    exit 2
+fi
+
+if [[ $# -lt 1 || "$1" != "ssh" ]]; then
+    cat >&2 <<'EOF'
+Usage:
+  provision ssh root@HOST -p PORT -i KEY [other ssh args...]
+
+Example:
+  provision ssh root@103.196.86.46 -p 29309 -i ~/.ssh/id_ed25519_runpod
+EOF
+    exit 2
+fi
+
+shift
+SSH_ARGS=("$@")
+
+tmp_script="$(mktemp)"
+trap 'rm -f "$tmp_script"' EXIT
+
+#
+# Build the remote provisioning script locally.
+#
+# %q gives us a shell-safe representation of values being injected
+# into the remote script.
+#
+cat >"$tmp_script" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUNTIME_REPO_URL=$(printf '%q' "$RUNTIME_REPO_URL")
+RUNTIME_DIR=$(printf '%q' "$RUNTIME_DIR")
+GIT_HTTP_VERSION=$(printf '%q' "$GIT_HTTP_VERSION")
+PROVISIONED_HF_TOKEN=$(printf '%q' "$HF_TOKEN")
+
+export POD_RUNTIME_DIR="\$RUNTIME_DIR"
+
+echo "[provision] Runtime repo: \$RUNTIME_REPO_URL"
+echo "[provision] Runtime dir:  \$RUNTIME_DIR"
+echo "[provision] Git HTTP:     \$GIT_HTTP_VERSION"
+
+# -------------------------------------------------------------------
+# Persistent secrets
+# -------------------------------------------------------------------
+
+SECRETS_DIR="/root/.secrets"
+SECRETS_FILE="\$SECRETS_DIR/env.provisioned"
+
+echo "[provision] Installing persistent secrets..."
+
+mkdir -p "\$SECRETS_DIR"
+chmod 700 "\$SECRETS_DIR"
+
+{
+    printf 'export HF_TOKEN=%q\n' "\$PROVISIONED_HF_TOKEN"
+    printf 'export HUGGINGFACE_HUB_TOKEN=%q\n' "\$PROVISIONED_HF_TOKEN"
+} > "\$SECRETS_FILE"
+
+chmod 600 "\$SECRETS_FILE"
+
+# Make secrets available to this provisioning shell immediately.
+# shellcheck disable=SC1090
+source "\$SECRETS_FILE"
+
+unset PROVISIONED_HF_TOKEN
+
+# -------------------------------------------------------------------
+# pod-runtime
+# -------------------------------------------------------------------
+
+mkdir -p /workspace
+
+if [[ -d "\$RUNTIME_DIR/.git" ]]; then
+    echo "[provision] Updating runtime repo in \$RUNTIME_DIR..."
+
+    git -c "http.version=\$GIT_HTTP_VERSION" \
+        -C "\$RUNTIME_DIR" fetch origin main
+
+    if ! git -c "http.version=\$GIT_HTTP_VERSION" \
+        -C "\$RUNTIME_DIR" pull --rebase --autostash origin main; then
+        echo "[provision] WARNING: runtime repo update failed; using existing checkout" >&2
+    fi
+else
+    echo "[provision] Cloning runtime repo into \$RUNTIME_DIR..."
+
+    rm -rf "\$RUNTIME_DIR"
+    git -c "http.version=\$GIT_HTTP_VERSION" \
+        clone --depth 1 "\$RUNTIME_REPO_URL" "\$RUNTIME_DIR"
+fi
+
+cd "\$RUNTIME_DIR"
+
+# -------------------------------------------------------------------
+# Shell environment
+# -------------------------------------------------------------------
+
+echo "[provision] Installing shell environment..."
+
+TMP="/root/.bashrc.temp"
+
+cp .bashrc "\$TMP"
+
+sed -i \
+    "s|REPO_ROOT=<CHANGEME>|REPO_ROOT=\"\$RUNTIME_DIR\"|" \
+    "\$TMP"
+
+#
+# Ensure provisioned secrets are loaded for future interactive shells.
+#
+cat >>"\$TMP" <<'BASHRC_EOF'
+
+# Provisioned machine secrets
+if [[ -f /root/.secrets/env.provisioned ]]; then
+    source /root/.secrets/env.provisioned
+fi
+BASHRC_EOF
+
+install -m 0644 "\$TMP" /root/.bashrc
+rm -f "\$TMP"
+
+for file in \
+    .bash_functions \
+    .bash_aliases \
+    .bash_prompt \
+    .git-qol.sh
+do
+    if [[ -f "\$file" ]]; then
+        install -m 0644 "\$file" "/root/\$file"
+    else
+        echo "[provision] WARNING: \$file not found in runtime repo" >&2
+    fi
+done
+
+# -------------------------------------------------------------------
+# Runtime helpers / HFF
+# -------------------------------------------------------------------
+
+echo "[provision] Loading runtime environment..."
+
+if [[ -f "\$RUNTIME_DIR/.env" ]]; then
+    # Preserve injected secrets over empty/default values from .env.
+    _saved_hf_token="\$HF_TOKEN"
+
+    # shellcheck disable=SC1090
+    source "\$RUNTIME_DIR/.env"
+
+    export HF_TOKEN="\$_saved_hf_token"
+    export HUGGINGFACE_HUB_TOKEN="\$_saved_hf_token"
+
+    unset _saved_hf_token
+fi
+
+if [[ -f "\$RUNTIME_DIR/helpers.sh" ]]; then
+    # shellcheck disable=SC1090
+    source "\$RUNTIME_DIR/helpers.sh"
+fi
+
+if declare -F hff >/dev/null 2>&1; then
+    echo "[provision] Installing HFF toolchain..."
+    hff setup
+else
+    echo "[provision] WARNING: hff helper not available after loading helpers.sh" >&2
+fi
+
+# -------------------------------------------------------------------
+# Verification
+# -------------------------------------------------------------------
+
+echo
+echo "[provision] Complete."
+echo "[provision] Runtime: \$RUNTIME_DIR"
+echo "[provision] Secrets: \$SECRETS_FILE"
+
+if [[ -n "\${HF_TOKEN:-}" ]]; then
+    echo "[provision] HF_TOKEN: available"
+else
+    echo "[provision] HF_TOKEN: MISSING" >&2
+fi
+
+if declare -F hff >/dev/null 2>&1; then
+    echo
+    echo "[provision] HFF diagnostics:"
+    hff doctor || true
+fi
+
+echo
+echo "[provision] Open a new SSH shell to load the installed /root/.bashrc."
+EOF
+
+echo "==> Provisioning remote machine"
+echo "    runtime: $RUNTIME_REPO_URL"
+echo "    target:  $RUNTIME_DIR"
+echo "    Git HTTP: $GIT_HTTP_VERSION"
+echo "    HF_TOKEN: present locally"
+echo
+
+ssh "${SSH_ARGS[@]}" 'bash -s' <"$tmp_script"
+
+echo
+echo "Provisioning finished."
