@@ -4,7 +4,9 @@ set -euo pipefail
 needs_hf=true
 for arg in "$@"; do
     case "$arg" in
-        --dry-run|--no-provision|--list|--list=*) needs_hf=false ;;
+        --dry-run|--no-provision|--list|--list=*|--show|--kill|--kill=*|--kill-all)
+            needs_hf=false
+            ;;
     esac
 done
 
