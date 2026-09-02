@@ -12,7 +12,7 @@
 8. If `provision` exits `78` for a critically slow network, record the host locally and terminate the Pod.
 9. Retry only when the caller explicitly requests more than one attempt.
 
-The default RunPod template is `86n5dpgf7h`. Override it with `--template` or `RUNPOD_TEMPLATE_ID`.
+The default RunPod template is `86n5dpgf7h`. Override it with `--template`, `RENT_POD_TEMPLATE`, or the older `RUNPOD_TEMPLATE_ID` setting.
 
 ## Authentication
 
@@ -94,13 +94,65 @@ After a pod is accepted:
 configure-pod qwen3-captioning --snapshot latest
 ```
 
+## Persistent environment defaults
+
+Shell variable names cannot contain `-`, so use the `RENT_POD_*` namespace. Command-line options always override these values.
+
+For example:
+
+```bash
+export RENT_POD_CUDA_MIN="13.0"
+export RENT_POD_MIN_DOWNLOAD="500"
+export RENT_POD_MIN_UPLOAD="100"
+```
+
+Then both listing and rental inherit the CUDA floor automatically:
+
+```bash
+rent-pod --list "4090 5090 l40s"
+rent-pod 4090
+```
+
+Available persistent defaults:
+
+```text
+RENT_POD_CUDA_MIN
+RENT_POD_TEMPLATE
+RENT_POD_CLOUD                 # SECURE or COMMUNITY
+RENT_POD_COMMUNITY             # true/yes/1/on shorthand
+RENT_POD_MIN_DOWNLOAD
+RENT_POD_MIN_UPLOAD
+RENT_POD_MIN_DISK
+RENT_POD_STARTUP_TIMEOUT
+RENT_POD_POLL_SECONDS
+RENT_POD_RETRY_DELAY
+RENT_POD_REJECTION_TTL_HOURS
+RENT_POD_SSH_KEY
+```
+
+Examples:
+
+```bash
+export RENT_POD_CUDA_MIN="13.0"
+export RENT_POD_CLOUD="SECURE"
+export RENT_POD_STARTUP_TIMEOUT="900"
+```
+
+or, for a shell/profile that normally uses Community Cloud:
+
+```bash
+export RENT_POD_COMMUNITY=true
+```
+
+`--attempts`, `--keep-failed`, and `--no-provision` intentionally remain CLI-only because they directly affect paid retry/cleanup behavior.
+
 ## Defaults
 
 - template: `86n5dpgf7h`
 - cloud: `SECURE`
 - minimum advertised download: `500 Mbps`
 - minimum advertised upload: `100 Mbps`
-- CUDA floor: none unless `--cuda-min` is supplied
+- CUDA floor: none unless `--cuda-min` / `RENT_POD_CUDA_MIN` is supplied
 - startup/SSH timeout: `600 seconds`
 - attempts: `1`
 - SSH key: `~/.ssh/id_ed25519_runpod`
@@ -142,7 +194,7 @@ For a non-network `provision` failure, the pod is deliberately left running for 
 --ssh-key PATH
 ```
 
-Environment overrides:
+Other environment/configuration variables retained for compatibility or API plumbing:
 
 ```text
 RUNPOD_API_KEY
@@ -151,4 +203,5 @@ RUNPOD_SSH_KEY
 RUNPOD_API_BASE
 RUNPOD_GRAPHQL_URL
 RUNPOD_RENT_STATE_FILE
+RUNPOD_USER_AGENT
 ```
