@@ -74,6 +74,17 @@ source "\$SECRETS_FILE"
 unset PROVISIONED_HF_TOKEN
 
 # -------------------------------------------------------------------
+# Git transport
+# -------------------------------------------------------------------
+# GitHub's HTTP/2 smart-HTTP path has intermittently returned an erroneous
+# authentication challenge from some datacenter networks. Persist the selected
+# transport for the whole disposable pod so later project clones/fetches use
+# the same known-good setting as the bootstrap itself.
+
+echo "[provision] Configuring Git HTTP transport: \$GIT_HTTP_VERSION"
+git config --global http.version "\$GIT_HTTP_VERSION"
+
+# -------------------------------------------------------------------
 # pod-runtime
 # -------------------------------------------------------------------
 
@@ -179,6 +190,7 @@ echo
 echo "[provision] Complete."
 echo "[provision] Runtime: \$RUNTIME_DIR"
 echo "[provision] Secrets: \$SECRETS_FILE"
+echo "[provision] Git HTTP: \$(git config --global --get http.version || true)"
 
 if [[ -n "\${HF_TOKEN:-}" ]]; then
     echo "[provision] HF_TOKEN: available"
