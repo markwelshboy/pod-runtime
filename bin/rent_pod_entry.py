@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bootstrap rent-pod HTTP identity, management commands, env defaults, and lifecycle probes.
+"""Bootstrap rent-pod HTTP identity, management, templates, env defaults, and lifecycle probes.
 
 RunPod's API is fronted by Cloudflare. Python urllib's implicit
 ``Python-urllib/x.y`` User-Agent can be rejected by Cloudflare Browser Integrity
@@ -21,9 +21,21 @@ opener = urllib.request.build_opener()
 opener.addheaders = [("User-Agent", USER_AGENT)]
 urllib.request.install_opener(opener)
 
+# Local template-profile discovery is intentionally first: it needs neither a
+# RunPod API key nor HF_TOKEN and should never be polluted by rental defaults.
+from rent_pod_templates import handle_template_meta_command  # noqa: E402
+
+try:
+    template_meta_rc = handle_template_meta_command(sys.argv[1:], os.environ)
+except ValueError as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+if template_meta_rc is not None:
+    raise SystemExit(template_meta_rc)
+
 # Management commands are parsed before persistent rental defaults are injected:
-# RENT_POD_CUDA_MIN, cloud, bandwidth floors, etc. are irrelevant to --show,
-# --status/--watch and --kill and must not make those commands look mixed-mode.
+# RENT_POD_CUDA_MIN, cloud, bandwidth floors, template profiles, etc. are
+# irrelevant to --show, --status/--watch and --kill.
 from rent_pod_manage import parse_management_args, run_management  # noqa: E402
 
 try:
@@ -47,10 +59,29 @@ if management is not None:
 from rent_pod_env import apply_env_defaults  # noqa: E402
 
 try:
-    sys.argv = [sys.argv[0], *apply_env_defaults(sys.argv[1:], os.environ)]
+    effective_argv = apply_env_defaults(sys.argv[1:], os.environ)
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
+
+# Resolve a friendly --template name and merge profile env + per-run --env.
+# The friendly name remains in argv for readable CLI output; the real RunPod ID
+# is substituted only at the POST /pods API boundary.
+from rent_pod_templates import (  # noqa: E402
+    apply_template_profile,
+    install_core_api_hook,
+    install_frontend_hooks,
+    print_selected_profile,
+)
+
+try:
+    effective_argv, template_context = apply_template_profile(effective_argv, os.environ)
+except ValueError as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+
+sys.argv = [sys.argv[0], *effective_argv]
+install_core_api_hook(template_context)
 
 # Swap the core rental wait/qualification display for the live lifecycle-aware
 # implementation. The underlying rent/delete/provision behavior remains in
@@ -59,8 +90,12 @@ from rent_pod_lifecycle import install_core_hooks  # noqa: E402
 
 install_core_hooks()
 
-from rent_pod_frontend import main  # noqa: E402
+import rent_pod_frontend as frontend  # noqa: E402
+
+install_frontend_hooks(frontend, template_context)
+if "--dry-run" not in effective_argv:
+    print_selected_profile(template_context)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(frontend.main())
