@@ -4,7 +4,7 @@ set -euo pipefail
 needs_hf=true
 for arg in "$@"; do
     case "$arg" in
-        --dry-run|--no-provision) needs_hf=false ;;
+        --dry-run|--no-provision|--list|--list=*) needs_hf=false ;;
     esac
 done
 
@@ -17,4 +17,4 @@ fi
 # companion Python entrypoint is always located relative to the real repo.
 script_path="$(readlink -f -- "${BASH_SOURCE[0]}")"
 repo_root="$(cd -- "$(dirname -- "$script_path")" && pwd -P)"
-exec python3 "$repo_root/bin/rent_pod.py" "$@"
+exec python3 "$repo_root/bin/rent_pod_frontend.py" "$@"
