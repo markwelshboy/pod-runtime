@@ -17,6 +17,7 @@
     }
   ],
   "snapshot": {
+    "compress": "none",
     "paths": [
       "/workspace/qwen3/qwen3-vl-captioning-validation/runs",
       "/workspace/qwen3/images"
