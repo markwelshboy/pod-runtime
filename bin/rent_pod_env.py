@@ -17,6 +17,8 @@ VALUE_DEFAULTS = (
     ("--ssh-key", "RENT_POD_SSH_KEY"),
 )
 
+DEFAULT_STARTUP_TIMEOUT = "900"
+
 
 def option_present(argv: list[str], name: str) -> bool:
     return any(arg == name or arg.startswith(name + "=") for arg in argv)
@@ -31,6 +33,11 @@ def apply_env_defaults(argv: list[str], environ: Mapping[str, str]) -> list[str]
 
     Paid-control switches such as --attempts and --keep-failed intentionally do
     not have environment defaults; they remain explicit per invocation.
+
+    The user-facing rent-pod command deliberately gives container/image startup
+    15 minutes by default. RunPod can spend much of the first 5-10 minutes
+    pulling an uncached image, so the lower-level core's historical 600-second
+    parser default is too aggressive for disposable-pod admission.
     """
     result = list(argv)
 
@@ -38,6 +45,9 @@ def apply_env_defaults(argv: list[str], environ: Mapping[str, str]) -> list[str]
         value = (environ.get(env_name) or "").strip()
         if value and not option_present(result, option):
             result.extend([option, value])
+
+    if not option_present(result, "--startup-timeout"):
+        result.extend(["--startup-timeout", DEFAULT_STARTUP_TIMEOUT])
 
     # Pool selection has two persistent forms. RENT_POD_CLOUD is the canonical
     # value; RENT_POD_COMMUNITY=true is a convenient shorthand matching the CLI.
