@@ -1,4 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+needs_hf=true
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run|--no-provision) needs_hf=false ;;
+    esac
+done
+
+if [[ "$needs_hf" == true && -z "${HF_TOKEN:-}" ]]; then
+    echo "ERROR: HF_TOKEN is not set; refusing to rent a paid pod that provision cannot configure." >&2
+    exit 2
+fi
+
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 exec python3 "$repo_root/bin/rent_pod.py" "$@"
