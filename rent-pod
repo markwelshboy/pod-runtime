@@ -13,5 +13,8 @@ if [[ "$needs_hf" == true && -z "${HF_TOKEN:-}" ]]; then
     exit 2
 fi
 
-repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# Resolve through /usr/local/bin/rent-pod (or any other symlink) so the
+# companion Python entrypoint is always located relative to the real repo.
+script_path="$(readlink -f -- "${BASH_SOURCE[0]}")"
+repo_root="$(cd -- "$(dirname -- "$script_path")" && pwd -P)"
 exec python3 "$repo_root/bin/rent_pod.py" "$@"
