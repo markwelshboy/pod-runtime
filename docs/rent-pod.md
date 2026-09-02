@@ -7,11 +7,11 @@
 3. Apply RunPod's advertised bandwidth and optional CUDA floors before allocation.
 4. Report the assigned machine, datacenter, location, cost, advertised bandwidth, and SSH endpoint.
 5. Avoid recently rejected machine IDs or public IPs before waiting for the container when RunPod exposes that identity early enough.
-6. Wait for the container image/startup and SSH mapping.
+6. Track startup through RunPod's REST machine state plus GraphQL runtime/port telemetry.
 7. Run the normal `provision` command, including real Hugging Face and PyPI/CDN qualification.
 8. If `provision` exits `78` for a critically slow network, record the host locally and terminate the Pod.
 9. Retry only when the caller explicitly requests more than one attempt.
-10. Show and delete Pods from the same CLI.
+10. Show, watch, and delete Pods from the same CLI.
 
 The default RunPod template is `86n5dpgf7h`. Override it with `--template`, `RENT_POD_TEMPLATE`, or the older `RUNPOD_TEMPLATE_ID` setting.
 
@@ -23,7 +23,7 @@ The helper never stores or prints the RunPod API key. Export it in the local she
 export RUNPOD_API_KEY='...'
 ```
 
-`provision` still requires the normal local `HF_TOKEN`. `--list`, `--show`, `--kill`, `--kill-all`, and `--dry-run` do not require `HF_TOKEN`; live RunPod operations require `RUNPOD_API_KEY`.
+`provision` still requires the normal local `HF_TOKEN`. `--list`, `--show`, `--status`, `--watch`, `--kill`, `--kill-all`, and `--dry-run` do not require `HF_TOKEN`; live RunPod operations require `RUNPOD_API_KEY`.
 
 ## Live availability and pricing
 
@@ -63,6 +63,20 @@ rent-pod --show
 
 The table includes the Pod ID, name, desired status, GPU, hourly cost, datacenter, and SSH endpoint when RunPod exposes them.
 
+Take one live lifecycle snapshot of a Pod:
+
+```bash
+rent-pod --status <POD_ID>
+```
+
+Continuously watch startup until SSH is reachable:
+
+```bash
+rent-pod --watch <POD_ID>
+```
+
+`--watch` is observational only. Ctrl-C stops the watch and never deletes, stops, or provisions the Pod.
+
 Permanently delete one Pod:
 
 ```bash
@@ -81,7 +95,59 @@ rent-pod --kill-all
 rent-pod --kill-all --yes
 ```
 
-`-y` and `--force` are accepted aliases for `--yes` on `--kill-all`. These management commands use RunPod's REST `/pods` API and are independent of the rental CUDA/cloud/bandwidth defaults.
+`-y` and `--force` are accepted aliases for `--yes` on `--kill-all`. These management commands are independent of the rental CUDA/cloud/bandwidth defaults.
+
+## Startup lifecycle display
+
+RunPod's REST Pod response identifies the allocated machine but does not expose live container runtime telemetry. `rent-pod` therefore mirrors RunPod's own current CLI architecture: REST supplies the Pod/machine state and a small GraphQL `myself.pods` side-call supplies `runtime.uptimeInSeconds` and live runtime ports.
+
+A normal rental now progresses through output like:
+
+```text
+[rent-pod] Pod allocated
+           pod: m6ona2ghiq29f6
+           machine: a601chw8r0jh
+           advertised: 4752↓ / 10072↑ Mbps
+           disk: 3276 MB/s
+           cost: $0.740/hr
+
+[rent-pod] STARTING   00:18   (14:42 remaining)
+           image/container runtime: waiting
+           public IP: pending
+           SSH mapping: pending
+
+[rent-pod] STARTING   02:47   (12:13 remaining)
+           last event: <RunPod lastStatusChange>
+           image/container runtime: waiting
+           public IP: pending
+           SSH mapping: pending
+
+[rent-pod] CONTAINER  03:12   (11:48 remaining)
+           runtime uptime: 00:04
+           public IP: 123.x.x.x
+           SSH mapping: pending
+
+[rent-pod] NETWORK    03:19   (11:41 remaining)
+           runtime uptime: 00:11
+           public IP: 123.x.x.x
+           SSH: 123.x.x.x:38192 (ready)
+[rent-pod] SSH is ready.
+
+[rent-pod] QUALIFYING 03:19
+           HF/CDN: pending
+           PyPI/CDN: pending
+```
+
+The lifecycle states mean:
+
+- `STARTING`: RunPod has allocated the Pod/machine but GraphQL still reports `runtime: null`; this covers image pull, extraction, container creation, and boot because RunPod exposes no finer public enum for those phases.
+- `CONTAINER`: runtime telemetry exists, so the container is alive, but a public SSH mapping is not yet exposed.
+- `NETWORK`: a public mapping for container port 22 exists; `rent-pod` probes the actual SSH endpoint rather than waiting for REST fields to catch up.
+- `QUALIFYING`: SSH is usable and the normal `provision` HF/PyPI qualification is starting.
+
+State transitions print immediately. An unchanged state prints a heartbeat every 60 seconds, so a 15-minute image pull is visible without dumping a four-line block every five seconds.
+
+If the GraphQL runtime side-call temporarily fails, `rent-pod` degrades to REST state and reports the runtime-probe error rather than treating the Pod as dead.
 
 ## Typical use
 
@@ -213,6 +279,8 @@ For a non-network `provision` failure, the pod is deliberately left running for 
 ```text
 --list ["GPU GPU ..."]
 --show
+--status POD_ID
+--watch POD_ID
 --kill POD_ID
 --kill-all [--yes|-y|--force]
 --community
