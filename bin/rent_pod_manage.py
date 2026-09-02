@@ -7,6 +7,61 @@ from typing import Any
 import rent_pod as core
 
 
+def parse_management_args(argv: list[str]) -> dict[str, Any] | None:
+    """Return a management request or None when argv is a rental/list command."""
+    action: str | None = None
+    pod_id: str | None = None
+    assume_yes = False
+    extras: list[str] = []
+
+    def set_action(value: str) -> None:
+        nonlocal action
+        if action is not None:
+            raise ValueError("use only one of --show, --kill, or --kill-all")
+        action = value
+
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--show":
+            set_action("show")
+            i += 1
+            continue
+        if arg == "--kill":
+            set_action("kill")
+            if i + 1 >= len(argv) or argv[i + 1].startswith("-"):
+                raise ValueError("--kill requires a pod ID")
+            pod_id = argv[i + 1]
+            i += 2
+            continue
+        if arg.startswith("--kill="):
+            set_action("kill")
+            pod_id = arg.split("=", 1)[1].strip()
+            if not pod_id:
+                raise ValueError("--kill requires a pod ID")
+            i += 1
+            continue
+        if arg == "--kill-all":
+            set_action("kill-all")
+            i += 1
+            continue
+        if arg in {"--yes", "-y", "--force"}:
+            assume_yes = True
+            i += 1
+            continue
+        extras.append(arg)
+        i += 1
+
+    if action is None:
+        return None
+    if extras:
+        raise ValueError(
+            "pod management commands cannot be combined with rental/list options: "
+            + " ".join(extras)
+        )
+    return {"action": action, "pod_id": pod_id, "assume_yes": assume_yes}
+
+
 def list_pods(api_key: str) -> list[dict[str, Any]]:
     result = core.api_request(api_key, "GET", "/pods")
     if not isinstance(result, list):
@@ -83,7 +138,10 @@ def show_pods(api_key: str) -> int:
     rows = [pod_row(enriched_pod(api_key, pod)) for pod in pods]
     print(f"[rent-pod] Your RunPod pods: {len(rows)}")
     print()
-    print(f"{'ID':<18} {'NAME':<28} {'STATUS':<10} {'GPU':<28} {'$/hr':>8} {'DATACENTER':<16} SSH")
+    print(
+        f"{'ID':<18} {'NAME':<28} {'STATUS':<10} {'GPU':<28} "
+        f"{'$/hr':>8} {'DATACENTER':<16} SSH"
+    )
     print("-" * 126)
     for row in rows:
         print(
@@ -134,6 +192,7 @@ def kill_all(api_key: str, assume_yes: bool = False) -> int:
         return 1
 
     failures: list[tuple[str, str]] = []
+    deleted = 0
     for pod in pods:
         pod_id = str(pod.get("id") or "")
         if not pod_id:
@@ -141,6 +200,7 @@ def kill_all(api_key: str, assume_yes: bool = False) -> int:
         name = str(pod.get("name") or "")
         try:
             core.delete_pod(api_key, pod_id)
+            deleted += 1
             suffix = f" ({name})" if name else ""
             print(f"[rent-pod] Deleted {pod_id}{suffix}")
         except core.RunPodError as exc:
@@ -149,11 +209,21 @@ def kill_all(api_key: str, assume_yes: bool = False) -> int:
 
     if failures:
         print(
-            f"[rent-pod] Deleted {len(pods) - len(failures)}/{len(pods)} pods; "
-            f"{len(failures)} failed.",
+            f"[rent-pod] Deleted {deleted}/{len(pods)} pods; {len(failures)} failed.",
             file=sys.stderr,
         )
         return 1
 
-    print(f"[rent-pod] Deleted all {len(pods)} pods.")
+    print(f"[rent-pod] Deleted all {deleted} pods.")
     return 0
+
+
+def run_management(api_key: str, request: dict[str, Any]) -> int:
+    action = request["action"]
+    if action == "show":
+        return show_pods(api_key)
+    if action == "kill":
+        return kill_pod(api_key, str(request.get("pod_id") or ""))
+    if action == "kill-all":
+        return kill_all(api_key, bool(request.get("assume_yes")))
+    raise ValueError(f"unknown pod management action: {action}")
