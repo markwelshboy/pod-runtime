@@ -166,7 +166,7 @@ Examples:
 ```bash
 export RENT_POD_CUDA_MIN="13.0"
 export RENT_POD_CLOUD="SECURE"
-export RENT_POD_STARTUP_TIMEOUT="900"
+export RENT_POD_STARTUP_TIMEOUT="1200"
 ```
 
 or, for a shell/profile that normally uses Community Cloud:
@@ -184,11 +184,13 @@ export RENT_POD_COMMUNITY=true
 - minimum advertised download: `500 Mbps`
 - minimum advertised upload: `100 Mbps`
 - CUDA floor: none unless `--cuda-min` / `RENT_POD_CUDA_MIN` is supplied
-- startup/SSH timeout: `600 seconds`
+- startup/SSH timeout: `900 seconds` (15 minutes)
 - attempts: `1`
 - SSH key: `~/.ssh/id_ed25519_runpod`
 - rejected-host TTL: `24 hours`
 - rejection database: `~/.cache/pod-runtime/rent-pod-rejections.json`
+
+The 15-minute startup default is intentionally longer than the original 10-minute limit because an uncached RunPod image can spend much of the first 5–10 minutes downloading/extracting before SSH exists. Override it per invocation with `--startup-timeout` or persist a different value with `RENT_POD_STARTUP_TIMEOUT`.
 
 `--community` is the short override for `--cloud COMMUNITY`. The legacy explicit `--cloud SECURE|COMMUNITY` option remains available.
 
