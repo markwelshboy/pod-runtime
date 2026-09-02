@@ -2,14 +2,15 @@
 
 `rent-pod` automates the disposable-development-pod admission loop:
 
-1. Rent a RunPod Pod from an existing template.
-2. Apply RunPod's advertised bandwidth floors before allocation.
-3. Report the assigned machine, datacenter, location, cost, advertised bandwidth, and SSH endpoint.
-4. Avoid recently rejected machine IDs or public IPs before waiting for the container when RunPod exposes that identity early enough.
-5. Wait for the container image/startup and SSH mapping.
-6. Run the normal `provision` command, including real Hugging Face and PyPI/CDN qualification.
-7. If `provision` exits `78` for a critically slow network, record the host locally and terminate the Pod.
-8. Retry only when the caller explicitly requests more than one attempt.
+1. Query live RunPod inventory/pricing when requested.
+2. Rent a Pod from an existing template.
+3. Apply RunPod's advertised bandwidth and optional CUDA floors before allocation.
+4. Report the assigned machine, datacenter, location, cost, advertised bandwidth, and SSH endpoint.
+5. Avoid recently rejected machine IDs or public IPs before waiting for the container when RunPod exposes that identity early enough.
+6. Wait for the container image/startup and SSH mapping.
+7. Run the normal `provision` command, including real Hugging Face and PyPI/CDN qualification.
+8. If `provision` exits `78` for a critically slow network, record the host locally and terminate the Pod.
+9. Retry only when the caller explicitly requests more than one attempt.
 
 The default RunPod template is `86n5dpgf7h`. Override it with `--template` or `RUNPOD_TEMPLATE_ID`.
 
@@ -21,7 +22,35 @@ The helper never stores or prints the RunPod API key. Export it in the local she
 export RUNPOD_API_KEY='...'
 ```
 
-`provision` still requires the normal local `HF_TOKEN`.
+`provision` still requires the normal local `HF_TOKEN`. `--list` and `--dry-run` do not require `HF_TOKEN`; live `--list` does require `RUNPOD_API_KEY`.
+
+## Live availability and pricing
+
+The default pool is Secure Cloud. Query selected GPUs with the same 500/100 Mbps route floors used for rental:
+
+```bash
+rent-pod --list "4090 5090 l40s"
+```
+
+Query Community Cloud instead:
+
+```bash
+rent-pod --community --list "4090 5090 l40s"
+```
+
+Add a CUDA floor to the availability query:
+
+```bash
+rent-pod --list "4090 5090 l40s" --cuda-min 13.0
+```
+
+With no GPU list, `--list` displays all RunPod GPU types:
+
+```bash
+rent-pod --list
+```
+
+The listing uses RunPod's live GraphQL `lowestPrice` availability with the selected pool, public-IP requirement, bandwidth floors, and optional `minCudaVersion`. It shows stock status, current on-demand price, available GPU counts, and the route floor represented by the current offer.
 
 ## Typical use
 
@@ -31,16 +60,30 @@ Inspect the request without spending money:
 rent-pod 4090 --dry-run
 ```
 
-Rent one RTX 4090 candidate and keep it only if it passes provisioning/network qualification:
+Rent one RTX 4090 candidate from Secure Cloud and keep it only if it passes provisioning/network qualification:
 
 ```bash
 rent-pod 4090
 ```
 
+Use Community Cloud for one rental:
+
+```bash
+rent-pod --community 4090
+```
+
+Require CUDA 13.0 or newer:
+
+```bash
+rent-pod 4090 --cuda-min 13.0
+```
+
+The Pod REST API currently accepts a list of `allowedCudaVersions` rather than a minimum. `rent-pod` derives the allowed list from the requested floor. For example, `--cuda-min 12.8` currently sends `13.0`, `12.9`, and `12.8`; `--cuda-min 13.0` sends only `13.0`.
+
 Try up to five candidates, automatically deleting network-rejected candidates before trying again:
 
 ```bash
-rent-pod 4090 --attempts 5
+rent-pod 4090 --attempts 5 --cuda-min 13.0
 ```
 
 Other built-in aliases include `5090`, `l40s`, `l40`, `5080`, and `3090`. An exact RunPod GPU type string may also be supplied.
@@ -54,14 +97,17 @@ configure-pod qwen3-captioning --snapshot latest
 ## Defaults
 
 - template: `86n5dpgf7h`
-- cloud: `COMMUNITY`
+- cloud: `SECURE`
 - minimum advertised download: `500 Mbps`
 - minimum advertised upload: `100 Mbps`
+- CUDA floor: none unless `--cuda-min` is supplied
 - startup/SSH timeout: `600 seconds`
 - attempts: `1`
 - SSH key: `~/.ssh/id_ed25519_runpod`
 - rejected-host TTL: `24 hours`
 - rejection database: `~/.cache/pod-runtime/rent-pod-rejections.json`
+
+`--community` is the short override for `--cloud COMMUNITY`. The legacy explicit `--cloud SECURE|COMMUNITY` option remains available.
 
 RunPod's advertised bandwidth is only a scheduler pre-filter. It does not replace the real service-specific qualification performed by `provision`: a machine can advertise gigabit networking while having a pathological route to `files.pythonhosted.org`.
 
@@ -80,6 +126,9 @@ For a non-network `provision` failure, the pod is deliberately left running for 
 ## Useful options
 
 ```text
+--list ["GPU GPU ..."]
+--community
+--cuda-min VERSION
 --attempts N
 --min-download MBPS
 --min-upload MBPS
@@ -99,7 +148,7 @@ Environment overrides:
 RUNPOD_API_KEY
 RUNPOD_TEMPLATE_ID
 RUNPOD_SSH_KEY
-RUNPOD_CLOUD_TYPE
 RUNPOD_API_BASE
+RUNPOD_GRAPHQL_URL
 RUNPOD_RENT_STATE_FILE
 ```
