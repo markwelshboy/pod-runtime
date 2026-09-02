@@ -4,6 +4,7 @@ set -euo pipefail
 RUNTIME_REPO_URL="${RUNTIME_REPO_URL:-https://github.com/markwelshboy/pod-runtime.git}"
 RUNTIME_DIR="${RUNTIME_DIR:-/workspace/pod-runtime}"
 GIT_HTTP_VERSION="${GIT_HTTP_VERSION:-HTTP/1.1}"
+PROVISION_ALLOW_SLOW_NETWORK="${PROVISION_ALLOW_SLOW_NETWORK:-false}"
 
 if [[ -z "${HF_TOKEN:-}" ]]; then
     echo "ERROR: HF_TOKEN is not set in the local environment." >&2
@@ -17,6 +18,9 @@ Usage:
 
 Example:
   provision ssh root@103.196.86.46 -p 29309 -i ~/.ssh/id_ed25519_runpod
+
+Set PROVISION_ALLOW_SLOW_NETWORK=true to continue even when startup network
+qualification recommends replacing the pod.
 EOF
     exit 2
 fi
@@ -40,6 +44,7 @@ set -euo pipefail
 RUNTIME_REPO_URL=$(printf '%q' "$RUNTIME_REPO_URL")
 RUNTIME_DIR=$(printf '%q' "$RUNTIME_DIR")
 GIT_HTTP_VERSION=$(printf '%q' "$GIT_HTTP_VERSION")
+PROVISION_ALLOW_SLOW_NETWORK=$(printf '%q' "$PROVISION_ALLOW_SLOW_NETWORK")
 PROVISIONED_HF_TOKEN=$(printf '%q' "$HF_TOKEN")
 
 export POD_RUNTIME_DIR="\$RUNTIME_DIR"
@@ -47,6 +52,7 @@ export POD_RUNTIME_DIR="\$RUNTIME_DIR"
 echo "[provision] Runtime repo: \$RUNTIME_REPO_URL"
 echo "[provision] Runtime dir:  \$RUNTIME_DIR"
 echo "[provision] Git HTTP:     \$GIT_HTTP_VERSION"
+echo "[provision] Allow slow network: \$PROVISION_ALLOW_SLOW_NETWORK"
 
 # -------------------------------------------------------------------
 # Persistent secrets
@@ -175,11 +181,61 @@ if [[ -f "\$RUNTIME_DIR/helpers.sh" ]]; then
     source "\$RUNTIME_DIR/helpers.sh"
 fi
 
+_provision_bool_true() {
+    case "\${1:-}" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_network_replacement_recommended() {
+    local file
+    for file in \
+        "\${NETWORK_LOG_FILE:-/workspace/logs/network_probe.json}" \
+        "\${NETWORK_PYPI_LOG_FILE:-/workspace/logs/network_probe_pypi.json}"
+    do
+        [[ -f "\$file" ]] || continue
+        if python3 - "\$file" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as fh:
+        obj = json.load(fh)
+except Exception:
+    raise SystemExit(1)
+
+value = obj.get("replace_recommended")
+if value is None:
+    value = obj.get("overall", {}).get("replace_recommended")
+raise SystemExit(0 if value is True else 1)
+PY
+        then
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Qualify network performance before package/toolchain installs. The guarded
-# helper has a hard outer wall-clock ceiling and never aborts provisioning.
+# helper itself remains non-fatal because start.sh also uses it; provision adds
+# a policy gate below so a critically slow disposable pod can be abandoned
+# before expensive package/environment reconstruction begins.
 if declare -F network_probe_startup_guarded >/dev/null 2>&1; then
     echo "[provision] Qualifying network performance..."
     network_probe_startup_guarded || true
+
+    if _network_replacement_recommended; then
+        if _provision_bool_true "\$PROVISION_ALLOW_SLOW_NETWORK"; then
+            echo "[provision] WARNING: network qualification recommends replacing this pod; continuing because PROVISION_ALLOW_SLOW_NETWORK=\$PROVISION_ALLOW_SLOW_NETWORK" >&2
+        else
+            echo >&2
+            echo "[provision] ERROR: network qualification recommends replacing this pod." >&2
+            echo "[provision] Stopping before HFF/package installation to avoid wasting rental time." >&2
+            echo "[provision] Override with PROVISION_ALLOW_SLOW_NETWORK=true if you intentionally want to continue." >&2
+            exit 78
+        fi
+    fi
 else
     echo "[provision] WARNING: guarded network probe unavailable; skipping qualification" >&2
 fi
@@ -221,6 +277,7 @@ echo "==> Provisioning remote machine"
 echo "    runtime: $RUNTIME_REPO_URL"
 echo "    target:  $RUNTIME_DIR"
 echo "    Git HTTP: $GIT_HTTP_VERSION"
+echo "    allow slow network: $PROVISION_ALLOW_SLOW_NETWORK"
 echo "    HF_TOKEN: present locally"
 echo
 
