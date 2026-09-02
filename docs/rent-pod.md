@@ -11,6 +11,7 @@
 7. Run the normal `provision` command, including real Hugging Face and PyPI/CDN qualification.
 8. If `provision` exits `78` for a critically slow network, record the host locally and terminate the Pod.
 9. Retry only when the caller explicitly requests more than one attempt.
+10. Show and delete Pods from the same CLI.
 
 The default RunPod template is `86n5dpgf7h`. Override it with `--template`, `RENT_POD_TEMPLATE`, or the older `RUNPOD_TEMPLATE_ID` setting.
 
@@ -22,7 +23,7 @@ The helper never stores or prints the RunPod API key. Export it in the local she
 export RUNPOD_API_KEY='...'
 ```
 
-`provision` still requires the normal local `HF_TOKEN`. `--list` and `--dry-run` do not require `HF_TOKEN`; live `--list` does require `RUNPOD_API_KEY`.
+`provision` still requires the normal local `HF_TOKEN`. `--list`, `--show`, `--kill`, `--kill-all`, and `--dry-run` do not require `HF_TOKEN`; live RunPod operations require `RUNPOD_API_KEY`.
 
 ## Live availability and pricing
 
@@ -51,6 +52,36 @@ rent-pod --list
 ```
 
 The listing uses RunPod's live GraphQL `lowestPrice` availability with the selected pool, public-IP requirement, bandwidth floors, and optional `minCudaVersion`. It shows stock status, current on-demand price, available GPU counts, and the route floor represented by the current offer.
+
+## Pod management
+
+Show every Pod currently on the RunPod account:
+
+```bash
+rent-pod --show
+```
+
+The table includes the Pod ID, name, desired status, GPU, hourly cost, datacenter, and SSH endpoint when RunPod exposes them.
+
+Permanently delete one Pod:
+
+```bash
+rent-pod --kill <POD_ID>
+```
+
+Permanently delete every Pod on the account:
+
+```bash
+rent-pod --kill-all
+```
+
+`--kill-all` is intentionally interactive and requires typing `DELETE ALL`. For deliberate non-interactive cleanup:
+
+```bash
+rent-pod --kill-all --yes
+```
+
+`-y` and `--force` are accepted aliases for `--yes` on `--kill-all`. These management commands use RunPod's REST `/pods` API and are independent of the rental CUDA/cloud/bandwidth defaults.
 
 ## Typical use
 
@@ -179,6 +210,9 @@ For a non-network `provision` failure, the pod is deliberately left running for 
 
 ```text
 --list ["GPU GPU ..."]
+--show
+--kill POD_ID
+--kill-all [--yes|-y|--force]
 --community
 --cuda-min VERSION
 --attempts N
