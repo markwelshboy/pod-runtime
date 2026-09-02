@@ -105,7 +105,8 @@ ensure_hf_tools_venv() {
   fi
 
   export HFF_VENV="$venv"
-  _hff_pip install -U pip >/dev/null || return 1
+  _hff_info "Upgrading pip in HFF venv..."
+  _hff_pip install -U pip || return 1
 
   if [[ -n "${HFF_HUB_VER:-}" ]]; then
     hub_spec="huggingface-hub==${HFF_HUB_VER}"
@@ -121,11 +122,13 @@ ensure_hf_tools_venv() {
 
   if [[ "$hub_spec" == huggingface-hub==0.* ]]; then
     : "${HFF_XFER_VER:=0.1.9}"
+    _hff_info "Installing HFF packages: ${hub_spec} hf-transfer==${HFF_XFER_VER}"
     _hff_pip install -U \
       "$hub_spec" \
-      "hf-transfer==${HFF_XFER_VER}" >/dev/null || return 1
+      "hf-transfer==${HFF_XFER_VER}" || return 1
   else
-    _hff_pip install -U "$hub_spec" >/dev/null || return 1
+    _hff_info "Installing HFF package: ${hub_spec}"
+    _hff_pip install -U "$hub_spec" || return 1
   fi
 
   installed_version="$(
