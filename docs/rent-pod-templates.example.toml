@@ -1,0 +1,18 @@
+version = 1
+default = "comfyui-inference-lite"
+
+[templates.comfyui-inference]
+id = "replace-with-runpod-template-id"
+description = "Full ComfyUI inference image"
+
+[templates.comfyui-inference.env]
+ENABLE_SAGE_UPLOAD = true
+MINMAX = true
+
+[templates.comfyui-inference-lite]
+id = "86n5dpgf7h"
+description = "Lean ComfyUI inference image"
+
+[templates.comfyui-inference-lite.env]
+ENABLE_SAGE_UPLOAD = false
+MINMAX = false
