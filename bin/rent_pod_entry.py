@@ -63,12 +63,14 @@ if management is not None:
         raise SystemExit(1)
 
 from rent_pod_env import apply_env_defaults  # noqa: E402
+import rent_pod_vcp as vcp_handoff  # noqa: E402
 
 try:
     effective_argv = apply_env_defaults(sys.argv[1:], os.environ)
     effective_argv, ssh_exposure_timeout = ssh_phases.consume_ssh_phase_args(
         effective_argv, os.environ
     )
+    effective_argv, vcp_enabled = vcp_handoff.consume_vcp_args(effective_argv)
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -94,17 +96,21 @@ install_core_api_hook(template_context)
 
 # Install the lifecycle display first, then replace only its readiness wait with
 # the more detailed direct-SSH phase probe. Provision/identity display hooks stay
-# owned by rent_pod_lifecycle.
+# owned by rent_pod_lifecycle. VCP wraps those final hooks so its handoff always
+# receives the endpoint that actually passed authenticated SSH.
 from rent_pod_lifecycle import install_core_hooks  # noqa: E402
 
 install_core_hooks()
 ssh_phases.install_core_hook(ssh_exposure_timeout)
+vcp_handoff.install_core_hooks(vcp_enabled)
 
 import rent_pod_frontend as frontend  # noqa: E402
 
 install_frontend_hooks(frontend, template_context)
 if "--dry-run" not in effective_argv:
     print_selected_profile(template_context)
+if vcp_enabled:
+    print("[rent-pod] VCP auto-config:       enabled after successful provision")
 
 
 if __name__ == "__main__":
