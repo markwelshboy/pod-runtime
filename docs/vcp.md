@@ -1,6 +1,6 @@
 # `vcp` — Hugging Face accelerated local↔pod copy
 
-`vcp` copies files and directories between the machine where it is run and one configured SSH remote. It uses a Hugging Face dataset as a temporary high-speed hop.
+`vcp` copies files and directories between the machine where it is run and a configured SSH target. It uses a Hugging Face dataset as a temporary high-speed hop.
 
 The command is intentionally **local-controller only**: run it on ddraig (or another machine that can SSH to the pod). The pod never needs an SSH route back to the local machine.
 
@@ -17,15 +17,65 @@ Paths without `r:` are local paths and can be relative or absolute.
 
 All source operands for one copy must be on the same side, and the destination must be on the other side.
 
-## Configure the SSH remote
+## Named SSH targets
 
-The SSH arguments are stored exactly as supplied in `~/.config/vcp/config.json`:
+VCP can keep multiple pod SSH endpoints in `~/.config/vcp/config.json` rather than treating the remote as a singleton.
+
+Configure named targets:
+
+```bash
+vcp config l40development ssh -i ~/.ssh/id_ed25519_runpod -p 12234 root@199.199.88.88
+vcp config rtx6000comfy ssh -i ~/.ssh/id_ed25519_runpod -p 13345 root@200.100.50.25
+```
+
+List them:
+
+```bash
+vcp targets
+```
+
+Set the persistent active target:
+
+```bash
+vcp target l40development
+```
+
+Show the current active target:
+
+```bash
+vcp target
+```
+
+Normal transfers use the active target:
+
+```bash
+vcp r:/workspace/report.txt .
+```
+
+Or select a target for one operation without changing the active target:
+
+```bash
+vcp --target rtx6000comfy r:/workspace/report.txt .
+```
+
+Inspect or remove an individual target:
+
+```bash
+vcp config l40development show
+vcp config l40development remove
+```
+
+A target entry can also contain metadata such as a RunPod pod ID, provider, machine ID, and description. `rent-pod --vcp` populates that metadata automatically.
+
+The previous single-endpoint form remains supported for backward compatibility:
 
 ```bash
 vcp config ssh -i ~/.ssh/id_ed25519 -p 12234 root@199.199.88.88
 ```
 
-Inspect the current configuration:
+When no named active target exists, VCP falls back to that legacy top-level SSH endpoint.
+
+Inspect the current configuration and target registry:
 
 ```bash
 vcp config show
@@ -49,22 +99,31 @@ Or per shell with `VCP_HF_REPO`.
 
 ## `rent-pod` integration
 
-A successful `rent-pod` direct-SSH admission always prints the exact VCP configuration command for the endpoint that actually passed authenticated SSH, for example:
+A successful `rent-pod` direct-SSH admission always prints the exact named VCP configuration command for the endpoint that actually passed authenticated SSH. Supplying a RunPod name makes the handoff especially readable:
+
+```bash
+rent-pod l40s --name comfydev --template comfyui-inference
+```
+
+For example:
 
 ```text
-[rent-pod] VCP remote:
-           vcp config ssh -i /home/user/.ssh/id_ed25519_runpod -p 13479 root@64.247.206.216
+[rent-pod] VCP target:
+           vcp config comfydev ssh -i /home/user/.ssh/id_ed25519_runpod -p 13479 root@64.247.206.216
+           vcp target comfydev
 ```
 
 This uses the proven live endpoint rather than assuming a later REST port mapping is authoritative. It is only printed after authenticated direct SSH works.
 
-To configure VCP automatically after the pod also passes normal provision and HF/PyPI network qualification, add `--vcp` to the rental command:
+To register that target automatically after the pod also passes normal provision and HF/PyPI network qualification, add `--vcp`:
 
 ```bash
-rent-pod l40s --vcp
+rent-pod l40s --name comfydev --template comfyui-inference --vcp
 ```
 
-On success the local controller runs the equivalent of `vcp config ssh ...` and updates the normal VCP config file. The automatic mutation is deliberately deferred until provision succeeds, so a pod that is subsequently rejected and deleted never replaces the existing VCP target. A VCP configuration failure is reported as a warning and does not reject or delete an otherwise accepted paid pod.
+On success VCP stores a `comfydev` target containing the working SSH arguments plus the RunPod pod ID and available machine metadata, and makes it the active target. The automatic mutation is deliberately deferred until provision succeeds, so a pod that is subsequently rejected and deleted never replaces the existing active target. A VCP configuration failure is reported as a warning and does not reject or delete an otherwise accepted paid pod.
+
+If `--name` is omitted, `rent-pod` uses a stable available pod identifier for the VCP target name.
 
 `--vcp` only configures the SSH target. It does not copy or persist a Hugging Face token: VCP continues to use the local controller's `HF_TOKEN` ephemerally when an actual transfer runs.
 
@@ -76,7 +135,7 @@ vcp r:/workspace/report.txt r:/workspace/logs .
 
 The local controller:
 
-1. SSHes to the pod.
+1. SSHes to the selected pod.
 2. Creates a plain `.tar` under `/workspace/.vcp/` containing `report.txt` and `logs/`.
 3. Uses the pod's existing `hff` tooling plus the controller-supplied HF credential to upload that tar to the scratch dataset.
 4. Downloads the tar locally with `bin/hff.py`.
@@ -95,7 +154,7 @@ The local controller:
 
 1. Creates a plain local tar.
 2. Uploads it with `bin/hff.py`.
-3. SSHes to the pod.
+3. SSHes to the selected pod.
 4. Uses the pod's `hff` tooling plus the controller-supplied HF credential to download it.
 5. Extracts it and uses `cp -a` into `/workspace/`.
 6. Removes the temporary Hugging Face object.
@@ -148,7 +207,7 @@ The staged object lives under `vcp/<timestamp>_<random>.tar` in the scratch data
 
 ## Installation / PATH
 
-The repository-root `vcp` wrapper only resolves the repository location, loads the existing HFF virtual environment from `helpers_shell.sh`, and executes `bin/vcp.py`.
+The repository-root `vcp` wrapper resolves the repository location, loads the existing HFF virtual environment from `helpers_shell.sh`, and executes the target-aware `bin/vcp_entry.py`, which delegates transfers to `bin/vcp.py`.
 
 If the `pod-runtime` repository root is already on `PATH`, simply run `vcp`. Otherwise link it once:
 
