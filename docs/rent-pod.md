@@ -8,10 +8,11 @@
 4. Report the assigned machine, datacenter, location, cost, advertised bandwidth, and SSH endpoint.
 5. Avoid recently rejected machine IDs or public IPs before waiting for the container when RunPod exposes that identity early enough.
 6. Track startup through RunPod's REST machine state plus GraphQL runtime/port telemetry.
-7. Run the normal `provision` command, including real Hugging Face and PyPI/CDN qualification.
-8. If `provision` exits `78` for a critically slow network, record the host locally and terminate the Pod.
-9. Retry only when the caller explicitly requests more than one attempt.
-10. Show, watch, and delete Pods from the same CLI.
+7. Distinguish direct-TCP exposure, SSH-banner readiness, and authenticated SSH before provisioning.
+8. Run the normal `provision` command, including real Hugging Face and PyPI/CDN qualification.
+9. If `provision` exits `78` for a critically slow network, record the host locally and terminate the Pod.
+10. Retry only when the caller explicitly requests more than one attempt.
+11. Show, watch, and delete Pods from the same CLI.
 
 The default RunPod template is `86n5dpgf7h`. Override it with `--template`, `RENT_POD_TEMPLATE`, or the older `RUNPOD_TEMPLATE_ID` setting.
 
@@ -111,29 +112,50 @@ A normal rental now progresses through output like:
            disk: 3276 MB/s
            cost: $0.740/hr
 
-[rent-pod] STARTING   00:18   (14:42 remaining)
+[rent-pod] STARTING   00:18   (14:42 startup remaining)
            image/container runtime: waiting
            public IP: pending
            SSH mapping: pending
 
-[rent-pod] STARTING   02:47   (12:13 remaining)
-           last event: <RunPod lastStatusChange>
-           image/container runtime: waiting
+[rent-pod] CONTAINER  01:04   (02:58 SSH exposure remaining)
+           runtime uptime: 00:02
            public IP: pending
            SSH mapping: pending
 
-[rent-pod] CONTAINER  03:12   (11:48 remaining)
-           runtime uptime: 00:04
+[rent-pod] NETWORK    01:11   (02:51 SSH exposure remaining)
+           runtime uptime: 00:09
            public IP: 123.x.x.x
-           SSH mapping: pending
+           SSH mapping: 123.x.x.x:38192
+           TCP/38192: pending
+           SSH banner: pending
+           SSH auth: not probed
 
-[rent-pod] NETWORK    03:19   (11:41 remaining)
-           runtime uptime: 00:11
+[rent-pod] NETWORK    01:18   (02:44 SSH exposure remaining)
+           runtime uptime: 00:16
            public IP: 123.x.x.x
-           SSH: 123.x.x.x:38192 (ready)
+           SSH mapping: 123.x.x.x:38192
+           TCP/38192: reachable
+           SSH banner: pending
+           SSH auth: not probed
+
+[rent-pod] SSH        01:24   (02:38 SSH exposure remaining)
+           runtime uptime: 00:22
+           public IP: 123.x.x.x
+           SSH mapping: 123.x.x.x:38192
+           TCP/38192: reachable
+           SSH banner: ready
+           SSH auth: pending
+
+[rent-pod] SSH        01:31   (02:31 SSH exposure remaining)
+           runtime uptime: 00:29
+           public IP: 123.x.x.x
+           SSH mapping: 123.x.x.x:38192
+           TCP/38192: reachable
+           SSH banner: ready
+           SSH auth: ready
 [rent-pod] SSH is ready.
 
-[rent-pod] QUALIFYING 03:19
+[rent-pod] QUALIFYING 01:31
            HF/CDN: pending
            PyPI/CDN: pending
 ```
@@ -141,13 +163,27 @@ A normal rental now progresses through output like:
 The lifecycle states mean:
 
 - `STARTING`: RunPod has allocated the Pod/machine but GraphQL still reports `runtime: null`; this covers image pull, extraction, container creation, and boot because RunPod exposes no finer public enum for those phases.
-- `CONTAINER`: runtime telemetry exists, so the container is alive, but a public SSH mapping is not yet exposed.
-- `NETWORK`: a public mapping for container port 22 exists; `rent-pod` probes the actual SSH endpoint rather than waiting for REST fields to catch up.
-- `QUALIFYING`: SSH is usable and the normal `provision` HF/PyPI qualification is starting.
+- `CONTAINER`: runtime telemetry exists, so the container is alive, but a public direct-SSH mapping is not yet exposed.
+- `NETWORK`: a public mapping for container TCP/22 exists. `rent-pod` separately tests whether the external TCP mapping is actually reachable and whether an SSH server banner is present.
+- `SSH`: an SSH banner is visible; authenticated SSH is then tested using the configured key.
+- `QUALIFYING`: authenticated SSH is usable and the normal `provision` HF/PyPI qualification is starting.
 
-State transitions print immediately. An unchanged state prints a heartbeat every 60 seconds, so a 15-minute image pull is visible without dumping a four-line block every five seconds.
+RunPod can change the external mapping for container port 22 while a Pod is starting. `rent-pod` therefore probes both the current GraphQL runtime mapping and any different REST mapping, and retains recently seen mappings for 90 seconds. If an older mapping becomes usable while API surfaces are reconciling, it can still be selected for provisioning.
+
+State transitions print immediately. An unchanged state prints a heartbeat every 60 seconds, so a long image pull or SSH-exposure delay is visible without dumping a block every five seconds.
 
 If the GraphQL runtime side-call temporarily fails, `rent-pod` degrades to REST state and reports the runtime-probe error rather than treating the Pod as dead.
+
+## Two-stage startup timeout policy
+
+Startup now has two separate clocks:
+
+1. Before runtime exists, `--startup-timeout` / `RENT_POD_STARTUP_TIMEOUT` controls how long an image/container may take to appear. The default is 900 seconds (15 minutes).
+2. Once GraphQL reports a live runtime, image/container startup has succeeded. The startup clock is replaced by a shorter direct-SSH exposure clock controlled by `--ssh-exposure-timeout` / `RENT_POD_SSH_EXPOSURE_TIMEOUT`. The default is 180 seconds (3 minutes).
+
+The SSH-exposure clock is based on RunPod's reported `runtime.uptimeInSeconds`, so a delayed polling/API response does not grant an already-running container a fresh three-minute window.
+
+If runtime never appears, the rejection reason is `startup-timeout`. If runtime is alive but direct authenticated SSH never becomes usable, the rejection reason is `ssh-exposure-timeout`.
 
 ## Typical use
 
@@ -173,6 +209,12 @@ Require CUDA 13.0 or newer:
 
 ```bash
 rent-pod 4090 --cuda-min 13.0
+```
+
+Override the post-container SSH exposure window for one rental:
+
+```bash
+rent-pod l40s --ssh-exposure-timeout 240
 ```
 
 The Pod REST API currently accepts a list of `allowedCudaVersions` rather than a minimum. `rent-pod` derives the allowed list from the requested floor. For example, `--cuda-min 12.8` currently sends `13.0`, `12.9`, and `12.8`; `--cuda-min 13.0` sends only `13.0`.
@@ -201,14 +243,10 @@ For example:
 export RENT_POD_CUDA_MIN="13.0"
 export RENT_POD_MIN_DOWNLOAD="500"
 export RENT_POD_MIN_UPLOAD="100"
+export RENT_POD_SSH_EXPOSURE_TIMEOUT="180"
 ```
 
-Then both listing and rental inherit the CUDA floor automatically:
-
-```bash
-rent-pod --list "4090 5090 l40s"
-rent-pod 4090
-```
+Then both listing and rental inherit the normal selection defaults, while the SSH exposure value is applied when a rented Pod reaches live-container state.
 
 Available persistent defaults:
 
@@ -221,6 +259,7 @@ RENT_POD_MIN_DOWNLOAD
 RENT_POD_MIN_UPLOAD
 RENT_POD_MIN_DISK
 RENT_POD_STARTUP_TIMEOUT
+RENT_POD_SSH_EXPOSURE_TIMEOUT
 RENT_POD_POLL_SECONDS
 RENT_POD_RETRY_DELAY
 RENT_POD_REJECTION_TTL_HOURS
@@ -233,6 +272,7 @@ Examples:
 export RENT_POD_CUDA_MIN="13.0"
 export RENT_POD_CLOUD="SECURE"
 export RENT_POD_STARTUP_TIMEOUT="1200"
+export RENT_POD_SSH_EXPOSURE_TIMEOUT="180"
 ```
 
 or, for a shell/profile that normally uses Community Cloud:
@@ -250,13 +290,15 @@ export RENT_POD_COMMUNITY=true
 - minimum advertised download: `500 Mbps`
 - minimum advertised upload: `100 Mbps`
 - CUDA floor: none unless `--cuda-min` / `RENT_POD_CUDA_MIN` is supplied
-- startup/SSH timeout: `900 seconds` (15 minutes)
+- pre-container startup timeout: `900 seconds` (15 minutes)
+- post-container direct-SSH exposure timeout: `180 seconds` (3 minutes)
+- recently seen SSH mapping grace: `90 seconds`
 - attempts: `1`
 - SSH key: `~/.ssh/id_ed25519_runpod`
 - rejected-host TTL: `24 hours`
 - rejection database: `~/.cache/pod-runtime/rent-pod-rejections.json`
 
-The 15-minute startup default is intentionally longer than the original 10-minute limit because an uncached RunPod image can spend much of the first 5–10 minutes downloading/extracting before SSH exists. Override it per invocation with `--startup-timeout` or persist a different value with `RENT_POD_STARTUP_TIMEOUT`.
+The 15-minute startup default is intentionally longer than the original 10-minute limit because an uncached RunPod image can spend much of the first 5–10 minutes downloading/extracting before runtime exists. Once runtime appears, the shorter SSH-exposure policy avoids spending another 15 minutes on a Pod whose container is alive but whose direct SSH/NAT path is broken.
 
 `--community` is the short override for `--cloud COMMUNITY`. The legacy explicit `--cloud SECURE|COMMUNITY` option remains available.
 
@@ -267,10 +309,11 @@ RunPod's advertised bandwidth is only a scheduler pre-filter. It does not replac
 A pod is automatically terminated when:
 
 - the same machine ID or public IP was rejected within the configured TTL;
-- the container/SSH endpoint does not become usable before `--startup-timeout`; or
+- runtime never appears before `--startup-timeout`;
+- runtime is alive but direct authenticated SSH does not become usable before `--ssh-exposure-timeout`; or
 - `provision` exits `78`, meaning the real HF/PyPI qualification recommends replacing it.
 
-For a non-network `provision` failure, the pod is deliberately left running for diagnosis. Use `--keep-failed` to keep even network-rejected or startup-timed-out pods.
+For a non-network `provision` failure, the pod is deliberately left running for diagnosis. Use `--keep-failed` to keep even network-rejected, startup-timed-out, or SSH-exposure-timed-out pods.
 
 `Ctrl-C` destroys the in-flight pod by default. `--keep-failed` also disables that cleanup.
 
@@ -291,6 +334,7 @@ For a non-network `provision` failure, the pod is deliberately left running for 
 --min-disk MB_PER_SEC
 --cloud COMMUNITY|SECURE
 --startup-timeout SECONDS
+--ssh-exposure-timeout SECONDS
 --rejection-ttl-hours HOURS
 --allow-seen-machine
 --keep-failed
