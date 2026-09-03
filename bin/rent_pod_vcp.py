@@ -43,13 +43,15 @@ def print_vcp_handoff(identity: dict[str, Any], key: str) -> None:
 
 
 def configure_vcp(identity: dict[str, Any], key: str) -> int:
-    repo_root = Path(__file__).resolve().parents[1]
-    vcp = repo_root / "vcp"
-    if not vcp.is_file():
-        print(f"[rent-pod] WARNING: VCP wrapper not found: {vcp}", file=sys.stderr)
+    # Config-only VCP operations need no Hugging Face packages. Invoke the
+    # Python implementation directly instead of the root vcp wrapper, whose
+    # normal transfer path intentionally initializes the HFF virtualenv.
+    vcp_py = Path(__file__).resolve().parent / "vcp.py"
+    if not vcp_py.is_file():
+        print(f"[rent-pod] WARNING: VCP command not found: {vcp_py}", file=sys.stderr)
         return 1
 
-    cmd = [str(vcp), "config", "ssh", *vcp_ssh_args(identity, key)]
+    cmd = [sys.executable, str(vcp_py), "config", "ssh", *vcp_ssh_args(identity, key)]
     print("[rent-pod] Configuring VCP remote...")
     try:
         result = subprocess.run(cmd, check=False)
