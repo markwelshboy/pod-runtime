@@ -79,12 +79,25 @@ def _graphql_request(api_key: str) -> dict[str, Any]:
     return data
 
 
-def graphql_pod(api_key: str, pod_id: str) -> dict[str, Any] | None:
+def graphql_pods(api_key: str) -> list[dict[str, Any]]:
+    """Return the live GraphQL pod snapshots that carry runtime ports/uptime.
+
+    RunPod's REST pod surface is useful for machine/account metadata, but the
+    runtime port mapping used for live SSH connection info comes from GraphQL.
+    Keep this as a single account-wide query so callers such as --show do not
+    issue one GraphQL request per pod.
+    """
     data = _graphql_request(api_key)
     myself = data.get("myself") or {}
     pods = myself.get("pods") or []
-    for pod in pods:
-        if isinstance(pod, dict) and str(pod.get("id") or "") == pod_id:
+    if not isinstance(pods, list):
+        raise core.RunPodError("unexpected GraphQL lifecycle pods response")
+    return [pod for pod in pods if isinstance(pod, dict)]
+
+
+def graphql_pod(api_key: str, pod_id: str) -> dict[str, Any] | None:
+    for pod in graphql_pods(api_key):
+        if str(pod.get("id") or "") == pod_id:
             return pod
     return None
 
@@ -152,8 +165,11 @@ def build_snapshot(
     runtime_present = isinstance(runtime, dict)
     gql_ip, gql_ssh_port = _runtime_ssh(runtime)
 
-    public_ip = _first(identity.get("public_ip"), gql_ip, _runtime_public_ip(runtime))
-    ssh_port = _first(identity.get("ssh_port"), gql_ssh_port)
+    # Prefer live runtime connection data when GraphQL has it. REST's
+    # portMappings can lag or churn during startup; RunPod's own CLI resolves
+    # live SSH connection info from the GraphQL runtime ports for this reason.
+    public_ip = _first(gql_ip, _runtime_public_ip(runtime), identity.get("public_ip"))
+    ssh_port = _first(gql_ssh_port, identity.get("ssh_port"))
     desired = str(
         _first(gql_pod.get("desiredStatus"), rest_pod.get("desiredStatus"), "UNKNOWN")
     )
@@ -443,36 +459,29 @@ def watch_pod(
         while True:
             rest_pod, snapshot = _fetch_snapshot(api_key, pod_id)
             identity = _identity_with_endpoint(rest_pod, snapshot)
-            now = time.monotonic()
             elapsed = pod_age_seconds(rest_pod)
             if elapsed is None:
-                elapsed = now - started
+                elapsed = time.monotonic() - started
             signature = snapshot_signature(snapshot)
             endpoint = bool(identity.get("public_ip") and identity.get("ssh_port"))
-            ready = False
+            ready: bool | None = None
             if endpoint and key_available:
-                ready = core.ssh_ready(identity, key_path or "")
+                ready = core.ssh_ready(identity, key_path)
 
-            if signature != last_signature or now >= next_heartbeat or ready:
-                print_snapshot(
-                    snapshot,
-                    elapsed,
-                    ssh_ready=(ready if endpoint and key_available else None),
-                )
+            now = time.monotonic()
+            if signature != last_signature or now >= next_heartbeat or ready is True:
+                print_snapshot(snapshot, elapsed, ssh_ready=ready)
                 last_signature = signature
                 next_heartbeat = now + HEARTBEAT_SECONDS
 
-            if ready:
-                print("[rent-pod] SSH is ready.")
-                return 0
-            if endpoint and not key_available:
-                print("[rent-pod] SSH endpoint is exposed; connectivity probe skipped (SSH key unavailable).")
+            if ready is True:
+                print("[rent-pod] SSH is ready; watch complete.")
                 return 0
             if str(snapshot.get("stage") or "").upper() in {"EXITED", "STOPPED", "TERMINATED"}:
                 return 1
             time.sleep(max(1, poll_s))
     except KeyboardInterrupt:
-        print("\n[rent-pod] Watch stopped; pod was not modified.")
+        print("\n[rent-pod] Watch stopped; pod left untouched.")
         return 130
 
 
