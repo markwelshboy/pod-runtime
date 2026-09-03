@@ -10,14 +10,14 @@ fi
 ROOT="$(cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd -P)"
 
 HELPERS="$ROOT/helpers_shell.sh"
-VCP_PY="$ROOT/bin/vcp.py"
+VCP_ENTRY="$ROOT/bin/vcp_entry.py"
 
 if [[ ! -f "$HELPERS" ]]; then
   echo "[vcp] ERROR: helpers_shell.sh not found in pod-runtime root: $HELPERS" >&2
   exit 1
 fi
-if [[ ! -f "$VCP_PY" ]]; then
-  echo "[vcp] ERROR: bin/vcp.py not found: $VCP_PY" >&2
+if [[ ! -f "$VCP_ENTRY" ]]; then
+  echo "[vcp] ERROR: bin/vcp_entry.py not found: $VCP_ENTRY" >&2
   exit 1
 fi
 
@@ -30,4 +30,4 @@ if [[ ! -x "$HFF_VENV/bin/python" ]] || ! "$HFF_VENV/bin/python" -c 'import hugg
 fi
 
 export VCP_HFF_PY="${VCP_HFF_PY:-$ROOT/bin/hff.py}"
-exec "$HFF_VENV/bin/python" "$VCP_PY" "$@"
+exec "$HFF_VENV/bin/python" "$VCP_ENTRY" "$@"
