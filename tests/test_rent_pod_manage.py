@@ -72,6 +72,39 @@ class RentPodManageTests(unittest.TestCase):
         self.assertEqual(row["dc"], "US-CA-1")
         self.assertEqual(row["ssh"], "1.2.3.4:2222")
 
+    def test_pod_row_prefers_live_runtime_ssh_mapping(self):
+        rest_pod = {
+            "id": "pod1",
+            "name": "podlet-l40s",
+            "desiredStatus": "RUNNING",
+            "gpuTypeId": "NVIDIA L40S",
+            "gpuCount": 1,
+            "costPerHr": 0.99,
+            "publicIp": "64.247.206.216",
+            "portMappings": {"22": 13481},
+            "machineId": "m1",
+            "machine": {"dataCenterId": "US-MO-1"},
+        }
+        gql_pod = {
+            "id": "pod1",
+            "desiredStatus": "RUNNING",
+            "runtime": {
+                "uptimeInSeconds": 122,
+                "ports": [
+                    {
+                        "ip": "64.247.206.216",
+                        "isIpPublic": True,
+                        "privatePort": 22,
+                        "publicPort": 13479,
+                        "type": "tcp",
+                    }
+                ],
+            },
+        }
+        row = manage.pod_row(rest_pod, gql_pod)
+        self.assertEqual(row["status"], "NETWORK")
+        self.assertEqual(row["ssh"], "64.247.206.216:13479")
+
     def test_kill_all_yes_deletes_every_pod(self):
         pods = [
             {"id": "p1", "name": "one"},
