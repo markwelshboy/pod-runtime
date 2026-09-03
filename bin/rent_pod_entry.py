@@ -33,6 +33,12 @@ except ValueError as exc:
 if template_meta_rc is not None:
     raise SystemExit(template_meta_rc)
 
+# Upgrade --status/--watch before management dispatch so they use the same TCP,
+# SSH-banner and authenticated-SSH phases as the live rental path.
+import rent_pod_ssh_phases as ssh_phases  # noqa: E402
+
+ssh_phases.install_management_hooks()
+
 # Management commands are parsed before persistent rental defaults are injected:
 # RENT_POD_CUDA_MIN, cloud, bandwidth floors, template profiles, etc. are
 # irrelevant to --show, --status/--watch and --kill.
@@ -60,6 +66,9 @@ from rent_pod_env import apply_env_defaults  # noqa: E402
 
 try:
     effective_argv = apply_env_defaults(sys.argv[1:], os.environ)
+    effective_argv, ssh_exposure_timeout = ssh_phases.consume_ssh_phase_args(
+        effective_argv, os.environ
+    )
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -83,12 +92,13 @@ except ValueError as exc:
 sys.argv = [sys.argv[0], *effective_argv]
 install_core_api_hook(template_context)
 
-# Swap the core rental wait/qualification display for the live lifecycle-aware
-# implementation. The underlying rent/delete/provision behavior remains in
-# rent_pod.py; these hooks only enrich how readiness is detected and reported.
+# Install the lifecycle display first, then replace only its readiness wait with
+# the more detailed direct-SSH phase probe. Provision/identity display hooks stay
+# owned by rent_pod_lifecycle.
 from rent_pod_lifecycle import install_core_hooks  # noqa: E402
 
 install_core_hooks()
+ssh_phases.install_core_hook(ssh_exposure_timeout)
 
 import rent_pod_frontend as frontend  # noqa: E402
 
