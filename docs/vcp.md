@@ -47,6 +47,27 @@ Or per shell with `VCP_HF_REPO`.
 
 `HF_TOKEN` must be available on the local/controller machine. `bin/vcp.py` supplies that same credential ephemerally to the remote Hugging Face operation through the encrypted SSH stdin stream, after the pod runtime environment and `helpers_shell.sh` have been loaded. The token is not placed in SSH argv, written to `~/.config/vcp/config.json`, or persisted to a file on the pod.
 
+## `rent-pod` integration
+
+A successful `rent-pod` direct-SSH admission always prints the exact VCP configuration command for the endpoint that actually passed authenticated SSH, for example:
+
+```text
+[rent-pod] VCP remote:
+           vcp config ssh -i /home/user/.ssh/id_ed25519_runpod -p 13479 root@64.247.206.216
+```
+
+This uses the proven live endpoint rather than assuming a later REST port mapping is authoritative. It is only printed after authenticated direct SSH works.
+
+To configure VCP automatically after the pod also passes normal provision and HF/PyPI network qualification, add `--vcp` to the rental command:
+
+```bash
+rent-pod l40s --vcp
+```
+
+On success the local controller runs the equivalent of `vcp config ssh ...` and updates the normal VCP config file. The automatic mutation is deliberately deferred until provision succeeds, so a pod that is subsequently rejected and deleted never replaces the existing VCP target. A VCP configuration failure is reported as a warning and does not reject or delete an otherwise accepted paid pod.
+
+`--vcp` only configures the SSH target. It does not copy or persist a Hugging Face token: VCP continues to use the local controller's `HF_TOKEN` ephemerally when an actual transfer runs.
+
 ## Copy from pod to local
 
 ```bash
