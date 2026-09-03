@@ -127,15 +127,15 @@ def _named_config(argv: list[str]) -> int | None:
 def _call_vcp(argv: list[str], selected: str | None) -> int:
     cfg = vcp_targets.read_config()
     # Config mutations keep using vcp.py's legacy implementation unless this
-    # entrypoint handled them above. For transfers/show, expose the selected
-    # target as the top-level `ssh` field expected by the existing engine.
-    needs_remote = not argv or argv[0] not in {"config"}
+    # entrypoint handled them above. Transfers expose the selected target as the
+    # top-level `ssh` field expected by the existing engine.
+    needs_remote = bool(argv) and argv[0] not in {"config", "-h", "--help", "help"}
     original_read = vcp._read_config
     if needs_remote:
         effective, _used = vcp_targets.effective_config(cfg, selected)
         vcp._read_config = lambda: dict(effective)
     elif selected is not None:
-        raise vcp_targets.VcpTargetError("--target is not valid with legacy vcp config commands")
+        raise vcp_targets.VcpTargetError("--target requires a transfer command")
     try:
         result = vcp.main(argv)
         return int(result or 0)
