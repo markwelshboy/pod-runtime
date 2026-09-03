@@ -1,9 +1,11 @@
 import importlib.util
+import io
 import json
 import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -107,11 +109,13 @@ class VcpEntryTests(unittest.TestCase):
     def test_help_does_not_require_target_configuration(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "missing.json"
+            out = io.StringIO()
             with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}), \
-                 mock.patch.object(vcp_entry.vcp, "main", return_value=0) as main:
+                 redirect_stdout(out):
                 rc = vcp_entry.main(["--help"])
         self.assertEqual(rc, 0)
-        main.assert_called_once_with(["--help"])
+        self.assertIn("vcp targets", out.getvalue())
+        self.assertIn("vcp --target NAME", out.getvalue())
 
 
 if __name__ == "__main__":
