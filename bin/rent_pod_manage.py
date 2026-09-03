@@ -111,15 +111,22 @@ def _first(*values: Any) -> Any:
     return None
 
 
-def pod_row(pod: dict[str, Any]) -> dict[str, str]:
+def pod_row(
+    pod: dict[str, Any],
+    gql_pod: dict[str, Any] | None = None,
+) -> dict[str, str]:
     identity = core.pod_identity(pod)
     machine = pod.get("machine") or {}
     runtime = pod.get("runtime") or {}
     mappings = pod.get("portMappings") or {}
 
-    ssh_port = identity.get("ssh_port")
-    if ssh_port is None:
-        ssh_port = mappings.get("22") or mappings.get(22)
+    # The live GraphQL runtime ports are the authoritative connection surface
+    # used by RunPod's own CLI. REST portMappings may lag/churn during startup.
+    snapshot = lifecycle.build_snapshot(pod, gql_pod) if gql_pod else None
+    public_ip = snapshot.get("public_ip") if snapshot else None
+    ssh_port = snapshot.get("ssh_port") if snapshot else None
+    public_ip = _first(public_ip, identity.get("public_ip"), pod.get("publicIp"))
+    ssh_port = _first(ssh_port, identity.get("ssh_port"), mappings.get("22"), mappings.get(22))
 
     gpu = _first(
         identity.get("gpu"),
@@ -134,17 +141,20 @@ def pod_row(pod: dict[str, Any]) -> dict[str, str]:
     cost = _first(identity.get("cost_per_hr"), pod.get("costPerHr"))
     cost_text = f"${float(cost):.3f}" if cost is not None else "-"
 
-    public_ip = _first(identity.get("public_ip"), pod.get("publicIp"))
     endpoint = "-"
     if public_ip and ssh_port:
         endpoint = f"{public_ip}:{ssh_port}"
     elif public_ip:
         endpoint = str(public_ip)
 
+    status = str(pod.get("desiredStatus") or pod.get("status") or "-")
+    if snapshot:
+        status = str(snapshot.get("stage") or status)
+
     return {
         "id": str(pod.get("id") or "-"),
         "name": str(pod.get("name") or "-"),
-        "status": str(pod.get("desiredStatus") or pod.get("status") or "-"),
+        "status": status,
         "gpu": str(gpu or "-"),
         "cost": cost_text,
         "dc": str(identity.get("data_center_id") or machine.get("dataCenterId") or "-"),
@@ -158,11 +168,28 @@ def show_pods(api_key: str) -> int:
         print("[rent-pod] No pods found.")
         return 0
 
-    rows = [pod_row(enriched_pod(api_key, pod)) for pod in pods]
+    # One account-wide GraphQL request gives us the same live runtime/SSH view
+    # used by --status/--watch. If it fails, degrade to REST-only listing.
+    gql_by_id: dict[str, dict[str, Any]] = {}
+    try:
+        gql_by_id = {
+            str(pod.get("id") or ""): pod
+            for pod in lifecycle.graphql_pods(api_key)
+            if pod.get("id")
+        }
+    except core.RunPodError as exc:
+        print(f"[rent-pod] WARNING: live runtime probe unavailable: {exc}", file=sys.stderr)
+
+    rows: list[dict[str, str]] = []
+    for pod in pods:
+        detailed = enriched_pod(api_key, pod)
+        pod_id = str(detailed.get("id") or pod.get("id") or "")
+        rows.append(pod_row(detailed, gql_by_id.get(pod_id)))
+
     print(f"[rent-pod] Your RunPod pods: {len(rows)}")
     print()
     print(
-        f"{'ID':<18} {'NAME':<28} {'STATUS':<10} {'GPU':<28} "
+        f"{'ID':<18} {'NAME':<28} {'STAGE':<10} {'GPU':<28} "
         f"{'$/hr':>8} {'DATACENTER':<16} SSH"
     )
     print("-" * 126)
