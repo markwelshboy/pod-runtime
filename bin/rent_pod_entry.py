@@ -71,6 +71,7 @@ try:
         effective_argv, os.environ
     )
     effective_argv, vcp_enabled = vcp_handoff.consume_vcp_args(effective_argv)
+    rent_name = vcp_handoff.requested_name(effective_argv)
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -102,7 +103,7 @@ from rent_pod_lifecycle import install_core_hooks  # noqa: E402
 
 install_core_hooks()
 ssh_phases.install_core_hook(ssh_exposure_timeout)
-vcp_handoff.install_core_hooks(vcp_enabled)
+vcp_handoff.install_core_hooks(vcp_enabled, rent_name)
 
 import rent_pod_frontend as frontend  # noqa: E402
 
@@ -110,7 +111,8 @@ install_frontend_hooks(frontend, template_context)
 if "--dry-run" not in effective_argv:
     print_selected_profile(template_context)
 if vcp_enabled:
-    print("[rent-pod] VCP auto-config:       enabled after successful provision")
+    suffix = f" as target {rent_name}" if rent_name else " as a named target"
+    print(f"[rent-pod] VCP auto-config:       enabled after successful provision{suffix}")
 
 
 if __name__ == "__main__":
