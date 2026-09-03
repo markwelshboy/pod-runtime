@@ -14,6 +14,20 @@ def _die(message: str, code: int = 1) -> int:
     return code
 
 
+def _usage() -> str:
+    base = vcp._usage().rstrip()
+    return (
+        base
+        + "\n\nNamed targets:\n"
+        + "  vcp targets\n"
+        + "  vcp target [NAME]\n"
+        + "  vcp config NAME ssh [ssh options] user@host\n"
+        + "  vcp config NAME show\n"
+        + "  vcp config NAME remove\n"
+        + "  vcp --target NAME <source...> <destination>\n"
+    )
+
+
 def _extract_target(argv: list[str]) -> tuple[list[str], str | None]:
     forwarded: list[str] = []
     selected: str | None = None
@@ -146,11 +160,14 @@ def _call_vcp(argv: list[str], selected: str | None) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     try:
-        if args and args[0] in {"targets", "list-targets"}:
+        if not args or args[0] in {"-h", "--help", "help"}:
+            print(_usage())
+            return 0
+        if args[0] in {"targets", "list-targets"}:
             if len(args) != 1:
                 raise vcp_targets.VcpTargetError("usage: vcp targets")
             return _show_targets()
-        if args and args[0] == "target":
+        if args[0] == "target":
             return _target_command(args)
 
         named = _named_config(args)
