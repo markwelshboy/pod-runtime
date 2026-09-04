@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
+import re
 import shlex
+import subprocess
 import sys
 from typing import Sequence
 
+import rent_pod as rent_pod_core
 import vcp
 import vcp_targets
+
+
+RUNPOD_ID_MARKER = "__VCP_RUNPOD_POD_ID__="
 
 
 def _die(message: str, code: int = 1) -> int:
@@ -22,7 +29,7 @@ def _usage() -> str:
         + "  vcp targets\n"
         + "  vcp target [NAME]\n"
         + "  vcp target remove NAME\n"
-        + "  vcp config ssh [ssh options] user@host   # updates active target, else legacy/default\n"
+        + "  vcp config ssh [ssh options] user@host   # auto-discovers RunPod target when possible\n"
         + "  vcp config NAME ssh [ssh options] user@host\n"
         + "  vcp config NAME show\n"
         + "  vcp config NAME remove\n"
@@ -136,13 +143,91 @@ def _ssh_config_args(argv: list[str], start: int, usage: str) -> list[str]:
     return ssh_args
 
 
-def _default_ssh_config(argv: list[str]) -> int | None:
-    """Handle legacy-looking `vcp config ssh ...` with target-aware semantics.
+def _discover_runpod_pod_id(ssh_args: list[str]) -> str | None:
+    """Probe a reachable SSH target for RunPod's injected POD identifier."""
+    try:
+        options, destination = vcp_targets.split_ssh_args(ssh_args)
+    except vcp_targets.VcpTargetError:
+        return None
 
-    Once named targets exist, a no-name SSH update should affect what the next
-    transfer will actually use. Therefore it updates active_target when one is
-    selected. Only configs with no active named target write the legacy/default
-    top-level SSH fallback.
+    script = f"""
+source_if_exists() {{
+  if [[ -f \"$1\" ]]; then
+    source \"$1\" >/dev/null 2>&1 || true
+  fi
+}}
+source_if_exists /etc/rp_environment
+source_if_exists /root/.secrets/env.current
+printf '{RUNPOD_ID_MARKER}%s\\n' \"${{RUNPOD_POD_ID:-}}\"
+"""
+    cmd = [
+        "ssh",
+        *options,
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=5",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        destination,
+        "bash",
+        "-s",
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            input=script,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    for line in (result.stdout or "").splitlines():
+        if line.startswith(RUNPOD_ID_MARKER):
+            pod_id = line[len(RUNPOD_ID_MARKER) :].strip()
+            return pod_id or None
+    return None
+
+
+def _runpod_name_for_id(pod_id: str) -> str | None:
+    api_key = os.environ.get("RUNPOD_API_KEY")
+    if not api_key:
+        return None
+    try:
+        pod = rent_pod_core.get_pod(api_key, pod_id)
+    except rent_pod_core.RunPodError:
+        return None
+    name = str(pod.get("name") or "").strip()
+    return name or None
+
+
+def _safe_discovered_target_name(label: str | None, pod_id: str) -> str:
+    candidate = str(label or pod_id).strip()
+    try:
+        return vcp_targets.validate_target_name(candidate)
+    except vcp_targets.VcpTargetError:
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "-", candidate).strip("-._")
+        if slug:
+            try:
+                return vcp_targets.validate_target_name(slug)
+            except vcp_targets.VcpTargetError:
+                pass
+        return vcp_targets.validate_target_name(pod_id)
+
+
+def _default_ssh_config(argv: list[str]) -> int | None:
+    """Handle bare `vcp config ssh ...` by discovering a named RunPod target.
+
+    A pasted SSH command should not accidentally overwrite whatever target was
+    active previously. If the remote exposes RUNPOD_POD_ID, resolve its friendly
+    name through the local RunPod API when available and store a proper named
+    target with pod metadata. Non-RunPod/undiscoverable remotes retain the
+    historical legacy/default SSH behavior.
     """
     if len(argv) < 2 or argv[:2] != ["config", "ssh"]:
         return None
@@ -151,17 +236,39 @@ def _default_ssh_config(argv: list[str]) -> int | None:
         2,
         "usage: vcp config ssh [ssh options] user@host",
     )
-    cfg = vcp_targets.read_config()
-    active = vcp_targets.active_target_name(cfg)
-    if active:
-        entry = vcp_targets.save_target(active, ssh_args)
-        print(
-            f"[vcp] Updated active target {active}: "
-            f"{shlex.join(entry.get('ssh') or [])}"
+    normalized = vcp_targets.normalize_ssh_args(ssh_args)
+    pod_id = _discover_runpod_pod_id(normalized)
+    if pod_id:
+        runpod_name = _runpod_name_for_id(pod_id)
+        target = _safe_discovered_target_name(runpod_name, pod_id)
+        metadata = {"runpod_name": runpod_name} if runpod_name else None
+        entry = vcp_targets.save_target(
+            target,
+            normalized,
+            pod_id=pod_id,
+            provider="runpod",
+            description="RunPod pod (discovered via SSH)",
+            metadata=metadata,
+            make_active=True,
         )
-    else:
-        normalized = vcp_targets.save_legacy_ssh(ssh_args)
-        print(f"[vcp] Saved legacy/default SSH remote: {shlex.join(normalized)}")
+        legacy_cleared = vcp_targets.clear_matching_legacy_ssh(entry.get("ssh"))
+        if runpod_name:
+            print(f"[vcp] Discovered RunPod target {target} (pod {pod_id}).")
+        else:
+            print(
+                f"[vcp] Discovered RunPod pod {pod_id}; friendly name unavailable, "
+                f"using pod ID as target name."
+            )
+        print(f"[vcp] Saved and activated target {target}: {shlex.join(entry.get('ssh') or [])}")
+        if legacy_cleared:
+            print("[vcp] Removed duplicate legacy/default SSH mapping.")
+        return 0
+
+    normalized = vcp_targets.save_legacy_ssh(normalized)
+    print(
+        "[vcp] Could not identify the remote as a RunPod Pod; "
+        f"saved legacy/default SSH remote: {shlex.join(normalized)}"
+    )
     return 0
 
 
