@@ -1,19 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-needs_hf=true
-for arg in "$@"; do
-    case "$arg" in
-        -h|--help|help|--dry-run|--no-provision|--list|--list=*|--list-templates|--balance|--show|--status|--status=*|--watch|--watch=*|--kill|--kill=*|--kill-all)
-            needs_hf=false
-            ;;
-    esac
-done
-
-if [[ "$needs_hf" == true && -z "${HF_TOKEN:-}" ]]; then
-    echo "ERROR: HF_TOKEN is not set; refusing to rent a paid pod that provision cannot configure." >&2
-    exit 2
-fi
+# HF credential preflight is performed by rent_pod_entry.py after the selected
+# template has been resolved.  That lets a local template satisfy provisioning
+# with an account-side RunPod secret (for example [secrets] HF_TOKEN = "hf")
+# without requiring a duplicate HF_TOKEN value in the caller's shell.
 
 # Resolve through /usr/local/bin/rent-pod (or any other symlink) so the
 # companion Python entrypoint is always located relative to the real repo.
