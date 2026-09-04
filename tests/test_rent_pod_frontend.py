@@ -1,7 +1,10 @@
 import importlib.util
+import io
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 BIN = Path(__file__).resolve().parents[1] / "bin"
 if str(BIN) not in sys.path:
@@ -54,6 +57,34 @@ class RentPodFrontendTests(unittest.TestCase):
                 "NVIDIA L40S",
             ],
         )
+
+    def test_list_table_omits_route_floor(self):
+        response = {
+            "gpuTypes": [
+                {
+                    "id": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                    "displayName": "RTX PRO 6000",
+                    "memoryInGb": 96,
+                    "secureCloud": True,
+                    "communityCloud": False,
+                    "securePrice": 2.09,
+                    "communityPrice": None,
+                    "lowestPrice": {
+                        "stockStatus": "High",
+                        "uninterruptablePrice": 2.09,
+                        "availableGpuCounts": [],
+                    },
+                }
+            ]
+        }
+        out = io.StringIO()
+        with mock.patch.object(frontend, "graphql_request", return_value=response), redirect_stdout(out):
+            rc = frontend.list_gpus("token", None, "SECURE", "13.0", 500, 100)
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn("RTX PRO 6000", text)
+        self.assertNotIn("Route floor", text)
+        self.assertNotIn("None↓", text)
 
     def test_community_conflicts_with_explicit_secure(self):
         with self.assertRaises(ValueError):
