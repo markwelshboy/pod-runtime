@@ -35,6 +35,42 @@ class VcpTargetsTests(unittest.TestCase):
         self.assertEqual(cfg["targets"]["comfydev3900"]["pod_id"], "pod123")
         self.assertEqual(cfg["targets"]["comfydev3900"]["provider"], "runpod")
 
+    def test_host_first_ssh_is_normalized_and_displayed_correctly(self):
+        host_first = ["root@64.247.206.212", "-p", "14463", "-i", "/key"]
+        self.assertEqual(
+            vcp_targets.normalize_ssh_args(host_first),
+            ["-p", "14463", "-i", "/key", "root@64.247.206.212"],
+        )
+        self.assertEqual(
+            vcp_targets.endpoint_from_ssh(host_first),
+            "root@64.247.206.212:14463",
+        )
+
+        cfg = {
+            "active_target": "qwen3-captioning",
+            "targets": {"qwen3-captioning": {"ssh": host_first}},
+        }
+        ssh, selected = vcp_targets.resolve_ssh(cfg)
+        self.assertEqual(selected, "qwen3-captioning")
+        self.assertEqual(
+            ssh,
+            ["-p", "14463", "-i", "/key", "root@64.247.206.212"],
+        )
+
+    def test_save_target_persists_canonical_ssh_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"VCP_CONFIG": str(Path(tmp) / "config.json")}
+            vcp_targets.save_target(
+                "qwen",
+                ["root@host", "-p", "1234", "-i", "/key"],
+                environ=env,
+            )
+            cfg = vcp_targets.read_config(env)
+        self.assertEqual(
+            cfg["targets"]["qwen"]["ssh"],
+            ["-p", "1234", "-i", "/key", "root@host"],
+        )
+
     def test_explicit_target_overrides_active_target(self):
         cfg = {
             "active_target": "one",
@@ -73,6 +109,44 @@ class VcpTargetsTests(unittest.TestCase):
             env = {"VCP_CONFIG": str(Path(tmp) / "config.json")}
             with self.assertRaises(vcp_targets.VcpTargetError):
                 vcp_targets.set_active_target("missing", environ=env)
+
+    def test_remove_matching_targets_by_pod_and_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "active_target": "auto",
+                        "ssh": ["-p", "2222", "root@10.0.0.2"],
+                        "targets": {
+                            "auto": {
+                                "pod_id": "pod123",
+                                "provider": "runpod",
+                                "ssh": ["-p", "1111", "root@10.0.0.1"],
+                            },
+                            "manual": {
+                                "ssh": ["root@10.0.0.2", "-p", "2222", "-i", "/key"]
+                            },
+                            "keep": {"ssh": ["-p", "3333", "root@10.0.0.3"]},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            env = {"VCP_CONFIG": str(config)}
+            result = vcp_targets.remove_matching_targets(
+                pod_id="pod123",
+                endpoints={("10.0.0.2", 2222)},
+                environ=env,
+            )
+            cfg = vcp_targets.read_config(env)
+
+        self.assertEqual(result["targets"], ["auto", "manual"])
+        self.assertTrue(result["legacy"])
+        self.assertNotIn("active_target", cfg)
+        self.assertNotIn("ssh", cfg)
+        self.assertEqual(set(cfg["targets"]), {"keep"})
 
     def test_target_name_validation(self):
         self.assertEqual(vcp_targets.validate_target_name("rtx6000-comfy_1"), "rtx6000-comfy_1")
