@@ -16,6 +16,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - local CLI targets py3.1
     raise RuntimeError("rent-pod GPU aliases require Python 3.11+ (tomllib)") from exc
 
 import rent_pod as core
+from rent_pod_config import config_root
 
 GRAPHQL_URL = os.environ.get("RUNPOD_GRAPHQL_URL", "https://api.runpod.io/graphql")
 ALIAS_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -42,13 +43,7 @@ def config_path(environ: Mapping[str, str] | None = None) -> Path:
     explicit = (env.get("RENT_POD_GPU_ALIASES_FILE") or "").strip()
     if explicit:
         return Path(explicit).expanduser()
-    xdg = (env.get("XDG_CONFIG_HOME") or "").strip()
-    if xdg:
-        base = Path(xdg).expanduser()
-    else:
-        home = (env.get("HOME") or "").strip()
-        base = (Path(home) / ".config") if home else Path("~/.config").expanduser()
-    return base / "rent-pod" / "gpu-aliases.toml"
+    return config_root(env) / "gpu-aliases.toml"
 
 
 def load_aliases(
