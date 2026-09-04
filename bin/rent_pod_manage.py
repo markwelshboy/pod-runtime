@@ -7,6 +7,7 @@ from typing import Any
 
 import rent_pod as core
 import rent_pod_lifecycle as lifecycle
+import vcp_targets
 
 
 def parse_management_args(argv: list[str]) -> dict[str, Any] | None:
@@ -217,18 +218,60 @@ def watch_pod(api_key: str, pod_id: str) -> int:
     return lifecycle.watch_pod(api_key, pod_id.strip(), management_ssh_key())
 
 
+def pod_vcp_endpoints(pod: dict[str, Any]) -> set[tuple[str, int | None]]:
+    """Return SSH host/port pairs visible in a REST Pod response."""
+    result: set[tuple[str, int | None]] = set()
+    identity = core.pod_identity(pod)
+    mappings = pod.get("portMappings") or {}
+    candidates = [
+        (identity.get("public_ip"), identity.get("ssh_port")),
+        (pod.get("publicIp"), mappings.get("22")),
+        (pod.get("publicIp"), mappings.get(22)),
+    ]
+    for host, port in candidates:
+        if not host or port in {None, ""}:
+            continue
+        try:
+            result.add((str(host), int(port)))
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
+def _reap_vcp_for_deleted_pod(pod_id: str, pod: dict[str, Any]) -> None:
+    """Best-effort local VCP cleanup after RunPod confirms deletion."""
+    try:
+        cleanup = vcp_targets.remove_matching_targets(
+            pod_id=pod_id,
+            endpoints=pod_vcp_endpoints(pod),
+        )
+    except Exception as exc:
+        # A local convenience registry must never turn a successful paid-resource
+        # deletion into a failed management command.
+        print(f"[rent-pod] WARNING: VCP cleanup failed: {exc}", file=sys.stderr)
+        return
+
+    removed = cleanup.get("targets") or []
+    if removed:
+        print(f"[rent-pod] Reaped VCP target(s): {', '.join(removed)}")
+    if cleanup.get("legacy"):
+        print("[rent-pod] Cleared matching legacy/default VCP SSH mapping.")
+
+
 def kill_pod(api_key: str, pod_id: str) -> int:
     pod_id = pod_id.strip()
     if not pod_id:
         print("ERROR: --kill requires a pod ID", file=sys.stderr)
         return 2
 
-    # Read first so a typo does not produce a misleading success message.
+    # Read first so a typo does not produce a misleading success message and so
+    # manually-created VCP entries can be matched by their last known endpoint.
     pod = core.get_pod(api_key, pod_id)
     name = str(pod.get("name") or "")
     core.delete_pod(api_key, pod_id)
     suffix = f" ({name})" if name else ""
     print(f"[rent-pod] Deleted pod {pod_id}{suffix}.")
+    _reap_vcp_for_deleted_pod(pod_id, pod)
     return 0
 
 
@@ -269,6 +312,7 @@ def kill_all(api_key: str, assume_yes: bool = False) -> int:
             deleted += 1
             suffix = f" ({name})" if name else ""
             print(f"[rent-pod] Deleted {pod_id}{suffix}")
+            _reap_vcp_for_deleted_pod(pod_id, pod)
         except core.RunPodError as exc:
             failures.append((pod_id, str(exc)))
             print(f"[rent-pod] ERROR deleting {pod_id}: {exc}", file=sys.stderr)
