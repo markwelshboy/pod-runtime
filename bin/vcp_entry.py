@@ -6,9 +6,10 @@ import re
 import shlex
 import subprocess
 import sys
-from typing import Sequence
+from typing import Any, Sequence
 
 import rent_pod as rent_pod_core
+import rent_pod_lifecycle
 import vcp
 import vcp_targets
 
@@ -143,8 +144,80 @@ def _ssh_config_args(argv: list[str], start: int, usage: str) -> list[str]:
     return ssh_args
 
 
+def _discover_runpod_from_api(ssh_args: list[str]) -> dict[str, str] | None:
+    """Match an SSH endpoint to one of the caller's live RunPod Pods.
+
+    Direct REST-created Pods do not reliably receive RunPod's documented
+    RUNPOD_* environment variables. The local controller already has a stronger
+    source of truth: the RunPod account API plus the same live GraphQL runtime
+    port mapping used by rent-pod itself. Match public IP + SSH port exactly.
+    """
+    api_key = os.environ.get("RUNPOD_API_KEY")
+    endpoint = vcp_targets.ssh_endpoint_key(ssh_args)
+    if not api_key or endpoint is None or endpoint[1] is None:
+        return None
+    wanted_host, wanted_port = endpoint
+
+    try:
+        pods = rent_pod_core.api_request(api_key, "GET", "/pods")
+    except rent_pod_core.RunPodError:
+        return None
+    if not isinstance(pods, list):
+        return None
+    rest_pods = [pod for pod in pods if isinstance(pod, dict) and pod.get("id")]
+
+    gql_by_id: dict[str, dict[str, Any]] = {}
+    try:
+        gql_by_id = {
+            str(pod.get("id")): pod
+            for pod in rent_pod_lifecycle.graphql_pods(api_key)
+            if isinstance(pod, dict) and pod.get("id")
+        }
+    except rent_pod_core.RunPodError:
+        pass
+
+    def match(rest_pod: dict[str, Any]) -> dict[str, str] | None:
+        pod_id = str(rest_pod.get("id") or "").strip()
+        if not pod_id:
+            return None
+        snapshot = rent_pod_lifecycle.build_snapshot(
+            rest_pod,
+            gql_by_id.get(pod_id),
+        )
+        host = str(snapshot.get("public_ip") or "").strip().casefold()
+        port = snapshot.get("ssh_port")
+        try:
+            port_int = int(port) if port is not None else None
+        except (TypeError, ValueError):
+            port_int = None
+        if host != wanted_host or port_int != wanted_port:
+            return None
+        name = str(rest_pod.get("name") or "").strip()
+        return {"pod_id": pod_id, "name": name}
+
+    matches = [found for pod in rest_pods if (found := match(pod)) is not None]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        return None
+
+    # REST list metadata can lag or omit connection details. If the account-wide
+    # live snapshot did not find a unique match, enrich each Pod once and retry.
+    enriched_matches: list[dict[str, str]] = []
+    for pod in rest_pods:
+        pod_id = str(pod.get("id") or "").strip()
+        try:
+            detailed = rent_pod_core.get_pod(api_key, pod_id)
+        except rent_pod_core.RunPodError:
+            continue
+        found = match(detailed)
+        if found is not None:
+            enriched_matches.append(found)
+    return enriched_matches[0] if len(enriched_matches) == 1 else None
+
+
 def _discover_runpod_pod_id(ssh_args: list[str]) -> str | None:
-    """Probe a reachable SSH target for RunPod's injected POD identifier."""
+    """Fallback: probe a reachable SSH target for RunPod's injected Pod ID."""
     try:
         options, destination = vcp_targets.split_ssh_args(ssh_args)
     except vcp_targets.VcpTargetError:
@@ -223,11 +296,10 @@ def _safe_discovered_target_name(label: str | None, pod_id: str) -> str:
 def _default_ssh_config(argv: list[str]) -> int | None:
     """Handle bare `vcp config ssh ...` by discovering a named RunPod target.
 
-    A pasted SSH command should not accidentally overwrite whatever target was
-    active previously. If the remote exposes RUNPOD_POD_ID, resolve its friendly
-    name through the local RunPod API when available and store a proper named
-    target with pod metadata. Non-RunPod/undiscoverable remotes retain the
-    historical legacy/default SSH behavior.
+    Discovery order:
+      1. Match the supplied public SSH endpoint against the caller's RunPod API.
+      2. Fall back to RUNPOD_POD_ID discovered over SSH for GUI/template Pods.
+      3. Preserve legacy/default behavior for a genuinely unidentified remote.
     """
     if len(argv) < 2 or argv[:2] != ["config", "ssh"]:
         return None
@@ -237,26 +309,46 @@ def _default_ssh_config(argv: list[str]) -> int | None:
         "usage: vcp config ssh [ssh options] user@host",
     )
     normalized = vcp_targets.normalize_ssh_args(ssh_args)
-    pod_id = _discover_runpod_pod_id(normalized)
+
+    api_match = _discover_runpod_from_api(normalized)
+    discovery = "api"
+    if api_match is not None:
+        pod_id = api_match["pod_id"]
+        runpod_name = api_match.get("name") or None
+    else:
+        discovery = "ssh"
+        pod_id = _discover_runpod_pod_id(normalized)
+        runpod_name = _runpod_name_for_id(pod_id) if pod_id else None
+
     if pod_id:
-        runpod_name = _runpod_name_for_id(pod_id)
         target = _safe_discovered_target_name(runpod_name, pod_id)
         metadata = {"runpod_name": runpod_name} if runpod_name else None
+        description = (
+            "RunPod pod (matched from SSH endpoint)"
+            if discovery == "api"
+            else "RunPod pod (discovered via SSH)"
+        )
         entry = vcp_targets.save_target(
             target,
             normalized,
             pod_id=pod_id,
             provider="runpod",
-            description="RunPod pod (discovered via SSH)",
+            description=description,
             metadata=metadata,
             make_active=True,
         )
         legacy_cleared = vcp_targets.clear_matching_legacy_ssh(entry.get("ssh"))
         if runpod_name:
-            print(f"[vcp] Discovered RunPod target {target} (pod {pod_id}).")
+            if discovery == "api":
+                print(
+                    f"[vcp] Matched RunPod target {target} (pod {pod_id}) "
+                    "from SSH endpoint."
+                )
+            else:
+                print(f"[vcp] Discovered RunPod target {target} (pod {pod_id}) via SSH.")
         else:
             print(
-                f"[vcp] Discovered RunPod pod {pod_id}; friendly name unavailable, "
+                f"[vcp] Identified RunPod pod {pod_id}; friendly name unavailable, "
                 f"using pod ID as target name."
             )
         print(f"[vcp] Saved and activated target {target}: {shlex.join(entry.get('ssh') or [])}")
