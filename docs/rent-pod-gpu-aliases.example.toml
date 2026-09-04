@@ -1,5 +1,4 @@
-# Copy to ~/.config/rentpod/gpu-aliases.toml and edit to taste.
-# Existing ~/.config/rent-pod remains a compatibility fallback.
+# Copy to ~/.config/rent-pod/gpu-aliases.toml and edit to taste.
 # Alias targets can be exact display names printed by `rent-pod --list`
 # or exact RunPod GPU IDs.
 
