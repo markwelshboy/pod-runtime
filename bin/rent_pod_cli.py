@@ -51,7 +51,7 @@ Usage:
 
 GPU may be a built-in alias such as 4090, 5090, l40s, l40, 5080, or 3090;
 an exact display name shown by `rent-pod --list` (quote names containing spaces);
-a custom alias from ~/.config/rent-pod/gpu-aliases.toml; or an exact RunPod GPU
+a custom alias from ~/.config/rentpod/gpu-aliases.toml; or an exact RunPod GPU
 ID. The default GPU is 4090 and the default cloud is SECURE.
 
 Examples:
@@ -71,12 +71,32 @@ Selection floors:
   --cloud SECURE|COMMUNITY Explicit cloud pool (default: SECURE).
 
 Template / Pod configuration:
-  --template NAME|ID       Friendly profile from ~/.config/rent-pod/templates.toml
-                           or a raw RunPod template ID.
+  --template NAME|ID       Friendly remote/local profile, or raw RunPod template ID.
+                           Registry/defaults: ~/.config/rentpod/templates.toml
+                           Local profiles:    ~/.config/rentpod/templates/*.toml
   --name NAME              Name assigned to the rented Pod.
-  --env KEY=VALUE          Per-run template environment override. Repeatable;
-                           a quoted ';'-separated list is also accepted.
-  --list-templates         Show local friendly template profiles and descriptions.
+  --env KEY=VALUE          Per-run environment override. Repeatable; a quoted
+                           ';'-separated list is also accepted. CLI values win.
+  --list-templates         Show remote and local template profiles and their type.
+
+Local template files use their filename as the profile name. Example:
+  ~/.config/rentpod/templates/qwen3-captioning.toml
+
+  image = "runpod/pytorch:latest"
+  container_disk_gb = 40
+  volume_gb = 100
+  volume_mount_path = "/workspace"
+  ports = ["22/tcp", "8000/http"]
+  docker_start_cmd = ["sleep", "infinity"]
+
+  [env]
+  PROJECT = "qwen3"
+
+  [secrets]
+  HF_TOKEN = "huggingface_token"
+
+[secrets] values are RunPod account secret names, not secret values. rent-pod
+passes them as {{ RUNPOD_SECRET_name }} references for substitution by RunPod.
 
 Rental / admission:
   --attempts N             Number of paid candidates to try (default: 1).
@@ -97,14 +117,14 @@ Inventory / account / management:
   --balance                Show account balance, current $/hr spend, spend limit,
                            and estimated runway at the current burn rate.
   --show                   List Pods on the account.
-  --status POD_ID          Show one lifecycle snapshot.
+  --status POD_ID          Show one lifecycle snapshot, including copyable SSH command.
   --watch POD_ID           Watch lifecycle until SSH is ready; never deletes.
   --kill POD_ID            Permanently delete one Pod.
   --kill-all               Permanently delete all Pods; interactive by default.
   --yes, -y, --force       Confirm --kill-all non-interactively.
 
 GPU aliases:
-  ~/.config/rent-pod/gpu-aliases.toml
+  ~/.config/rentpod/gpu-aliases.toml
 
   [aliases]
   pro6000 = "RTX PRO 6000"
@@ -113,6 +133,11 @@ GPU aliases:
 
 Alias targets may be display names from --list or exact RunPod GPU IDs. Set
 RENT_POD_GPU_ALIASES_FILE to use a different alias file.
+
+Config root:
+  ~/.config/rentpod is canonical. Existing ~/.config/rent-pod is automatically
+  used as a compatibility fallback until the canonical directory exists.
+  RENT_POD_CONFIG_DIR overrides the root explicitly.
 
 Persistent defaults use RENT_POD_* environment variables. In particular,
 RENT_POD_CUDA_MIN supplies the default for --min-cuda. Command-line values win.
