@@ -49,8 +49,16 @@ Usage:
   rent-pod --kill POD_ID
   rent-pod --kill-all [--yes|-y|--force]
 
-GPU may be an alias such as 4090, 5090, l40s, l40, 5080, or 3090, or an
-exact RunPod GPU type. The default GPU is 4090 and the default cloud is SECURE.
+GPU may be a built-in alias such as 4090, 5090, l40s, l40, 5080, or 3090;
+an exact display name shown by `rent-pod --list` (quote names containing spaces);
+a custom alias from ~/.config/rent-pod/gpu-aliases.toml; or an exact RunPod GPU
+ID. The default GPU is 4090 and the default cloud is SECURE.
+
+Examples:
+  rent-pod 4090
+  rent-pod l40s
+  rent-pod "RTX PRO 6000"
+  rent-pod pro6000             # if defined in gpu-aliases.toml
 
 Selection floors:
   --min-cuda VERSION       Require CUDA VERSION or newer. For Pod creation this
@@ -94,6 +102,17 @@ Inventory / account / management:
   --kill POD_ID            Permanently delete one Pod.
   --kill-all               Permanently delete all Pods; interactive by default.
   --yes, -y, --force       Confirm --kill-all non-interactively.
+
+GPU aliases:
+  ~/.config/rent-pod/gpu-aliases.toml
+
+  [aliases]
+  pro6000 = "RTX PRO 6000"
+  a100 = "A100 PCIe"
+  h100 = "H100 SXM"
+
+Alias targets may be display names from --list or exact RunPod GPU IDs. Set
+RENT_POD_GPU_ALIASES_FILE to use a different alias file.
 
 Persistent defaults use RENT_POD_* environment variables. In particular,
 RENT_POD_CUDA_MIN supplies the default for --min-cuda. Command-line values win.
