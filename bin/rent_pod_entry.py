@@ -140,6 +140,19 @@ ssh_phases.install_core_hook(ssh_exposure_timeout)
 vcp_handoff.install_core_hooks(vcp_enabled, rent_name)
 
 import rent_pod_frontend as frontend  # noqa: E402
+from rent_pod_gpu_aliases import install_core_gpu_resolver  # noqa: E402
+
+# GPU names are intentionally separate from template profiles. Local aliases
+# live in ~/.config/rent-pod/gpu-aliases.toml. With an API key available, exact
+# display names shown by `rent-pod --list` are resolved live to RunPod GPU IDs.
+try:
+    install_core_gpu_resolver(
+        os.environ.get("RUNPOD_API_KEY", "").strip(),
+        os.environ,
+    )
+except ValueError as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    raise SystemExit(2)
 
 install_frontend_hooks(frontend, template_context)
 if "--dry-run" not in effective_argv:
