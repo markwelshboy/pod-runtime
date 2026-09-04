@@ -5,10 +5,37 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 
 TARGET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+# OpenSSH options that consume the following argv item when written as a
+# separate token. VCP stores only connection arguments plus one destination;
+# remote commands are supplied by the transfer engine itself.
+SSH_OPTIONS_WITH_VALUE = {
+    "-B",
+    "-b",
+    "-c",
+    "-D",
+    "-E",
+    "-e",
+    "-F",
+    "-I",
+    "-i",
+    "-J",
+    "-L",
+    "-l",
+    "-m",
+    "-O",
+    "-o",
+    "-p",
+    "-Q",
+    "-R",
+    "-S",
+    "-W",
+    "-w",
+}
 
 
 class VcpTargetError(RuntimeError):
@@ -83,11 +110,101 @@ def _valid_ssh(value: Any) -> bool:
     )
 
 
+def split_ssh_args(ssh_args: Any) -> tuple[list[str], str]:
+    """Return (connection options, destination) from stored SSH argv.
+
+    Historically VCP accepted arbitrary SSH argv and some configs therefore
+    have the destination first (``root@host -p 123 -i key``). OpenSSH requires
+    connection options before the destination when VCP later appends its remote
+    command, so parse either spelling and canonicalize to options + destination.
+    """
+    if not _valid_ssh(ssh_args):
+        raise VcpTargetError("SSH arguments must be a non-empty list of strings")
+
+    args = list(ssh_args)
+    options: list[str] = []
+    destination: str | None = None
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            if i + 1 >= len(args):
+                raise VcpTargetError("SSH '--' must be followed by a destination")
+            if destination is not None or i + 2 != len(args):
+                raise VcpTargetError("VCP SSH configuration must contain exactly one destination")
+            destination = args[i + 1]
+            i += 2
+            continue
+
+        if arg.startswith("-") and arg != "-":
+            options.append(arg)
+            if arg in SSH_OPTIONS_WITH_VALUE:
+                if i + 1 >= len(args):
+                    raise VcpTargetError(f"SSH option {arg} requires a value")
+                options.append(args[i + 1])
+                i += 2
+            else:
+                # Attached-value forms such as -p2222/-i/path and flag options
+                # are already self-contained. Unknown flags remain untouched.
+                i += 1
+            continue
+
+        if destination is not None:
+            raise VcpTargetError(
+                "VCP SSH configuration must contain one destination and no remote command"
+            )
+        destination = arg
+        i += 1
+
+    if not destination:
+        raise VcpTargetError("SSH configuration has no destination")
+    return options, destination
+
+
+def normalize_ssh_args(ssh_args: Any) -> list[str]:
+    options, destination = split_ssh_args(ssh_args)
+    return [*options, destination]
+
+
+def _ssh_port(options: list[str]) -> int | None:
+    port: str | None = None
+    i = 0
+    while i < len(options):
+        arg = options[i]
+        if arg == "-p" and i + 1 < len(options):
+            port = options[i + 1]
+            i += 2
+            continue
+        if arg.startswith("-p") and len(arg) > 2:
+            port = arg[2:]
+        i += 1
+    if port is None:
+        return None
+    try:
+        return int(port)
+    except (TypeError, ValueError):
+        return None
+
+
+def ssh_endpoint_key(ssh_args: Any) -> tuple[str, int | None] | None:
+    """Return a comparison key (host, port), ignoring SSH username."""
+    try:
+        options, destination = split_ssh_args(ssh_args)
+    except VcpTargetError:
+        return None
+    host = destination.rsplit("@", 1)[-1]
+    # Bracketed IPv6 literals are kept comparable without the presentation []
+    # when they arrive in the usual user@[addr] form.
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    return host.casefold(), _ssh_port(options)
+
+
 def resolve_ssh(
     cfg: dict[str, Any],
     target: str | None = None,
 ) -> tuple[list[str], str | None]:
-    """Resolve SSH argv and the named target used.
+    """Resolve canonical SSH argv and the named target used.
 
     Compatibility order when no explicit target is supplied:
       1. active_target from the multi-target registry
@@ -99,13 +216,13 @@ def resolve_ssh(
         ssh = entry.get("ssh")
         if not _valid_ssh(ssh):
             raise VcpTargetError(f"VCP target {selected!r} has no valid SSH configuration")
-        return list(ssh), selected
+        return normalize_ssh_args(ssh), selected
 
     legacy = cfg.get("ssh")
     if _valid_ssh(legacy):
-        return list(legacy), None
+        return normalize_ssh_args(legacy), None
     raise VcpTargetError(
-        "SSH remote is not configured; run 'vcp config NAME ssh ...' or legacy 'vcp config ssh ...'"
+        "SSH remote is not configured; run 'vcp config NAME ssh ...' or 'vcp config ssh ...'"
     )
 
 
@@ -128,8 +245,7 @@ def save_target(
     environ: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     name = validate_target_name(name)
-    if not _valid_ssh(ssh_args):
-        raise VcpTargetError("SSH arguments must be a non-empty list of strings")
+    normalized_ssh = normalize_ssh_args(ssh_args)
 
     cfg = read_config(environ)
     raw_targets = cfg.get("targets")
@@ -140,7 +256,7 @@ def save_target(
 
     old = raw_targets.get(name)
     entry: dict[str, Any] = dict(old) if isinstance(old, dict) else {}
-    entry["ssh"] = list(ssh_args)
+    entry["ssh"] = normalized_ssh
     if pod_id:
         entry["pod_id"] = str(pod_id)
     elif pod_id == "":
@@ -161,6 +277,17 @@ def save_target(
         cfg["active_target"] = name
     write_config(cfg, environ)
     return entry
+
+
+def save_legacy_ssh(
+    ssh_args: list[str],
+    environ: Mapping[str, str] | None = None,
+) -> list[str]:
+    normalized = normalize_ssh_args(ssh_args)
+    cfg = read_config(environ)
+    cfg["ssh"] = normalized
+    write_config(cfg, environ)
+    return normalized
 
 
 def set_active_target(
@@ -190,16 +317,64 @@ def remove_target(name: str, environ: Mapping[str, str] | None = None) -> None:
     write_config(cfg, environ)
 
 
+def remove_matching_targets(
+    *,
+    pod_id: str | None = None,
+    endpoints: Iterable[tuple[str, int | None]] = (),
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Remove VCP references to a deleted Pod.
+
+    Named targets match by saved RunPod pod_id first and by SSH host/port as a
+    fallback for manually-created targets. The legacy top-level SSH setting has
+    no pod metadata, so it is cleared only on an endpoint match.
+    """
+    cfg = read_config(environ)
+    wanted_pod = str(pod_id or "").strip()
+    wanted_endpoints = {
+        (str(host).casefold(), int(port) if port is not None else None)
+        for host, port in endpoints
+        if str(host).strip()
+    }
+    removed: list[str] = []
+    raw_targets = cfg.get("targets")
+    changed = False
+
+    if isinstance(raw_targets, dict):
+        for name, entry in list(raw_targets.items()):
+            if not isinstance(entry, dict):
+                continue
+            entry_pod = str(entry.get("pod_id") or "").strip()
+            endpoint = ssh_endpoint_key(entry.get("ssh"))
+            if (wanted_pod and entry_pod == wanted_pod) or (
+                wanted_endpoints and endpoint in wanted_endpoints
+            ):
+                del raw_targets[name]
+                removed.append(name)
+                changed = True
+                if cfg.get("active_target") == name:
+                    cfg.pop("active_target", None)
+
+    legacy_cleared = False
+    if wanted_endpoints and ssh_endpoint_key(cfg.get("ssh")) in wanted_endpoints:
+        cfg.pop("ssh", None)
+        legacy_cleared = True
+        changed = True
+
+    if changed:
+        write_config(cfg, environ)
+    return {"targets": removed, "legacy": legacy_cleared}
+
+
 def endpoint_from_ssh(ssh_args: Any) -> str:
     if not _valid_ssh(ssh_args):
         return "-"
-    args = list(ssh_args)
-    host = args[-1] if args else "-"
-    port = None
-    for i, arg in enumerate(args[:-1]):
-        if arg == "-p" and i + 1 < len(args):
-            port = args[i + 1]
-    return f"{host}:{port}" if port else host
+    try:
+        options, destination = split_ssh_args(ssh_args)
+    except VcpTargetError:
+        return "<invalid ssh>"
+    port = _ssh_port(options)
+    return f"{destination}:{port}" if port is not None else destination
 
 
 def rows(cfg: dict[str, Any]) -> list[dict[str, str]]:
