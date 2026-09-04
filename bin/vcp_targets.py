@@ -282,10 +282,14 @@ def save_target(
 def save_legacy_ssh(
     ssh_args: list[str],
     environ: Mapping[str, str] | None = None,
+    *,
+    make_active: bool = False,
 ) -> list[str]:
     normalized = normalize_ssh_args(ssh_args)
     cfg = read_config(environ)
     cfg["ssh"] = normalized
+    if make_active:
+        cfg.pop("active_target", None)
     write_config(cfg, environ)
     return normalized
 
