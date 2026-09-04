@@ -44,9 +44,9 @@ Usage:
   rent-pod --list-templates
   rent-pod --balance
   rent-pod --show
-  rent-pod --status POD_ID
-  rent-pod --watch POD_ID
-  rent-pod --kill POD_ID
+  rent-pod --status POD_ID|NAME
+  rent-pod --watch POD_ID|NAME
+  rent-pod --kill POD_ID|NAME
   rent-pod --kill-all [--yes|-y|--force]
 
 GPU may be a built-in alias such as 4090, 5090, l40s, l40, 5080, or 3090;
@@ -117,9 +117,9 @@ Inventory / account / management:
   --balance                Show account balance, current $/hr spend, spend limit,
                            and estimated runway at the current burn rate.
   --show                   List Pods on the account.
-  --status POD_ID          Show one lifecycle snapshot, including copyable SSH command.
-  --watch POD_ID           Watch lifecycle until SSH is ready; never deletes.
-  --kill POD_ID            Permanently delete one Pod.
+  --status POD_ID|NAME     Show one lifecycle snapshot, including copyable SSH command.
+  --watch POD_ID|NAME      Watch lifecycle until SSH is ready; never deletes.
+  --kill POD_ID|NAME       Permanently delete one Pod. Names must match uniquely.
   --kill-all               Permanently delete all Pods; interactive by default.
   --yes, -y, --force       Confirm --kill-all non-interactively.
 
