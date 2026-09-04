@@ -6,7 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
 from unittest import mock
 
@@ -108,7 +108,7 @@ class VcpEntryTests(unittest.TestCase):
             "Matched RunPod target seedvr2 (pod pod456) from SSH endpoint",
             out.getvalue(),
         )
-        self.assertIn("Removed duplicate legacy/default SSH mapping", out.getvalue())
+        self.assertIn("Removed obsolete legacy/default SSH mapping", out.getvalue())
 
     def test_runpod_api_probe_matches_live_runtime_endpoint(self):
         rest_pods = [
@@ -168,7 +168,7 @@ class VcpEntryTests(unittest.TestCase):
         self.assertEqual(cfg["targets"]["gui-pod"]["pod_id"], "pod456")
         self.assertIn("via SSH", out.getvalue())
 
-    def test_no_name_config_ssh_falls_back_to_legacy_and_makes_it_active(self):
+    def test_no_name_config_ssh_requires_name_when_discovery_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.json"
             config.write_text(
@@ -182,21 +182,21 @@ class VcpEntryTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            err = io.StringIO()
             with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}), \
                  mock.patch.object(vcp_entry, "_discover_runpod_from_api", return_value=None), \
-                 mock.patch.object(vcp_entry, "_discover_runpod_pod_id", return_value=None):
+                 mock.patch.object(vcp_entry, "_discover_runpod_pod_id", return_value=None), \
+                 redirect_stderr(err):
                 rc = vcp_entry.main(
                     ["config", "ssh", "root@host", "-p", "2222", "-i", "/key"]
                 )
             cfg = json.loads(config.read_text(encoding="utf-8"))
 
-        self.assertEqual(rc, 0)
-        self.assertEqual(
-            cfg["ssh"],
-            ["-p", "2222", "-i", "/key", "root@host"],
-        )
-        self.assertNotIn("active_target", cfg)
-        self.assertIn("old-target", cfg["targets"])
+        self.assertEqual(rc, 1)
+        self.assertNotIn("ssh", cfg)
+        self.assertEqual(cfg["active_target"], "old-target")
+        self.assertIn("persistent unnamed/default SSH mappings are no longer supported", err.getvalue())
+        self.assertIn("vcp config my-target ssh", err.getvalue())
 
     def test_runpod_probe_reads_runtime_environment(self):
         completed = subprocess.CompletedProcess(
@@ -240,7 +240,7 @@ class VcpEntryTests(unittest.TestCase):
         self.assertNotIn("active_target", cfg)
         self.assertEqual(set(cfg["targets"]), {"two"})
 
-    def test_targets_output_handles_host_first_config_and_full_name(self):
+    def test_targets_output_ignores_obsolete_legacy_mapping(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.json"
             config.write_text(
@@ -269,7 +269,28 @@ class VcpEntryTests(unittest.TestCase):
         self.assertIn("local-template-smoke-test", text)
         self.assertIn("root@160.250.71.207:53245", text)
         self.assertIn("root@64.247.206.212:14463", text)
-        self.assertIn("legacy/default: root@legacy:1000", text)
+        self.assertNotIn("legacy/default", text)
+        self.assertNotIn("root@legacy", text)
+
+    def test_prune_legacy_command_removes_only_obsolete_mapping(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "ssh": ["root@legacy"],
+                        "active_target": "one",
+                        "targets": {"one": {"ssh": ["root@one"]}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}):
+                rc = vcp_entry.main(["config", "prune-legacy"])
+            cfg = json.loads(config.read_text(encoding="utf-8"))
+        self.assertEqual(rc, 0)
+        self.assertNotIn("ssh", cfg)
+        self.assertEqual(cfg["active_target"], "one")
 
     def test_one_shot_target_projects_selected_ssh_to_existing_engine(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -338,7 +359,8 @@ class VcpEntryTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("vcp targets", out.getvalue())
         self.assertIn("vcp target remove NAME", out.getvalue())
-        self.assertIn("auto-discovers RunPod target", out.getvalue())
+        self.assertIn("discovers/creates a named RunPod target", out.getvalue())
+        self.assertIn("vcp config prune-legacy", out.getvalue())
         self.assertIn("vcp --target NAME", out.getvalue())
 
 
