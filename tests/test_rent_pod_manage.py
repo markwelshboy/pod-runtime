@@ -105,19 +105,73 @@ class RentPodManageTests(unittest.TestCase):
         self.assertEqual(row["status"], "NETWORK")
         self.assertEqual(row["ssh"], "64.247.206.216:13479")
 
-    def test_kill_all_yes_deletes_every_pod(self):
+    def test_pod_vcp_endpoints_uses_rest_ssh_mapping(self):
+        pod = {
+            "id": "pod1",
+            "publicIp": "64.247.206.212",
+            "portMappings": {"22": 14463},
+        }
+        self.assertEqual(
+            manage.pod_vcp_endpoints(pod),
+            {("64.247.206.212", 14463)},
+        )
+
+    def test_kill_pod_reaps_vcp_after_successful_delete(self):
+        pod = {
+            "id": "pod123",
+            "name": "qwen3-captioning",
+            "publicIp": "64.247.206.212",
+            "portMappings": {"22": 14463},
+        }
+        with mock.patch.object(manage.core, "get_pod", return_value=pod), \
+             mock.patch.object(manage.core, "delete_pod") as delete, \
+             mock.patch.object(
+                 manage.vcp_targets,
+                 "remove_matching_targets",
+                 return_value={"targets": ["qwen3-captioning"], "legacy": True},
+             ) as reap:
+            rc = manage.kill_pod("token", "pod123")
+
+        self.assertEqual(rc, 0)
+        delete.assert_called_once_with("token", "pod123")
+        reap.assert_called_once_with(
+            pod_id="pod123",
+            endpoints={("64.247.206.212", 14463)},
+        )
+
+    def test_kill_does_not_reap_if_delete_fails(self):
+        pod = {"id": "pod123", "name": "qwen"}
+        with mock.patch.object(manage.core, "get_pod", return_value=pod), \
+             mock.patch.object(
+                 manage.core,
+                 "delete_pod",
+                 side_effect=manage.core.RunPodError("delete failed"),
+             ), \
+             mock.patch.object(manage.vcp_targets, "remove_matching_targets") as reap:
+            with self.assertRaises(manage.core.RunPodError):
+                manage.kill_pod("token", "pod123")
+        reap.assert_not_called()
+
+    def test_kill_all_yes_deletes_every_pod_and_reaps_each(self):
         pods = [
             {"id": "p1", "name": "one"},
             {"id": "p2", "name": "two"},
         ]
-        with mock.patch.object(manage, "list_pods", return_value=pods), mock.patch.object(
-            manage.core, "delete_pod"
-        ) as delete:
+        with mock.patch.object(manage, "list_pods", return_value=pods), \
+             mock.patch.object(manage.core, "delete_pod") as delete, \
+             mock.patch.object(
+                 manage.vcp_targets,
+                 "remove_matching_targets",
+                 return_value={"targets": [], "legacy": False},
+             ) as reap:
             rc = manage.kill_all("token", assume_yes=True)
         self.assertEqual(rc, 0)
         self.assertEqual(delete.call_count, 2)
         delete.assert_any_call("token", "p1")
         delete.assert_any_call("token", "p2")
+        self.assertEqual(reap.call_count, 2)
+        reap.assert_any_call(pod_id="p1", endpoints=set())
+        reap.assert_any_call(pod_id="p2", endpoints=set())
 
 
 if __name__ == "__main__":
