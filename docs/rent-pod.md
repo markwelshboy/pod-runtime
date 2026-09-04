@@ -12,7 +12,7 @@
 8. Run the normal `provision` command, including real Hugging Face and PyPI/CDN qualification.
 9. If `provision` exits `78` for a critically slow network, record the host locally and terminate the Pod.
 10. Retry only when the caller explicitly requests more than one attempt.
-11. Show, watch, and delete Pods from the same CLI.
+11. Show account balance/runway and show, watch, and delete Pods from the same CLI.
 
 The default RunPod template is `86n5dpgf7h`. Override it with `--template`, `RENT_POD_TEMPLATE`, or the older `RUNPOD_TEMPLATE_ID` setting.
 
@@ -24,7 +24,7 @@ The helper never stores or prints the RunPod API key. Export it in the local she
 export RUNPOD_API_KEY='...'
 ```
 
-`provision` still requires the normal local `HF_TOKEN`. `--list`, `--show`, `--status`, `--watch`, `--kill`, `--kill-all`, and `--dry-run` do not require `HF_TOKEN`; live RunPod operations require `RUNPOD_API_KEY`.
+`provision` still requires the normal local `HF_TOKEN`. `--list`, `--balance`, `--show`, `--status`, `--watch`, `--kill`, `--kill-all`, and `--dry-run` do not require `HF_TOKEN`; live RunPod operations require `RUNPOD_API_KEY`.
 
 ## Live availability and pricing
 
@@ -53,6 +53,26 @@ rent-pod --list
 ```
 
 The listing uses RunPod's live GraphQL `lowestPrice` availability with the selected pool, public-IP requirement, bandwidth floors, and optional `minCudaVersion`. It shows stock status, current on-demand price, available GPU counts, and the route floor represented by the current offer.
+
+## Account balance
+
+Show the prepaid RunPod balance and current account-wide burn rate:
+
+```bash
+rent-pod --balance
+```
+
+The command uses RunPod's GraphQL `myself` account fields and reports:
+
+```text
+[rent-pod] RunPod account
+           balance:          $18.42
+           current spend:    $0.740/hr
+           spend limit:      $80.00/hr
+           runway:           1d 0h 53m
+```
+
+`runway` is `balance / currentSpendPerHr`. If RunPod reports no current spend, it is shown as `∞ (no current spend)`. `--balance` is read-only, requires only `RUNPOD_API_KEY`, and cannot be combined with rental options.
 
 ## Pod management
 
@@ -321,6 +341,7 @@ For a non-network `provision` failure, the pod is deliberately left running for 
 
 ```text
 --list ["GPU GPU ..."]
+--balance
 --show
 --status POD_ID
 --watch POD_ID
