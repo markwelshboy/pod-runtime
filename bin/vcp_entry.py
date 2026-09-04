@@ -30,10 +30,11 @@ def _usage() -> str:
         + "  vcp targets\n"
         + "  vcp target [NAME]\n"
         + "  vcp target remove NAME\n"
-        + "  vcp config ssh [ssh options] user@host   # auto-discovers RunPod target when possible\n"
+        + "  vcp config ssh [ssh options] user@host   # discovers/creates a named RunPod target\n"
         + "  vcp config NAME ssh [ssh options] user@host\n"
         + "  vcp config NAME show\n"
         + "  vcp config NAME remove\n"
+        + "  vcp config prune-legacy\n"
         + "  vcp --target NAME <source...> <destination>\n"
     )
 
@@ -67,23 +68,9 @@ def _show_targets() -> int:
     cfg = vcp_targets.read_config()
     rows = vcp_targets.rows(cfg)
     active = vcp_targets.active_target_name(cfg)
-    legacy = cfg.get("ssh")
-    legacy_configured = isinstance(legacy, list) and bool(legacy)
-    if active:
-        active_label = active
-    elif legacy_configured:
-        active_label = "<legacy/default>"
-    else:
-        active_label = "<none>"
 
     print(f"config:         {vcp_targets.config_path()}")
-    print(f"active target:  {active_label}")
-    if legacy_configured:
-        print(
-            "legacy/default: "
-            f"{vcp_targets.endpoint_from_ssh(legacy)} "
-            "(fallback when no named target is active)"
-        )
+    print(f"active target:  {active or '<none>'}")
 
     if not rows:
         print("targets:        <none>")
@@ -105,15 +92,8 @@ def _show_targets() -> int:
 
 def _target_command(argv: list[str]) -> int:
     if len(argv) == 1:
-        cfg = vcp_targets.read_config()
-        active = vcp_targets.active_target_name(cfg)
-        if active:
-            print(active)
-            return 0
-        if isinstance(cfg.get("ssh"), list) and cfg.get("ssh"):
-            print("<legacy/default>")
-            return 0
-        print("<none>")
+        active = vcp_targets.active_target_name(vcp_targets.read_config())
+        print(active or "<none>")
         return 0
 
     if len(argv) == 3 and argv[1] in {"remove", "delete", "rm"}:
@@ -299,7 +279,7 @@ def _default_ssh_config(argv: list[str]) -> int | None:
     Discovery order:
       1. Match the supplied public SSH endpoint against the caller's RunPod API.
       2. Fall back to RUNPOD_POD_ID discovered over SSH for GUI/template Pods.
-      3. Preserve legacy/default behavior for a genuinely unidentified remote.
+      3. If neither identifies the remote, require the caller to provide a name.
     """
     if len(argv) < 2 or argv[:2] != ["config", "ssh"]:
         return None
@@ -320,47 +300,57 @@ def _default_ssh_config(argv: list[str]) -> int | None:
         pod_id = _discover_runpod_pod_id(normalized)
         runpod_name = _runpod_name_for_id(pod_id) if pod_id else None
 
-    if pod_id:
-        target = _safe_discovered_target_name(runpod_name, pod_id)
-        metadata = {"runpod_name": runpod_name} if runpod_name else None
-        description = (
-            "RunPod pod (matched from SSH endpoint)"
-            if discovery == "api"
-            else "RunPod pod (discovered via SSH)"
+    if not pod_id:
+        endpoint = vcp_targets.endpoint_from_ssh(normalized)
+        raise vcp_targets.VcpTargetError(
+            f"could not identify {endpoint} as a RunPod Pod; persistent unnamed/default "
+            "SSH mappings are no longer supported. Give it a name, for example: "
+            f"vcp config my-target ssh {shlex.join(normalized)}"
         )
-        entry = vcp_targets.save_target(
-            target,
-            normalized,
-            pod_id=pod_id,
-            provider="runpod",
-            description=description,
-            metadata=metadata,
-            make_active=True,
-        )
-        legacy_cleared = vcp_targets.clear_matching_legacy_ssh(entry.get("ssh"))
-        if runpod_name:
-            if discovery == "api":
-                print(
-                    f"[vcp] Matched RunPod target {target} (pod {pod_id}) "
-                    "from SSH endpoint."
-                )
-            else:
-                print(f"[vcp] Discovered RunPod target {target} (pod {pod_id}) via SSH.")
-        else:
-            print(
-                f"[vcp] Identified RunPod pod {pod_id}; friendly name unavailable, "
-                f"using pod ID as target name."
-            )
-        print(f"[vcp] Saved and activated target {target}: {shlex.join(entry.get('ssh') or [])}")
-        if legacy_cleared:
-            print("[vcp] Removed duplicate legacy/default SSH mapping.")
-        return 0
 
-    normalized = vcp_targets.save_legacy_ssh(normalized, make_active=True)
-    print(
-        "[vcp] Could not identify the remote as a RunPod Pod; "
-        f"saved and activated legacy/default SSH remote: {shlex.join(normalized)}"
+    target = _safe_discovered_target_name(runpod_name, pod_id)
+    metadata = {"runpod_name": runpod_name} if runpod_name else None
+    description = (
+        "RunPod pod (matched from SSH endpoint)"
+        if discovery == "api"
+        else "RunPod pod (discovered via SSH)"
     )
+    had_legacy = "ssh" in vcp_targets.read_config()
+    entry = vcp_targets.save_target(
+        target,
+        normalized,
+        pod_id=pod_id,
+        provider="runpod",
+        description=description,
+        metadata=metadata,
+        make_active=True,
+    )
+    if runpod_name:
+        if discovery == "api":
+            print(
+                f"[vcp] Matched RunPod target {target} (pod {pod_id}) "
+                "from SSH endpoint."
+            )
+        else:
+            print(f"[vcp] Discovered RunPod target {target} (pod {pod_id}) via SSH.")
+    else:
+        print(
+            f"[vcp] Identified RunPod pod {pod_id}; friendly name unavailable, "
+            f"using pod ID as target name."
+        )
+    print(f"[vcp] Saved and activated target {target}: {shlex.join(entry.get('ssh') or [])}")
+    if had_legacy:
+        print("[vcp] Removed obsolete legacy/default SSH mapping.")
+    return 0
+
+
+def _maintenance_config(argv: list[str]) -> int | None:
+    if argv != ["config", "prune-legacy"]:
+        return None
+    if vcp_targets.prune_legacy_ssh():
+        print("[vcp] Removed obsolete legacy/default SSH mapping.")
+    else:
+        print("[vcp] No legacy/default SSH mapping present.")
     return 0
 
 
@@ -370,7 +360,7 @@ def _named_config(argv: list[str]) -> int | None:
     # vcp config NAME remove
     if len(argv) < 2 or argv[0] != "config":
         return None
-    if argv[1] in {"ssh", "show", "list", "hf-repo", "repo", "clear"}:
+    if argv[1] in {"ssh", "show", "list", "hf-repo", "repo", "clear", "prune-legacy"}:
         return None
     name = vcp_targets.validate_target_name(argv[1])
     if len(argv) < 3:
@@ -411,9 +401,8 @@ def _named_config(argv: list[str]) -> int | None:
 
 def _call_vcp(argv: list[str], selected: str | None) -> int:
     cfg = vcp_targets.read_config()
-    # Config mutations keep using vcp.py's legacy implementation unless this
-    # entrypoint handled them above. Transfers expose the selected target as the
-    # top-level `ssh` field expected by the existing engine.
+    # Transfers expose the selected named target as the top-level `ssh` field
+    # expected by the existing engine. That projection exists only in memory.
     needs_remote = bool(argv) and argv[0] not in {"config", "-h", "--help", "help"}
     original_read = vcp._read_config
     if needs_remote:
@@ -441,6 +430,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args[0] == "target":
             return _target_command(args)
 
+        maintenance = _maintenance_config(args)
+        if maintenance is not None:
+            return maintenance
+
         default_ssh = _default_ssh_config(args)
         if default_ssh is not None:
             return default_ssh
@@ -453,12 +446,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if forwarded[:2] in (["config", "show"], ["config", "list"]):
             _show_targets()
             print()
-            # Also retain the established config output for HF scratch settings.
+            # Retain established HF scratch/settings output, but never expose an
+            # obsolete persistent top-level SSH mapping as a default target.
             cfg = vcp_targets.read_config()
             try:
                 effective, _used = vcp_targets.effective_config(cfg, selected)
             except vcp_targets.VcpTargetError:
-                effective = cfg
+                effective = dict(cfg)
+                effective.pop("ssh", None)
             original_read = vcp._read_config
             vcp._read_config = lambda: dict(effective)
             try:
