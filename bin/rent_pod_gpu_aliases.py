@@ -43,7 +43,11 @@ def config_path(environ: Mapping[str, str] | None = None) -> Path:
     if explicit:
         return Path(explicit).expanduser()
     xdg = (env.get("XDG_CONFIG_HOME") or "").strip()
-    base = Path(xdg).expanduser() if xdg else Path("~/.config").expanduser()
+    if xdg:
+        base = Path(xdg).expanduser()
+    else:
+        home = (env.get("HOME") or "").strip()
+        base = (Path(home) / ".config") if home else Path("~/.config").expanduser()
     return base / "rent-pod" / "gpu-aliases.toml"
 
 
