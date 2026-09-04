@@ -22,15 +22,19 @@ SENSITIVE_ENV_RE = re.compile(
     r"(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL)", re.I
 )
 
-LOCAL_FIELD_MAP = {
-    "container_disk_gb": "containerDiskInGb",
-    "volume_gb": "volumeInGb",
-    "volume_mount_path": "volumeMountPath",
-    "ports": "ports",
-    "docker_args": "dockerArgs",
-    "min_vcpu_count": "minVcpuCount",
-    "min_memory_gb": "minMemoryInGb",
-    "network_volume_id": "networkVolumeId",
+LOCAL_KEYS = {
+    "image",
+    "container_disk_gb",
+    "volume_gb",
+    "volume_mount_path",
+    "ports",
+    "docker_entrypoint",
+    "docker_start_cmd",
+    "min_vcpu_per_gpu",
+    "min_ram_per_gpu_gb",
+    "network_volume_id",
+    "container_registry_auth_id",
+    "global_networking",
 }
 
 
@@ -151,14 +155,18 @@ def _env_with_secrets(
     return result
 
 
-def _normalize_ports(value: Any, where: str) -> list[str]:
-    if not isinstance(value, list) or not value:
-        raise ValueError(f"{where} must be a non-empty array of strings")
-    result = []
+def _normalize_string_list(value: Any, where: str, *, allow_empty: bool = True) -> list[str]:
+    if not isinstance(value, list) or (not allow_empty and not value):
+        adjective = "non-empty " if not allow_empty else ""
+        raise ValueError(f"{where} must be a {adjective}array of strings")
+    result: list[str] = []
     for item in value:
-        if not isinstance(item, str) or not item.strip():
+        if not isinstance(item, str):
+            raise ValueError(f"{where} entries must be strings")
+        text = item.strip()
+        if not text:
             raise ValueError(f"{where} entries must be non-empty strings")
-        result.append(item.strip())
+        result.append(text)
     return result
 
 
@@ -168,26 +176,67 @@ def _normalize_nonnegative_int(value: Any, where: str) -> int:
     return value
 
 
-def _local_payload(raw: Mapping[str, Any], where: str) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    image = raw.get("image")
-    if image is not None:
-        if not isinstance(image, str) or not image.strip():
-            raise ValueError(f"{where}.image must be a non-empty string")
-        result["imageName"] = image.strip()
+def _normalize_string(value: Any, where: str, *, allow_empty: bool = False) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{where} must be a string")
+    text = value.strip()
+    if not allow_empty and not text:
+        raise ValueError(f"{where} must be a non-empty string")
+    return text
 
-    for key, api_key in LOCAL_FIELD_MAP.items():
-        if key not in raw:
-            continue
-        value = raw[key]
-        if key in {"container_disk_gb", "volume_gb", "min_vcpu_count", "min_memory_gb"}:
-            result[api_key] = _normalize_nonnegative_int(value, f"{where}.{key}")
-        elif key == "ports":
-            result[api_key] = _normalize_ports(value, f"{where}.{key}")
-        elif key in {"volume_mount_path", "docker_args", "network_volume_id"}:
-            if not isinstance(value, str):
-                raise ValueError(f"{where}.{key} must be a string")
-            result[api_key] = value.strip()
+
+def _local_payload(raw: Mapping[str, Any], where: str) -> dict[str, Any]:
+    """Translate friendly local-template keys to RunPod REST POST /pods fields."""
+    result: dict[str, Any] = {}
+
+    if "image" in raw:
+        result["imageName"] = _normalize_string(raw["image"], f"{where}.image")
+    if "container_disk_gb" in raw:
+        result["containerDiskInGb"] = _normalize_nonnegative_int(
+            raw["container_disk_gb"], f"{where}.container_disk_gb"
+        )
+    if "volume_gb" in raw:
+        result["volumeInGb"] = _normalize_nonnegative_int(
+            raw["volume_gb"], f"{where}.volume_gb"
+        )
+    if "volume_mount_path" in raw:
+        result["volumeMountPath"] = _normalize_string(
+            raw["volume_mount_path"], f"{where}.volume_mount_path"
+        )
+    if "ports" in raw:
+        result["ports"] = _normalize_string_list(
+            raw["ports"], f"{where}.ports", allow_empty=False
+        )
+    if "docker_entrypoint" in raw:
+        result["dockerEntrypoint"] = _normalize_string_list(
+            raw["docker_entrypoint"], f"{where}.docker_entrypoint"
+        )
+    if "docker_start_cmd" in raw:
+        result["dockerStartCmd"] = _normalize_string_list(
+            raw["docker_start_cmd"], f"{where}.docker_start_cmd"
+        )
+    if "min_vcpu_per_gpu" in raw:
+        result["minVCPUPerGPU"] = _normalize_nonnegative_int(
+            raw["min_vcpu_per_gpu"], f"{where}.min_vcpu_per_gpu"
+        )
+    if "min_ram_per_gpu_gb" in raw:
+        result["minRAMPerGPU"] = _normalize_nonnegative_int(
+            raw["min_ram_per_gpu_gb"], f"{where}.min_ram_per_gpu_gb"
+        )
+    if "network_volume_id" in raw:
+        result["networkVolumeId"] = _normalize_string(
+            raw["network_volume_id"], f"{where}.network_volume_id"
+        )
+    if "container_registry_auth_id" in raw:
+        result["containerRegistryAuthId"] = _normalize_string(
+            raw["container_registry_auth_id"], f"{where}.container_registry_auth_id"
+        )
+    if "global_networking" in raw:
+        value = raw["global_networking"]
+        if not isinstance(value, bool):
+            raise ValueError(f"{where}.global_networking must be a boolean")
+        result["globalNetworking"] = value
+
     return result
 
 
@@ -213,9 +262,29 @@ def _parse_profile(
     ):
         raise ValueError(f"{where}.id must be a non-empty string")
 
+    unknown_local = {
+        key
+        for key in raw
+        if key
+        not in LOCAL_KEYS | {"id", "description", "env", "secrets"}
+    }
+    if unknown_local:
+        raise ValueError(
+            f"unknown template option(s) in {where}: {', '.join(sorted(unknown_local))}"
+        )
+
     default_map = dict(defaults or {})
+    unknown_defaults = {
+        key for key in default_map if key not in LOCAL_KEYS | {"env", "secrets"}
+    }
+    if unknown_defaults:
+        raise ValueError(
+            f"unknown local-template default(s) in {where}: "
+            f"{', '.join(sorted(unknown_defaults))}"
+        )
+
     merged_local = dict(default_map)
-    for key in ("image", *LOCAL_FIELD_MAP.keys()):
+    for key in LOCAL_KEYS:
         if key in raw:
             merged_local[key] = raw[key]
     pod = _local_payload(merged_local, where)
