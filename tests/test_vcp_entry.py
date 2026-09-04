@@ -49,6 +49,119 @@ class VcpEntryTests(unittest.TestCase):
             ["-i", "/key", "-p", "2222", "root@host"],
         )
 
+    def test_no_name_config_ssh_updates_active_named_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "ssh": ["-p", "1000", "root@legacy"],
+                        "active_target": "qwen3-captioning",
+                        "targets": {
+                            "qwen3-captioning": {
+                                "ssh": ["-p", "2000", "root@old"],
+                                "pod_id": "pod123",
+                                "provider": "runpod",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}), redirect_stdout(out):
+                rc = vcp_entry.main(
+                    [
+                        "config",
+                        "ssh",
+                        "root@new",
+                        "-p",
+                        "3000",
+                        "-i",
+                        "/key",
+                    ]
+                )
+            cfg = json.loads(config.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(cfg["ssh"], ["-p", "1000", "root@legacy"])
+        self.assertEqual(
+            cfg["targets"]["qwen3-captioning"]["ssh"],
+            ["-p", "3000", "-i", "/key", "root@new"],
+        )
+        self.assertEqual(cfg["targets"]["qwen3-captioning"]["pod_id"], "pod123")
+        self.assertIn("Updated active target qwen3-captioning", out.getvalue())
+
+    def test_no_name_config_ssh_uses_legacy_when_no_active_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}):
+                rc = vcp_entry.main(
+                    ["config", "ssh", "root@host", "-p", "2222", "-i", "/key"]
+                )
+            cfg = json.loads(config.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            cfg["ssh"],
+            ["-p", "2222", "-i", "/key", "root@host"],
+        )
+        self.assertNotIn("active_target", cfg)
+
+    def test_target_remove_convenience_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "active_target": "one",
+                        "targets": {
+                            "one": {"ssh": ["root@one"]},
+                            "two": {"ssh": ["root@two"]},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}):
+                rc = vcp_entry.main(["target", "remove", "one"])
+            cfg = json.loads(config.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertNotIn("active_target", cfg)
+        self.assertEqual(set(cfg["targets"]), {"two"})
+
+    def test_targets_output_handles_host_first_config_and_full_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "ssh": ["-p", "1000", "root@legacy"],
+                        "active_target": "local-template-smoke-test",
+                        "targets": {
+                            "local-template-smoke-test": {
+                                "ssh": ["-i", "/key", "-p", "53245", "root@160.250.71.207"]
+                            },
+                            "qwen3-captioning": {
+                                "ssh": ["root@64.247.206.212", "-p", "14463", "-i", "/key"]
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}), redirect_stdout(out):
+                rc = vcp_entry.main(["targets"])
+        text = out.getvalue()
+
+        self.assertEqual(rc, 0)
+        self.assertIn("local-template-smoke-test", text)
+        self.assertIn("root@160.250.71.207:53245", text)
+        self.assertIn("root@64.247.206.212:14463", text)
+        self.assertIn("legacy/default: root@legacy:1000", text)
+
     def test_one_shot_target_projects_selected_ssh_to_existing_engine(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.json"
@@ -115,6 +228,7 @@ class VcpEntryTests(unittest.TestCase):
                 rc = vcp_entry.main(["--help"])
         self.assertEqual(rc, 0)
         self.assertIn("vcp targets", out.getvalue())
+        self.assertIn("vcp target remove NAME", out.getvalue())
         self.assertIn("vcp --target NAME", out.getvalue())
 
 
