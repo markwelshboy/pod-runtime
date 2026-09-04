@@ -26,7 +26,7 @@ class RentPodGpuAliasTests(unittest.TestCase):
     def test_default_config_path(self):
         self.assertEqual(
             gpus.config_path({"HOME": "/tmp/home"}),
-            Path("~/.config/rent-pod/gpu-aliases.toml").expanduser(),
+            Path("/tmp/home/.config/rent-pod/gpu-aliases.toml"),
         )
 
     def test_xdg_config_path(self):
