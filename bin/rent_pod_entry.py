@@ -112,7 +112,8 @@ except ValueError as exc:
 
 # Resolve a friendly --template name and merge profile env + per-run --env.
 # The friendly name remains in argv for readable CLI output; the real RunPod ID
-# is substituted only at the POST /pods API boundary.
+# is substituted only at the POST /pods API boundary. Local profiles instead
+# replace templateId with direct POST /pods image/storage/port settings.
 from rent_pod_templates import (  # noqa: E402
     apply_template_profile,
     install_core_api_hook,
@@ -125,6 +126,36 @@ try:
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
+
+
+def _requires_provision_hf(argv: list[str]) -> bool:
+    if "--dry-run" in argv or "--no-provision" in argv:
+        return False
+    if any(arg == "--list" or arg.startswith("--list=") for arg in argv):
+        return False
+    return True
+
+
+# Keep the paid-pod safety gate, but evaluate it only after template expansion.
+# A RunPod account secret mapped to HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) is a
+# valid provisioning credential and avoids keeping/sending a duplicate value
+# from the local machine.
+if _requires_provision_hf(effective_argv):
+    local_hf = (os.environ.get("HF_TOKEN") or "").strip()
+    remote_hf = (
+        (template_context.env.get("HF_TOKEN") or "").strip()
+        or (template_context.env.get("HUGGINGFACE_HUB_TOKEN") or "").strip()
+    )
+    if not local_hf and not remote_hf:
+        print(
+            "ERROR: no Hugging Face credential is available for provisioning. "
+            "Set local HF_TOKEN or map HF_TOKEN/HUGGINGFACE_HUB_TOKEN in the "
+            "selected template (prefer [secrets] with a RunPod secret name).",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if not local_hf and remote_hf:
+        print("[rent-pod] HF credential:          template/RunPod environment")
 
 sys.argv = [sys.argv[0], *effective_argv]
 install_core_api_hook(template_context)
@@ -143,8 +174,9 @@ import rent_pod_frontend as frontend  # noqa: E402
 from rent_pod_gpu_aliases import install_core_gpu_resolver  # noqa: E402
 
 # GPU names are intentionally separate from template profiles. Local aliases
-# live in ~/.config/rent-pod/gpu-aliases.toml. With an API key available, exact
-# display names shown by `rent-pod --list` are resolved live to RunPod GPU IDs.
+# live in ~/.config/rentpod/gpu-aliases.toml (with legacy rent-pod fallback).
+# With an API key available, exact display names shown by `rent-pod --list` are
+# resolved live to RunPod GPU IDs.
 try:
     install_core_gpu_resolver(
         os.environ.get("RUNPOD_API_KEY", "").strip(),
