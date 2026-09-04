@@ -101,7 +101,7 @@ def handle_balance_command(
             + (f": {' '.join(extras)}" if extras else "")
         )
 
-    env = environ or os.environ
+    env = os.environ if environ is None else environ
     api_key = (env.get("RUNPOD_API_KEY") or "").strip()
     if not api_key:
         print("ERROR: RUNPOD_API_KEY is required for --balance.", file=sys.stderr)
