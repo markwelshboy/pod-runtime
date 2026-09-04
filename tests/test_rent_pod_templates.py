@@ -95,7 +95,7 @@ HF_TOKEN = "huggingface_token"
                 '''
 description = "Qwen captioning pod"
 image = "runpod/pytorch:qwen"
-docker_args = "sleep infinity"
+docker_start_cmd = ["sleep", "infinity"]
 ports = ["22/tcp", "8000/http"]
 
 [env]
@@ -114,7 +114,7 @@ OPENAI_API_KEY = "openai_key"
         self.assertEqual(profile.pod["containerDiskInGb"], 40)
         self.assertEqual(profile.pod["volumeInGb"], 100)
         self.assertEqual(profile.pod["ports"], ["22/tcp", "8000/http"])
-        self.assertEqual(profile.pod["dockerArgs"], "sleep infinity")
+        self.assertEqual(profile.pod["dockerStartCmd"], ["sleep", "infinity"])
         self.assertEqual(profile.env, {"COMMON": "yes", "PROJECT": "qwen3"})
         self.assertEqual(
             profile.secret_env,
