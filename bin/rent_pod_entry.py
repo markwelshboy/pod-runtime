@@ -21,12 +21,31 @@ opener = urllib.request.build_opener()
 opener.addheaders = [("User-Agent", USER_AGENT)]
 urllib.request.install_opener(opener)
 
+# Public help is handled before any credentials, environment defaults, template
+# loading, or paid-operation preflight.  Keep the public CLI vocabulary here,
+# including frontend-only options such as --min-cuda and --community.
+from rent_pod_cli import handle_help_command, normalize_cuda_option  # noqa: E402
+
+help_rc = handle_help_command(sys.argv[1:])
+if help_rc is not None:
+    raise SystemExit(help_rc)
+
+# Normalize the public --min-cuda spelling before environment defaults are
+# applied.  That ensures an explicit CLI value correctly overrides
+# RENT_POD_CUDA_MIN, while the frontend can retain its legacy internal
+# --cuda-min contract for backward compatibility.
+try:
+    public_argv = normalize_cuda_option(sys.argv[1:])
+except ValueError as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+
 # Local template-profile discovery is intentionally first: it needs neither a
 # RunPod API key nor HF_TOKEN and should never be polluted by rental defaults.
 from rent_pod_templates import handle_template_meta_command  # noqa: E402
 
 try:
-    template_meta_rc = handle_template_meta_command(sys.argv[1:], os.environ)
+    template_meta_rc = handle_template_meta_command(public_argv, os.environ)
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -38,7 +57,7 @@ if template_meta_rc is not None:
 from rent_pod_account import handle_balance_command  # noqa: E402
 
 try:
-    balance_rc = handle_balance_command(sys.argv[1:], os.environ)
+    balance_rc = handle_balance_command(public_argv, os.environ)
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -60,7 +79,7 @@ ssh_phases.install_management_hooks()
 from rent_pod_manage import parse_management_args, run_management  # noqa: E402
 
 try:
-    management = parse_management_args(sys.argv[1:])
+    management = parse_management_args(public_argv)
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -81,7 +100,7 @@ from rent_pod_env import apply_env_defaults  # noqa: E402
 import rent_pod_vcp as vcp_handoff  # noqa: E402
 
 try:
-    effective_argv = apply_env_defaults(sys.argv[1:], os.environ)
+    effective_argv = apply_env_defaults(public_argv, os.environ)
     effective_argv, ssh_exposure_timeout = ssh_phases.consume_ssh_phase_args(
         effective_argv, os.environ
     )
