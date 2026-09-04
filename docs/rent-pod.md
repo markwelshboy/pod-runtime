@@ -24,7 +24,7 @@ The helper never stores or prints the RunPod API key. Export it in the local she
 export RUNPOD_API_KEY='...'
 ```
 
-`provision` still requires the normal local `HF_TOKEN`. `--list`, `--balance`, `--show`, `--status`, `--watch`, `--kill`, `--kill-all`, and `--dry-run` do not require `HF_TOKEN`; live RunPod operations require `RUNPOD_API_KEY`.
+`provision` still requires the normal local `HF_TOKEN`. `--list`, `--balance`, `--show`, `--status`, `--watch`, `--kill`, `--kill-all`, `--help`, and `--dry-run` do not require `HF_TOKEN`; live RunPod operations require `RUNPOD_API_KEY`.
 
 ## Live availability and pricing
 
@@ -43,7 +43,7 @@ rent-pod --community --list "4090 5090 l40s"
 Add a CUDA floor to the availability query:
 
 ```bash
-rent-pod --list "4090 5090 l40s" --cuda-min 13.0
+rent-pod --list "4090 5090 l40s" --min-cuda 13.0
 ```
 
 With no GPU list, `--list` displays all RunPod GPU types:
@@ -228,7 +228,7 @@ rent-pod --community 4090
 Require CUDA 13.0 or newer:
 
 ```bash
-rent-pod 4090 --cuda-min 13.0
+rent-pod 4090 --min-cuda 13.0
 ```
 
 Override the post-container SSH exposure window for one rental:
@@ -237,12 +237,12 @@ Override the post-container SSH exposure window for one rental:
 rent-pod l40s --ssh-exposure-timeout 240
 ```
 
-The Pod REST API currently accepts a list of `allowedCudaVersions` rather than a minimum. `rent-pod` derives the allowed list from the requested floor. For example, `--cuda-min 12.8` currently sends `13.0`, `12.9`, and `12.8`; `--cuda-min 13.0` sends only `13.0`.
+The Pod REST API currently accepts a list of `allowedCudaVersions` rather than a minimum. `rent-pod` derives the allowed list from the requested floor. For example, `--min-cuda 12.8` currently sends `13.0`, `12.9`, and `12.8`; `--min-cuda 13.0` sends only `13.0`. The older `--cuda-min` spelling remains accepted as a deprecated compatibility alias.
 
 Try up to five candidates, automatically deleting network-rejected candidates before trying again:
 
 ```bash
-rent-pod 4090 --attempts 5 --cuda-min 13.0
+rent-pod 4090 --attempts 5 --min-cuda 13.0
 ```
 
 Other built-in aliases include `5090`, `l40s`, `l40`, `5080`, and `3090`. An exact RunPod GPU type string may also be supplied.
@@ -309,7 +309,7 @@ export RENT_POD_COMMUNITY=true
 - cloud: `SECURE`
 - minimum advertised download: `500 Mbps`
 - minimum advertised upload: `100 Mbps`
-- CUDA floor: none unless `--cuda-min` / `RENT_POD_CUDA_MIN` is supplied
+- CUDA floor: none unless `--min-cuda` / `RENT_POD_CUDA_MIN` is supplied
 - pre-container startup timeout: `900 seconds` (15 minutes)
 - post-container direct-SSH exposure timeout: `180 seconds` (3 minutes)
 - recently seen SSH mapping grace: `90 seconds`
@@ -348,7 +348,7 @@ For a non-network `provision` failure, the pod is deliberately left running for 
 --kill POD_ID
 --kill-all [--yes|-y|--force]
 --community
---cuda-min VERSION
+--min-cuda VERSION
 --attempts N
 --min-download MBPS
 --min-upload MBPS
@@ -362,6 +362,8 @@ For a non-network `provision` failure, the pod is deliberately left running for 
 --no-provision
 --ssh-key PATH
 ```
+
+`--cuda-min VERSION` remains accepted as a deprecated compatibility alias for `--min-cuda VERSION`.
 
 Other environment/configuration variables retained for compatibility or API plumbing:
 
