@@ -51,7 +51,7 @@ Usage:
 
 GPU may be a built-in alias such as 4090, 5090, l40s, l40, 5080, or 3090;
 an exact display name shown by `rent-pod --list` (quote names containing spaces);
-a custom alias from ~/.config/rentpod/gpu-aliases.toml; or an exact RunPod GPU
+a custom alias from ~/.config/rent-pod/gpu-aliases.toml; or an exact RunPod GPU
 ID. The default GPU is 4090 and the default cloud is SECURE.
 
 Examples:
@@ -72,15 +72,15 @@ Selection floors:
 
 Template / Pod configuration:
   --template NAME|ID       Friendly remote/local profile, or raw RunPod template ID.
-                           Registry/defaults: ~/.config/rentpod/templates.toml
-                           Local profiles:    ~/.config/rentpod/templates/*.toml
+                           Registry/defaults: ~/.config/rent-pod/templates.toml
+                           Local profiles:    ~/.config/rent-pod/templates/*.toml
   --name NAME              Name assigned to the rented Pod.
   --env KEY=VALUE          Per-run environment override. Repeatable; a quoted
                            ';'-separated list is also accepted. CLI values win.
   --list-templates         Show remote and local template profiles and their type.
 
 Local template files use their filename as the profile name. Example:
-  ~/.config/rentpod/templates/qwen3-captioning.toml
+  ~/.config/rent-pod/templates/qwen3-captioning.toml
 
   image = "runpod/pytorch:latest"
   container_disk_gb = 40
@@ -124,7 +124,7 @@ Inventory / account / management:
   --yes, -y, --force       Confirm --kill-all non-interactively.
 
 GPU aliases:
-  ~/.config/rentpod/gpu-aliases.toml
+  ~/.config/rent-pod/gpu-aliases.toml
 
   [aliases]
   pro6000 = "RTX PRO 6000"
@@ -135,8 +135,7 @@ Alias targets may be display names from --list or exact RunPod GPU IDs. Set
 RENT_POD_GPU_ALIASES_FILE to use a different alias file.
 
 Config root:
-  ~/.config/rentpod is canonical. Existing ~/.config/rent-pod is automatically
-  used as a compatibility fallback until the canonical directory exists.
+  ~/.config/rent-pod
   RENT_POD_CONFIG_DIR overrides the root explicitly.
 
 Persistent defaults use RENT_POD_* environment variables. In particular,
