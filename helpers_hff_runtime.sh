@@ -84,13 +84,47 @@ show_env() {
   echo ""
 }
 
-_hff_pip() {
+_hff_pip_raw() {
   # HFF has its own venv and must not inherit ComfyUI's global pip constraints or pip.conf.
   env \
     -u PIP_CONSTRAINT \
     -u PIP_BUILD_CONSTRAINT \
     PIP_CONFIG_FILE=/dev/null \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     "${HFF_VENV}/bin/python" -m pip "$@"
+}
+
+_hff_pip() {
+  # Successful bootstrap installs are intentionally quiet: provision already
+  # reports the stage and selected package versions, so pip's resolver/download
+  # transcript is mostly noise. Preserve diagnostics by replaying the complete
+  # captured pip output automatically if the command fails.
+  #
+  # Set HFF_PIP_VERBOSE=true to restore live pip output for troubleshooting.
+  local log rc
+  case "${HFF_PIP_VERBOSE:-false}" in
+    1|true|TRUE|yes|YES|on|ON)
+      _hff_pip_raw "$@"
+      return $?
+      ;;
+  esac
+
+  log="$(mktemp "${TMPDIR:-/tmp}/hff-pip.XXXXXX")" || {
+    _hff_err "could not create temporary pip log; falling back to verbose pip"
+    _hff_pip_raw "$@"
+    return $?
+  }
+
+  if _hff_pip_raw "$@" >"$log" 2>&1; then
+    rm -f "$log"
+    return 0
+  else
+    rc=$?
+    _hff_err "pip failed; full output follows:"
+    cat "$log" >&2
+    rm -f "$log"
+    return "$rc"
+  fi
 }
 
 ensure_hf_tools_venv() {
