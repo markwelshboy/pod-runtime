@@ -1,10 +1,8 @@
 import importlib.util
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 BIN = Path(__file__).resolve().parents[1] / "bin"
 MODULE = BIN / "vcp_targets.py"
@@ -83,13 +81,12 @@ class VcpTargetsTests(unittest.TestCase):
         self.assertEqual(selected, "two")
         self.assertEqual(ssh, ["root@two"])
 
-    def test_legacy_top_level_ssh_remains_supported(self):
+    def test_persistent_top_level_ssh_is_not_a_fallback(self):
         cfg = {"ssh": ["-p", "1234", "root@legacy"]}
-        ssh, selected = vcp_targets.resolve_ssh(cfg)
-        self.assertIsNone(selected)
-        self.assertEqual(ssh, ["-p", "1234", "root@legacy"])
+        with self.assertRaises(vcp_targets.VcpTargetError):
+            vcp_targets.resolve_ssh(cfg)
 
-    def test_named_target_does_not_destroy_existing_vcp_settings(self):
+    def test_named_target_write_prunes_obsolete_top_level_ssh(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.json"
             config.write_text(
@@ -101,8 +98,31 @@ class VcpTargetsTests(unittest.TestCase):
             cfg = vcp_targets.read_config(env)
 
         self.assertEqual(cfg["hf_repo"], "owner/repo")
-        self.assertEqual(cfg["ssh"], ["root@legacy"])
+        self.assertNotIn("ssh", cfg)
         self.assertEqual(cfg["targets"]["pod-a"]["ssh"], ["root@pod-a"])
+
+    def test_prune_legacy_ssh_only_removes_top_level_mapping(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "config.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "ssh": ["root@legacy"],
+                        "active_target": "one",
+                        "targets": {"one": {"ssh": ["root@one"]}},
+                        "hf_repo": "owner/repo",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            env = {"VCP_CONFIG": str(config)}
+            self.assertTrue(vcp_targets.prune_legacy_ssh(env))
+            cfg = vcp_targets.read_config(env)
+
+        self.assertNotIn("ssh", cfg)
+        self.assertEqual(cfg["active_target"], "one")
+        self.assertIn("one", cfg["targets"])
+        self.assertEqual(cfg["hf_repo"], "owner/repo")
 
     def test_setting_active_target_requires_existing_target(self):
         with tempfile.TemporaryDirectory() as tmp:
