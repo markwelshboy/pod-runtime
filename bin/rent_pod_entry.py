@@ -33,6 +33,21 @@ except ValueError as exc:
 if template_meta_rc is not None:
     raise SystemExit(template_meta_rc)
 
+# Account balance is also a meta/management command: it must not inherit rental
+# defaults and needs only RUNPOD_API_KEY, never HF_TOKEN.
+from rent_pod_account import handle_balance_command  # noqa: E402
+
+try:
+    balance_rc = handle_balance_command(sys.argv[1:], os.environ)
+except ValueError as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+except Exception as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+if balance_rc is not None:
+    raise SystemExit(balance_rc)
+
 # Upgrade --status/--watch before management dispatch so they use the same TCP,
 # SSH-banner and authenticated-SSH phases as the live rental path.
 import rent_pod_ssh_phases as ssh_phases  # noqa: E402
