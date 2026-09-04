@@ -26,14 +26,24 @@ class RentPodGpuAliasTests(unittest.TestCase):
     def test_default_config_path(self):
         self.assertEqual(
             gpus.config_path({"HOME": "/tmp/home"}),
-            Path("/tmp/home/.config/rent-pod/gpu-aliases.toml"),
+            Path("/tmp/home/.config/rentpod/gpu-aliases.toml"),
         )
 
     def test_xdg_config_path(self):
         self.assertEqual(
             gpus.config_path({"XDG_CONFIG_HOME": "/tmp/xdg"}),
-            Path("/tmp/xdg/rent-pod/gpu-aliases.toml"),
+            Path("/tmp/xdg/rentpod/gpu-aliases.toml"),
         )
+
+    def test_legacy_config_root_is_used_when_it_already_exists(self):
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td)
+            legacy = home / ".config" / "rent-pod"
+            legacy.mkdir(parents=True)
+            self.assertEqual(
+                gpus.config_path({"HOME": str(home)}),
+                legacy / "gpu-aliases.toml",
+            )
 
     def test_loads_aliases_case_insensitively(self):
         with tempfile.TemporaryDirectory() as td:
