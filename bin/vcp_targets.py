@@ -290,6 +290,22 @@ def save_legacy_ssh(
     return normalized
 
 
+def clear_matching_legacy_ssh(
+    ssh_args: Any,
+    environ: Mapping[str, str] | None = None,
+) -> bool:
+    """Clear the legacy/default SSH fallback when it duplicates an endpoint."""
+    wanted = ssh_endpoint_key(ssh_args)
+    if wanted is None:
+        return False
+    cfg = read_config(environ)
+    if ssh_endpoint_key(cfg.get("ssh")) != wanted:
+        return False
+    cfg.pop("ssh", None)
+    write_config(cfg, environ)
+    return True
+
+
 def set_active_target(
     name: str,
     environ: Mapping[str, str] | None = None,
