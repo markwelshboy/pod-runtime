@@ -264,10 +264,10 @@ def _default_ssh_config(argv: list[str]) -> int | None:
             print("[vcp] Removed duplicate legacy/default SSH mapping.")
         return 0
 
-    normalized = vcp_targets.save_legacy_ssh(normalized)
+    normalized = vcp_targets.save_legacy_ssh(normalized, make_active=True)
     print(
         "[vcp] Could not identify the remote as a RunPod Pod; "
-        f"saved legacy/default SSH remote: {shlex.join(normalized)}"
+        f"saved and activated legacy/default SSH remote: {shlex.join(normalized)}"
     )
     return 0
 
