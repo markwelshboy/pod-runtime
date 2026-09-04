@@ -193,8 +193,6 @@ def ssh_endpoint_key(ssh_args: Any) -> tuple[str, int | None] | None:
     except VcpTargetError:
         return None
     host = destination.rsplit("@", 1)[-1]
-    # Bracketed IPv6 literals are kept comparable without the presentation []
-    # when they arrive in the usual user@[addr] form.
     if host.startswith("[") and host.endswith("]"):
         host = host[1:-1]
     return host.casefold(), _ssh_port(options)
@@ -203,34 +201,44 @@ def ssh_endpoint_key(ssh_args: Any) -> tuple[str, int | None] | None:
 def resolve_ssh(
     cfg: dict[str, Any],
     target: str | None = None,
-) -> tuple[list[str], str | None]:
-    """Resolve canonical SSH argv and the named target used.
+) -> tuple[list[str], str]:
+    """Resolve canonical SSH argv from an explicit or active named target.
 
-    Compatibility order when no explicit target is supplied:
-      1. active_target from the multi-target registry
-      2. legacy top-level `ssh`
+    Persistent top-level ``ssh`` configuration is deliberately no longer a
+    fallback. Temporary compatibility projections used by SL still carry a
+    top-level ``ssh`` field for old transport code, but they also project the
+    selected named target and active_target so this resolver remains named-only.
     """
     selected = validate_target_name(target) if target else active_target_name(cfg)
-    if selected:
-        entry = target_entry(cfg, selected)
-        ssh = entry.get("ssh")
-        if not _valid_ssh(ssh):
-            raise VcpTargetError(f"VCP target {selected!r} has no valid SSH configuration")
-        return normalize_ssh_args(ssh), selected
-
-    legacy = cfg.get("ssh")
-    if _valid_ssh(legacy):
-        return normalize_ssh_args(legacy), None
-    raise VcpTargetError(
-        "SSH remote is not configured; run 'vcp config NAME ssh ...' or 'vcp config ssh ...'"
-    )
+    if not selected:
+        raise VcpTargetError(
+            "no active VCP target; run 'vcp target NAME' or configure one with "
+            "'vcp config NAME ssh ...'"
+        )
+    entry = target_entry(cfg, selected)
+    ssh = entry.get("ssh")
+    if not _valid_ssh(ssh):
+        raise VcpTargetError(f"VCP target {selected!r} has no valid SSH configuration")
+    return normalize_ssh_args(ssh), selected
 
 
-def effective_config(cfg: dict[str, Any], target: str | None = None) -> tuple[dict[str, Any], str | None]:
+def effective_config(cfg: dict[str, Any], target: str | None = None) -> tuple[dict[str, Any], str]:
     ssh, selected = resolve_ssh(cfg, target)
     result = dict(cfg)
+    # The existing transfer engine still consumes top-level ssh. This is an
+    # in-memory compatibility projection, not persistent default state.
     result["ssh"] = ssh
     return result, selected
+
+
+def prune_legacy_ssh(environ: Mapping[str, str] | None = None) -> bool:
+    """Remove an obsolete persistent top-level SSH mapping if present."""
+    cfg = read_config(environ)
+    if "ssh" not in cfg:
+        return False
+    cfg.pop("ssh", None)
+    write_config(cfg, environ)
+    return True
 
 
 def save_target(
@@ -273,41 +281,11 @@ def save_target(
     raw_targets[name] = entry
     cfg["targets"] = raw_targets
     cfg["version"] = max(int(cfg.get("version") or 1), 2)
+    cfg.pop("ssh", None)
     if make_active:
         cfg["active_target"] = name
     write_config(cfg, environ)
     return entry
-
-
-def save_legacy_ssh(
-    ssh_args: list[str],
-    environ: Mapping[str, str] | None = None,
-    *,
-    make_active: bool = False,
-) -> list[str]:
-    normalized = normalize_ssh_args(ssh_args)
-    cfg = read_config(environ)
-    cfg["ssh"] = normalized
-    if make_active:
-        cfg.pop("active_target", None)
-    write_config(cfg, environ)
-    return normalized
-
-
-def clear_matching_legacy_ssh(
-    ssh_args: Any,
-    environ: Mapping[str, str] | None = None,
-) -> bool:
-    """Clear the legacy/default SSH fallback when it duplicates an endpoint."""
-    wanted = ssh_endpoint_key(ssh_args)
-    if wanted is None:
-        return False
-    cfg = read_config(environ)
-    if ssh_endpoint_key(cfg.get("ssh")) != wanted:
-        return False
-    cfg.pop("ssh", None)
-    write_config(cfg, environ)
-    return True
 
 
 def set_active_target(
@@ -321,6 +299,7 @@ def set_active_target(
         raise VcpTargetError(f"VCP target {name!r} has no valid SSH configuration")
     cfg["active_target"] = name
     cfg["version"] = max(int(cfg.get("version") or 1), 2)
+    cfg.pop("ssh", None)
     write_config(cfg, environ)
     return entry
 
@@ -334,6 +313,7 @@ def remove_target(name: str, environ: Mapping[str, str] | None = None) -> None:
     del raw_targets[name]
     if cfg.get("active_target") == name:
         cfg.pop("active_target", None)
+    cfg.pop("ssh", None)
     write_config(cfg, environ)
 
 
@@ -343,11 +323,11 @@ def remove_matching_targets(
     endpoints: Iterable[tuple[str, int | None]] = (),
     environ: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Remove VCP references to a deleted Pod.
+    """Remove VCP named targets associated with a deleted Pod.
 
-    Named targets match by saved RunPod pod_id first and by SSH host/port as a
-    fallback for manually-created targets. The legacy top-level SSH setting has
-    no pod metadata, so it is cleared only on an endpoint match.
+    Targets match by saved RunPod pod_id first and by SSH host/port as a fallback
+    for manually-created entries. Any obsolete persistent top-level ``ssh`` key
+    is also removed as part of the migration to named-only state.
     """
     cfg = read_config(environ)
     wanted_pod = str(pod_id or "").strip()
@@ -375,10 +355,9 @@ def remove_matching_targets(
                 if cfg.get("active_target") == name:
                     cfg.pop("active_target", None)
 
-    legacy_cleared = False
-    if wanted_endpoints and ssh_endpoint_key(cfg.get("ssh")) in wanted_endpoints:
+    legacy_cleared = "ssh" in cfg
+    if legacy_cleared:
         cfg.pop("ssh", None)
-        legacy_cleared = True
         changed = True
 
     if changed:
