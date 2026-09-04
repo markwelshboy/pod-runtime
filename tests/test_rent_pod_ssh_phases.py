@@ -1,7 +1,9 @@
 import importlib.util
+import io
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -96,6 +98,53 @@ class RentPodSshPhaseTests(unittest.TestCase):
         self.assertTrue(probes[0]["banner_ready"])
         self.assertTrue(probes[0]["auth_ready"])
         ssh_ready.assert_called_once()
+
+    def test_ssh_command_text_is_copy_paste_ready(self):
+        command = phases.ssh_command_text(
+            {"ip": "64.247.206.212", "port": 14463},
+            "/tmp/key with space",
+        )
+        self.assertEqual(
+            command,
+            "ssh -p 14463 -i '/tmp/key with space' root@64.247.206.212",
+        )
+
+    def test_status_prints_full_ssh_command(self):
+        rest_pod = {"id": "p1", "desiredStatus": "RUNNING"}
+        snapshot = {
+            "stage": "NETWORK",
+            "runtime_present": True,
+            "uptime": 10,
+            "desired_status": "RUNNING",
+            "last_event": None,
+            "public_ip": "64.247.206.212",
+            "ssh_port": 14463,
+            "probe_error": None,
+        }
+        probe = {
+            "ip": "64.247.206.212",
+            "port": 14463,
+            "tcp_ready": True,
+            "banner_ready": True,
+            "auth_ready": True,
+        }
+        output = io.StringIO()
+        with mock.patch.object(
+            phases.lifecycle, "_fetch_snapshot", return_value=(rest_pod, snapshot)
+        ), mock.patch.object(
+            phases, "observed_endpoints", return_value=[("64.247.206.212", 14463)]
+        ), mock.patch.object(
+            phases, "probe_endpoints", return_value=[probe]
+        ), mock.patch.object(
+            phases.lifecycle, "pod_age_seconds", return_value=None
+        ), redirect_stdout(output):
+            rc = phases.status_pod("token", "p1", "/home/markr/.ssh/id_ed25519_runpod")
+
+        self.assertEqual(rc, 0)
+        self.assertIn(
+            "SSH command: ssh -p 14463 -i /home/markr/.ssh/id_ed25519_runpod root@64.247.206.212",
+            output.getvalue(),
+        )
 
     def test_runtime_uptime_drives_exposure_deadline(self):
         deadline = phases._runtime_deadline(
