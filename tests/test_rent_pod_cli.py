@@ -45,7 +45,7 @@ class RentPodCliTests(unittest.TestCase):
         stream = io.StringIO()
         cli.print_help(stream)
         text = stream.getvalue()
-        self.assertIn("~/.config/rentpod/templates/*.toml", text)
+        self.assertIn("~/.config/rent-pod/templates/*.toml", text)
         self.assertIn("docker_start_cmd", text)
         self.assertIn("[secrets]", text)
         self.assertIn("RUNPOD_SECRET_name", text)
