@@ -27,7 +27,7 @@ def parse_management_args(argv: list[str]) -> dict[str, Any] | None:
 
     def take_pod_id(flag: str, index: int) -> tuple[str, int]:
         if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
-            raise ValueError(f"{flag} requires a pod ID")
+            raise ValueError(f"{flag} requires a pod ID or name")
         return argv[index + 1], index + 2
 
     i = 0
@@ -46,21 +46,21 @@ def parse_management_args(argv: list[str]) -> dict[str, Any] | None:
             set_action("status")
             pod_id = arg.split("=", 1)[1].strip()
             if not pod_id:
-                raise ValueError("--status requires a pod ID")
+                raise ValueError("--status requires a pod ID or name")
             i += 1
             continue
         if arg.startswith("--watch="):
             set_action("watch")
             pod_id = arg.split("=", 1)[1].strip()
             if not pod_id:
-                raise ValueError("--watch requires a pod ID")
+                raise ValueError("--watch requires a pod ID or name")
             i += 1
             continue
         if arg.startswith("--kill="):
             set_action("kill")
             pod_id = arg.split("=", 1)[1].strip()
             if not pod_id:
-                raise ValueError("--kill requires a pod ID")
+                raise ValueError("--kill requires a pod ID or name")
             i += 1
             continue
         if arg == "--kill-all":
@@ -91,6 +91,35 @@ def list_pods(api_key: str) -> list[dict[str, Any]]:
     if not isinstance(result, list):
         raise core.RunPodError(f"unexpected pods response: {result!r}")
     return [pod for pod in result if isinstance(pod, dict)]
+
+
+def resolve_pod_selector(api_key: str, selector: str) -> tuple[str, dict[str, Any]]:
+    """Resolve an exact Pod ID or exact Pod name to one account Pod.
+
+    Names are convenient in human-facing management commands, but they are not
+    guaranteed unique. Ambiguous names are rejected rather than guessing.
+    """
+    value = selector.strip()
+    if not value:
+        raise core.RunPodError("pod selector must be a pod ID or name")
+
+    pods = list_pods(api_key)
+    id_matches = [pod for pod in pods if str(pod.get("id") or "") == value]
+    if len(id_matches) == 1:
+        return value, id_matches[0]
+
+    name_matches = [pod for pod in pods if str(pod.get("name") or "") == value]
+    if len(name_matches) == 1:
+        pod_id = str(name_matches[0].get("id") or "").strip()
+        if pod_id:
+            return pod_id, name_matches[0]
+
+    if len(name_matches) > 1:
+        ids = ", ".join(str(pod.get("id") or "?") for pod in name_matches)
+        raise core.RunPodError(
+            f"pod name {value!r} is ambiguous; matching IDs: {ids}. Use the pod ID."
+        )
+    raise core.RunPodError(f"pod not found by ID or name: {value}")
 
 
 def enriched_pod(api_key: str, pod: dict[str, Any]) -> dict[str, Any]:
@@ -210,12 +239,14 @@ def management_ssh_key() -> str:
     )
 
 
-def status_pod(api_key: str, pod_id: str) -> int:
-    return lifecycle.status_pod(api_key, pod_id.strip(), management_ssh_key())
+def status_pod(api_key: str, selector: str) -> int:
+    pod_id, _pod = resolve_pod_selector(api_key, selector)
+    return lifecycle.status_pod(api_key, pod_id, management_ssh_key())
 
 
-def watch_pod(api_key: str, pod_id: str) -> int:
-    return lifecycle.watch_pod(api_key, pod_id.strip(), management_ssh_key())
+def watch_pod(api_key: str, selector: str) -> int:
+    pod_id, _pod = resolve_pod_selector(api_key, selector)
+    return lifecycle.watch_pod(api_key, pod_id, management_ssh_key())
 
 
 def pod_vcp_endpoints(pod: dict[str, Any]) -> set[tuple[str, int | None]]:
@@ -255,19 +286,20 @@ def _reap_vcp_for_deleted_pod(pod_id: str, pod: dict[str, Any]) -> None:
     if removed:
         print(f"[rent-pod] Reaped VCP target(s): {', '.join(removed)}")
     if cleanup.get("legacy"):
-        print("[rent-pod] Cleared matching legacy/default VCP SSH mapping.")
+        print("[rent-pod] Removed obsolete legacy/default VCP SSH mapping.")
 
 
-def kill_pod(api_key: str, pod_id: str) -> int:
-    pod_id = pod_id.strip()
-    if not pod_id:
-        print("ERROR: --kill requires a pod ID", file=sys.stderr)
+def kill_pod(api_key: str, selector: str) -> int:
+    selector = selector.strip()
+    if not selector:
+        print("ERROR: --kill requires a pod ID or name", file=sys.stderr)
         return 2
 
-    # Read first so a typo does not produce a misleading success message and so
-    # manually-created VCP entries can be matched by their last known endpoint.
+    pod_id, summary = resolve_pod_selector(api_key, selector)
+    # Read the concrete ID before deletion so endpoint cleanup has the richest
+    # available metadata and a typo/race cannot produce a misleading success.
     pod = core.get_pod(api_key, pod_id)
-    name = str(pod.get("name") or "")
+    name = str(pod.get("name") or summary.get("name") or "")
     core.delete_pod(api_key, pod_id)
     suffix = f" ({name})" if name else ""
     print(f"[rent-pod] Deleted pod {pod_id}{suffix}.")
