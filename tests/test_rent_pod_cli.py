@@ -41,6 +41,16 @@ class RentPodCliTests(unittest.TestCase):
         self.assertIn("RENT_POD_CUDA_MIN", text)
         self.assertIn("Legacy alias for --min-cuda", text)
 
+    def test_help_documents_local_templates_and_secrets(self):
+        stream = io.StringIO()
+        cli.print_help(stream)
+        text = stream.getvalue()
+        self.assertIn("~/.config/rentpod/templates/*.toml", text)
+        self.assertIn("docker_start_cmd", text)
+        self.assertIn("[secrets]", text)
+        self.assertIn("RUNPOD_SECRET_name", text)
+        self.assertIn("~/.config/rent-pod", text)
+
 
 if __name__ == "__main__":
     unittest.main()
