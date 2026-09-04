@@ -2,6 +2,7 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -49,18 +50,18 @@ class VcpEntryTests(unittest.TestCase):
             ["-i", "/key", "-p", "2222", "root@host"],
         )
 
-    def test_no_name_config_ssh_updates_active_named_target(self):
+    def test_no_name_config_ssh_discovers_and_names_runpod_target(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.json"
             config.write_text(
                 json.dumps(
                     {
-                        "ssh": ["-p", "1000", "root@legacy"],
-                        "active_target": "qwen3-captioning",
+                        "ssh": ["-p", "3000", "root@new"],
+                        "active_target": "old-target",
                         "targets": {
-                            "qwen3-captioning": {
+                            "old-target": {
                                 "ssh": ["-p", "2000", "root@old"],
-                                "pod_id": "pod123",
+                                "pod_id": "oldpod",
                                 "provider": "runpod",
                             }
                         },
@@ -69,7 +70,10 @@ class VcpEntryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             out = io.StringIO()
-            with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}), redirect_stdout(out):
+            with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}), \
+                 mock.patch.object(vcp_entry, "_discover_runpod_pod_id", return_value="pod456"), \
+                 mock.patch.object(vcp_entry, "_runpod_name_for_id", return_value="qwen3-captioning"), \
+                 redirect_stdout(out):
                 rc = vcp_entry.main(
                     [
                         "config",
@@ -84,18 +88,36 @@ class VcpEntryTests(unittest.TestCase):
             cfg = json.loads(config.read_text(encoding="utf-8"))
 
         self.assertEqual(rc, 0)
-        self.assertEqual(cfg["ssh"], ["-p", "1000", "root@legacy"])
+        self.assertEqual(cfg["active_target"], "qwen3-captioning")
+        self.assertNotIn("ssh", cfg)
+        self.assertIn("old-target", cfg["targets"])
+        discovered = cfg["targets"]["qwen3-captioning"]
         self.assertEqual(
-            cfg["targets"]["qwen3-captioning"]["ssh"],
+            discovered["ssh"],
             ["-p", "3000", "-i", "/key", "root@new"],
         )
-        self.assertEqual(cfg["targets"]["qwen3-captioning"]["pod_id"], "pod123")
-        self.assertIn("Updated active target qwen3-captioning", out.getvalue())
+        self.assertEqual(discovered["pod_id"], "pod456")
+        self.assertEqual(discovered["provider"], "runpod")
+        self.assertEqual(discovered["runpod_name"], "qwen3-captioning")
+        self.assertIn("Discovered RunPod target qwen3-captioning (pod pod456)", out.getvalue())
+        self.assertIn("Removed duplicate legacy/default SSH mapping", out.getvalue())
 
-    def test_no_name_config_ssh_uses_legacy_when_no_active_target(self):
+    def test_no_name_config_ssh_falls_back_to_legacy_and_makes_it_active(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = Path(tmp) / "config.json"
-            with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}):
+            config.write_text(
+                json.dumps(
+                    {
+                        "active_target": "old-target",
+                        "targets": {
+                            "old-target": {"ssh": ["-p", "2000", "root@old"]}
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}), \
+                 mock.patch.object(vcp_entry, "_discover_runpod_pod_id", return_value=None):
                 rc = vcp_entry.main(
                     ["config", "ssh", "root@host", "-p", "2222", "-i", "/key"]
                 )
@@ -107,6 +129,26 @@ class VcpEntryTests(unittest.TestCase):
             ["-p", "2222", "-i", "/key", "root@host"],
         )
         self.assertNotIn("active_target", cfg)
+        self.assertIn("old-target", cfg["targets"])
+
+    def test_runpod_probe_reads_runtime_environment(self):
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="noise\n__VCP_RUNPOD_POD_ID__=pod123\n",
+        )
+        with mock.patch.object(vcp_entry.subprocess, "run", return_value=completed) as run:
+            pod_id = vcp_entry._discover_runpod_pod_id(
+                ["root@64.247.206.212", "-p", "14463", "-i", "/key"]
+            )
+
+        self.assertEqual(pod_id, "pod123")
+        cmd = run.call_args.args[0]
+        self.assertEqual(cmd[0], "ssh")
+        self.assertEqual(cmd[-3:], ["root@64.247.206.212", "bash", "-s"])
+        script = run.call_args.kwargs["input"]
+        self.assertIn("/etc/rp_environment", script)
+        self.assertIn("RUNPOD_POD_ID", script)
 
     def test_target_remove_convenience_command(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -229,6 +271,7 @@ class VcpEntryTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("vcp targets", out.getvalue())
         self.assertIn("vcp target remove NAME", out.getvalue())
+        self.assertIn("auto-discovers RunPod target", out.getvalue())
         self.assertIn("vcp --target NAME", out.getvalue())
 
 
