@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import socket
 import time
 from pathlib import Path
@@ -249,6 +250,16 @@ def print_probe_snapshot(
         print(f"           runtime probe: unavailable ({snapshot['probe_error']})")
 
 
+def ssh_command_text(probe: dict[str, Any] | None, ssh_key: str | None) -> str | None:
+    """Return the copy/paste direct-SSH command for a resolved status endpoint."""
+    if probe is None or not ssh_key:
+        return None
+    key_path = str(Path(ssh_key).expanduser())
+    return shlex.join(
+        ["ssh", "-p", str(probe["port"]), "-i", key_path, f"root@{probe['ip']}"]
+    )
+
+
 def _identity_for_probe(
     rest_pod: dict[str, Any],
     snapshot: dict[str, Any],
@@ -378,6 +389,9 @@ def status_pod(api_key: str, pod_id: str, ssh_key: str | None = None) -> int:
     endpoints = observed_endpoints(rest_pod, snapshot)
     probe = best_probe(probe_endpoints(endpoints, ssh_key))
     print_probe_snapshot(snapshot, probe, lifecycle.pod_age_seconds(rest_pod))
+    command = ssh_command_text(probe, ssh_key)
+    if command:
+        print(f"           SSH command: {command}")
     return 0
 
 
