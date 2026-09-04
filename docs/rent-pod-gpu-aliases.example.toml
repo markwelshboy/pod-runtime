@@ -1,0 +1,8 @@
+# Copy to ~/.config/rent-pod/gpu-aliases.toml and edit to taste.
+# Alias targets can be exact display names printed by `rent-pod --list`
+# or exact RunPod GPU IDs.
+
+[aliases]
+pro6000 = "RTX PRO 6000"
+a100 = "A100 PCIe"
+h100 = "H100 SXM"
