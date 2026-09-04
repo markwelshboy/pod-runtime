@@ -21,6 +21,8 @@ def _usage() -> str:
         + "\n\nNamed targets:\n"
         + "  vcp targets\n"
         + "  vcp target [NAME]\n"
+        + "  vcp target remove NAME\n"
+        + "  vcp config ssh [ssh options] user@host   # updates active target, else legacy/default\n"
         + "  vcp config NAME ssh [ssh options] user@host\n"
         + "  vcp config NAME show\n"
         + "  vcp config NAME remove\n"
@@ -58,20 +60,37 @@ def _show_targets() -> int:
     rows = vcp_targets.rows(cfg)
     active = vcp_targets.active_target_name(cfg)
     legacy = cfg.get("ssh")
-    print(f"config:        {vcp_targets.config_path()}")
-    print(f"active target: {active or '<legacy/default>' if legacy else active or '<none>'}")
+    legacy_configured = isinstance(legacy, list) and bool(legacy)
+    if active:
+        active_label = active
+    elif legacy_configured:
+        active_label = "<legacy/default>"
+    else:
+        active_label = "<none>"
+
+    print(f"config:         {vcp_targets.config_path()}")
+    print(f"active target:  {active_label}")
+    if legacy_configured:
+        print(
+            "legacy/default: "
+            f"{vcp_targets.endpoint_from_ssh(legacy)} "
+            "(fallback when no named target is active)"
+        )
+
     if not rows:
-        print("targets:       <none>")
-        if isinstance(legacy, list) and legacy:
-            print(f"legacy ssh:    {shlex.join(legacy)}")
+        print("targets:        <none>")
         return 0
+
     print()
-    print(f"{'NAME':<24} {'ACTIVE':<7} {'POD ID':<20} {'PROVIDER':<10} {'ENDPOINT':<34} DESCRIPTION")
-    print("-" * 116)
+    print(
+        f"{'NAME':<32} {'ACTIVE':<7} {'POD ID':<20} {'PROVIDER':<10} "
+        f"{'ENDPOINT':<36} DESCRIPTION"
+    )
+    print("-" * 128)
     for row in rows:
         print(
-            f"{row['name']:<24.24} {row['active']:<7.7} {row['pod_id']:<20.20} "
-            f"{row['provider']:<10.10} {row['endpoint']:<34.34} {row['description']}"
+            f"{row['name']:<32.32} {row['active']:<7.7} {row['pod_id']:<20.20} "
+            f"{row['provider']:<10.10} {row['endpoint']:<36.36} {row['description']}"
         )
     return 0
 
@@ -88,11 +107,61 @@ def _target_command(argv: list[str]) -> int:
             return 0
         print("<none>")
         return 0
+
+    if len(argv) == 3 and argv[1] in {"remove", "delete", "rm"}:
+        name = vcp_targets.validate_target_name(argv[2])
+        cfg = vcp_targets.read_config()
+        was_active = vcp_targets.active_target_name(cfg) == name
+        vcp_targets.remove_target(name)
+        suffix = " (was active; active target cleared)" if was_active else ""
+        print(f"[vcp] Removed target: {name}{suffix}")
+        return 0
+
     if len(argv) != 2:
-        raise vcp_targets.VcpTargetError("usage: vcp target [NAME]")
+        raise vcp_targets.VcpTargetError(
+            "usage: vcp target [NAME] | vcp target remove NAME"
+        )
     name = vcp_targets.validate_target_name(argv[1])
     entry = vcp_targets.set_active_target(name)
     print(f"[vcp] Active target: {name} ({vcp_targets.endpoint_from_ssh(entry.get('ssh'))})")
+    return 0
+
+
+def _ssh_config_args(argv: list[str], start: int, usage: str) -> list[str]:
+    ssh_args = list(argv[start:])
+    if ssh_args and ssh_args[0] == "--":
+        ssh_args = ssh_args[1:]
+    if not ssh_args:
+        raise vcp_targets.VcpTargetError(usage)
+    return ssh_args
+
+
+def _default_ssh_config(argv: list[str]) -> int | None:
+    """Handle legacy-looking `vcp config ssh ...` with target-aware semantics.
+
+    Once named targets exist, a no-name SSH update should affect what the next
+    transfer will actually use. Therefore it updates active_target when one is
+    selected. Only configs with no active named target write the legacy/default
+    top-level SSH fallback.
+    """
+    if len(argv) < 2 or argv[:2] != ["config", "ssh"]:
+        return None
+    ssh_args = _ssh_config_args(
+        argv,
+        2,
+        "usage: vcp config ssh [ssh options] user@host",
+    )
+    cfg = vcp_targets.read_config()
+    active = vcp_targets.active_target_name(cfg)
+    if active:
+        entry = vcp_targets.save_target(active, ssh_args)
+        print(
+            f"[vcp] Updated active target {active}: "
+            f"{shlex.join(entry.get('ssh') or [])}"
+        )
+    else:
+        normalized = vcp_targets.save_legacy_ssh(ssh_args)
+        print(f"[vcp] Saved legacy/default SSH remote: {shlex.join(normalized)}")
     return 0
 
 
@@ -111,29 +180,32 @@ def _named_config(argv: list[str]) -> int | None:
         )
     action = argv[2]
     if action == "ssh":
-        ssh_args = list(argv[3:])
-        if ssh_args and ssh_args[0] == "--":
-            ssh_args = ssh_args[1:]
-        if not ssh_args:
-            raise vcp_targets.VcpTargetError(
-                "usage: vcp config NAME ssh [ssh options] user@host"
-            )
-        vcp_targets.save_target(name, ssh_args)
-        print(f"saved SSH target {name}: {shlex.join(ssh_args)}")
+        ssh_args = _ssh_config_args(
+            argv,
+            3,
+            "usage: vcp config NAME ssh [ssh options] user@host",
+        )
+        entry = vcp_targets.save_target(name, ssh_args)
+        print(f"[vcp] Saved SSH target {name}: {shlex.join(entry.get('ssh') or [])}")
         return 0
     if action in {"show", "list"} and len(argv) == 3:
         cfg = vcp_targets.read_config()
         entry = vcp_targets.target_entry(cfg, name)
         marker = " (active)" if vcp_targets.active_target_name(cfg) == name else ""
+        try:
+            normalized = vcp_targets.normalize_ssh_args(entry.get("ssh"))
+        except vcp_targets.VcpTargetError:
+            normalized = entry.get("ssh") or []
         print(f"target:       {name}{marker}")
-        print(f"ssh:          {shlex.join(entry.get('ssh') or []) if entry.get('ssh') else '<not configured>'}")
+        print(f"ssh:          {shlex.join(normalized) if normalized else '<not configured>'}")
+        print(f"endpoint:     {vcp_targets.endpoint_from_ssh(entry.get('ssh'))}")
         print(f"pod id:       {entry.get('pod_id') or '-'}")
         print(f"provider:     {entry.get('provider') or '-'}")
         print(f"description:  {entry.get('description') or '-'}")
         return 0
     if action in {"remove", "delete", "rm"} and len(argv) == 3:
         vcp_targets.remove_target(name)
-        print(f"removed VCP target: {name}")
+        print(f"[vcp] Removed target: {name}")
         return 0
     raise vcp_targets.VcpTargetError(f"unknown target config action: {action}")
 
@@ -169,6 +241,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _show_targets()
         if args[0] == "target":
             return _target_command(args)
+
+        default_ssh = _default_ssh_config(args)
+        if default_ssh is not None:
+            return default_ssh
 
         named = _named_config(args)
         if named is not None:
