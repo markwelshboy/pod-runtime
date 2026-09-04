@@ -212,8 +212,6 @@ query {{
       uninterruptablePrice
       minimumBidPrice
       availableGpuCounts
-      minDownload
-      minUpload
       countryCode
     }}
   }}
@@ -239,12 +237,12 @@ query {{
         filter_text += f" | CUDA >= {cuda_min}"
     print(f"[rent-pod] Live RunPod availability: {filter_text}")
     print()
-    print(f"{'GPU':<16} {'VRAM':>5} {'Pool':<7} {'Stock':<8} {'$/hr':>8} {'GPU counts':<18} {'Route floor'}")
-    print("-" * 86)
+    print(f"{'GPU':<22} {'VRAM':>5} {'Pool':<7} {'Stock':<8} {'$/hr':>8} {'GPU counts':<18}")
+    print("-" * 72)
 
     for row in selected:
         if row.get("missing"):
-            print(f"{row['id']:<16} {'-':>5} {'-':<7} {'UNKNOWN':<8} {'-':>8} {'-':<18} -")
+            print(f"{row['id']:<22} {'-':>5} {'-':<7} {'UNKNOWN':<8} {'-':>8} {'-':<18}")
             continue
         pool_supported = bool(row.get("secureCloud" if cloud == "SECURE" else "communityCloud"))
         lowest = row.get("lowestPrice") or {}
@@ -255,14 +253,11 @@ query {{
         price_text = f"${float(price):.3f}" if price is not None else "-"
         counts = lowest.get("availableGpuCounts") or []
         counts_text = ",".join(str(value) for value in counts) if counts else "-"
-        route = "-"
-        if lowest:
-            route = f"{lowest.get('minDownload', '-')}↓/{lowest.get('minUpload', '-')}↑"
         display = str(row.get("displayName") or row.get("id") or "?")
         print(
-            f"{display:<16} {str(row.get('memoryInGb') or '-'):>5} "
+            f"{display:<22} {str(row.get('memoryInGb') or '-'):>5} "
             f"{('yes' if pool_supported else 'no'):<7} {stock:<8} {price_text:>8} "
-            f"{counts_text:<18} {route}"
+            f"{counts_text:<18}"
         )
     return 0
 
@@ -350,7 +345,11 @@ def main() -> int:
             return 1
 
     if "--dry-run" in forwarded:
-        return dry_run(forwarded, cuda_min)
+        try:
+            return dry_run(forwarded, cuda_min)
+        except (ValueError, core.RunPodError) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
 
     patch_create_for_cuda(cuda_min)
     sys.argv = [sys.argv[0], *forwarded]
@@ -359,7 +358,11 @@ def main() -> int:
             f"[rent-pod] CUDA minimum:        {cuda_min} "
             f"(allowed: {', '.join(allowed_cuda_versions(cuda_min))})"
         )
-    return core.main()
+    try:
+        return core.main()
+    except (ValueError, core.RunPodError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
