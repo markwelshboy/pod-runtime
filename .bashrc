@@ -116,7 +116,7 @@ export repo_root="${REPO_ROOT:?REPO_ROOT not set}"
 # Make sure /workspace etc. is on PATH for mirror/rebase helpers etc.
 case ":$PATH:" in
   *:/workspace:*) ;;
-  *) export PATH="/workspace:$repo_root:$repo_root/scripts:$PATH" ;;
+  *) export PATH="/workspace:$repo_root:$repo_root/scripts:$repo_root/bin$PATH" ;;
 esac
 
 export HF_XET_HIGH_PERFORMANCE=1

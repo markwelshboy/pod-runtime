@@ -4,7 +4,7 @@
 source_if_exists() {
   local f="$1"
   if [ -f "$f" ]; then
-    echo "[helpers] Sourcing: $f"
+    #echo "[helpers] Sourcing: $f"
     #shellcheck disable=SC1090
     source "$f"
   fi
