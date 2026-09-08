@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUNTIME_DIR="${RUNTIME_DIR:-/workspace/pod-runtime}"
+PROVISION_ALLOW_SLOW_NETWORK="${PROVISION_ALLOW_SLOW_NETWORK:-false}"
+
+if [[ $# -lt 1 || "$1" != "ssh" ]]; then
+    cat >&2 <<'USAGE'
+Usage:
+  provision_qualify ssh root@HOST -p PORT -i KEY [other ssh args...]
+USAGE
+    exit 2
+fi
+
+shift
+SSH_ARGS=("$@")
+
+tmp_script="$(mktemp)"
+trap 'rm -f "$tmp_script"' EXIT
+
+cat >"$tmp_script" <<EOF_REMOTE
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUNTIME_DIR=$(printf '%q' "$RUNTIME_DIR")
+PROVISION_ALLOW_SLOW_NETWORK=$(printf '%q' "$PROVISION_ALLOW_SLOW_NETWORK")
+
+_pid1_env_value() {
+    local key="\$1"
+    tr '\0' '\n' </proc/1/environ 2>/dev/null \
+        | sed -n "s/^\${key}=//p" \
+        | tail -n1
+}
+
+# The template's Pod environment is authoritative for this opt-in path.
+# In particular this fixes the generic provisioner's old behavior where a
+# template-side PROVISION_ALLOW_SLOW_NETWORK value was invisible locally.
+_pod_allow_slow="\$(_pid1_env_value PROVISION_ALLOW_SLOW_NETWORK || true)"
+if [[ -n "\$_pod_allow_slow" ]]; then
+    PROVISION_ALLOW_SLOW_NETWORK="\$_pod_allow_slow"
+fi
+unset _pod_allow_slow
+
+export POD_RUNTIME_DIR="\$RUNTIME_DIR"
+
+echo "==> Qualifying self-provisioning remote machine"
+echo "[provision] Mode: qualification-only"
+echo "[provision] Runtime dir: \$RUNTIME_DIR"
+echo "[provision] Allow slow network: \$PROVISION_ALLOW_SLOW_NETWORK"
+
+if [[ ! -f "\$RUNTIME_DIR/helpers.sh" ]]; then
+    echo "[provision] ERROR: self-provisioning image has not created \$RUNTIME_DIR/helpers.sh" >&2
+    echo "[provision] Refusing to fall back to mutating/full provision mode." >&2
+    exit 66
+fi
+
+cd "\$RUNTIME_DIR"
+
+if [[ -f "\$RUNTIME_DIR/.env" ]]; then
+    # shellcheck disable=SC1090
+    source "\$RUNTIME_DIR/.env"
+fi
+
+# shellcheck disable=SC1090
+source "\$RUNTIME_DIR/helpers.sh"
+
+_provision_bool_true() {
+    case "\${1:-}" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_network_replacement_recommended() {
+    local file
+    for file in \
+        "\${NETWORK_LOG_FILE:-/workspace/logs/network_probe.json}" \
+        "\${NETWORK_PYPI_LOG_FILE:-/workspace/logs/network_probe_pypi.json}"
+    do
+        [[ -f "\$file" ]] || continue
+        if python3 - "\$file" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as fh:
+        obj = json.load(fh)
+except Exception:
+    raise SystemExit(1)
+
+value = obj.get("replace_recommended")
+if value is None:
+    value = obj.get("overall", {}).get("replace_recommended")
+raise SystemExit(0 if value is True else 1)
+PY
+        then
+            return 0
+        fi
+    done
+    return 1
+}
+
+if ! declare -F network_probe_startup_guarded >/dev/null 2>&1; then
+    echo "[provision] ERROR: network qualification helper is unavailable in image-owned runtime." >&2
+    exit 69
+fi
+
+echo "[provision] Qualifying network performance..."
+network_probe_startup_guarded || true
+
+if _network_replacement_recommended; then
+    if _provision_bool_true "\$PROVISION_ALLOW_SLOW_NETWORK"; then
+        echo "[provision] WARNING: network qualification recommends replacing this pod; continuing because PROVISION_ALLOW_SLOW_NETWORK=\$PROVISION_ALLOW_SLOW_NETWORK" >&2
+    else
+        echo >&2
+        echo "[provision] ERROR: network qualification recommends replacing this pod." >&2
+        echo "[provision] Image-owned runtime/HFF were left untouched." >&2
+        echo "[provision] Override with PROVISION_ALLOW_SLOW_NETWORK=true if you intentionally want to continue." >&2
+        exit 78
+    fi
+fi
+
+echo
+echo "[provision] Qualification complete."
+echo "[provision] Image-owned pod-runtime, shell setup, secrets, and HFF were left untouched."
+EOF_REMOTE
+
+ssh "${SSH_ARGS[@]}" 'bash -s' <"$tmp_script"
