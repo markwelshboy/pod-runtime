@@ -142,6 +142,17 @@ chmod 700 /root/.secrets
 } > /root/.secrets/env.current
 chmod 600 /root/.secrets/env.current
 
+# Optional recovery hold for inspecting first-boot state before HFF modifies it.
+# Normal startup is unchanged unless MINIMAX_DEBUG_HOLD=1 is explicitly set.
+if [[ "${MINIMAX_DEBUG_HOLD:-0}" == "1" ]]; then
+  echo "[debug] MINIMAX_DEBUG_HOLD=1 — holding before HFF bootstrap"
+  echo "[debug] SSH is available; create /tmp/minimax-continue to resume"
+  while [[ ! -e /tmp/minimax-continue ]]; do
+    sleep 2
+  done
+  echo "[debug] Continuing startup..."
+fi
+
 install_system_hff
 install_root_shell_dotfiles || true
 ensure_comfy_dirs
