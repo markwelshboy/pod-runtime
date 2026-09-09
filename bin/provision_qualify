@@ -25,28 +25,24 @@ set -euo pipefail
 RUNTIME_DIR=$(printf '%q' "$RUNTIME_DIR")
 PROVISION_ALLOW_SLOW_NETWORK=$(printf '%q' "$PROVISION_ALLOW_SLOW_NETWORK")
 
-_pid1_env_value() {
-    local key="\$1"
-    tr '\0' '\n' </proc/1/environ 2>/dev/null \
-        | sed -n "s/^\${key}=//p" \
-        | tail -n1
+_import_pid1_network_env() {
+    local entry count=0
+    while IFS= read -r -d '' entry; do
+        case "\$entry" in
+            NETWORK_*=*|PROVISION_ALLOW_SLOW_NETWORK=*)
+                export "\$entry"
+                count=\$((count + 1))
+                ;;
+        esac
+    done </proc/1/environ 2>/dev/null || true
+    echo "[provision] Imported \$count network qualification setting(s) from Pod environment."
 }
-
-# The template's Pod environment is authoritative for this opt-in path.
-# In particular this fixes the generic provisioner's old behavior where a
-# template-side PROVISION_ALLOW_SLOW_NETWORK value was invisible locally.
-_pod_allow_slow="\$(_pid1_env_value PROVISION_ALLOW_SLOW_NETWORK || true)"
-if [[ -n "\$_pod_allow_slow" ]]; then
-    PROVISION_ALLOW_SLOW_NETWORK="\$_pod_allow_slow"
-fi
-unset _pod_allow_slow
 
 export POD_RUNTIME_DIR="\$RUNTIME_DIR"
 
 echo "==> Qualifying self-provisioning remote machine"
 echo "[provision] Mode: qualification-only"
 echo "[provision] Runtime dir: \$RUNTIME_DIR"
-echo "[provision] Allow slow network: \$PROVISION_ALLOW_SLOW_NETWORK"
 
 if [[ ! -f "\$RUNTIME_DIR/helpers.sh" ]]; then
     echo "[provision] ERROR: self-provisioning image has not created \$RUNTIME_DIR/helpers.sh" >&2
@@ -60,6 +56,13 @@ if [[ -f "\$RUNTIME_DIR/.env" ]]; then
     # shellcheck disable=SC1090
     source "\$RUNTIME_DIR/.env"
 fi
+
+# SSH sessions do not inherit the container's RunPod template environment.
+# Import only qualification-related settings from PID 1; this includes the
+# optional home-route mTLS material without logging any values.
+_import_pid1_network_env
+
+echo "[provision] Allow slow network: \$PROVISION_ALLOW_SLOW_NETWORK"
 
 # shellcheck disable=SC1090
 source "\$RUNTIME_DIR/helpers.sh"
@@ -100,13 +103,86 @@ PY
     return 1
 }
 
+_validate_qualification_results() {
+    local hf_file="\${NETWORK_LOG_FILE:-/workspace/logs/network_probe.json}"
+    local pypi_file="\${NETWORK_PYPI_LOG_FILE:-/workspace/logs/network_probe_pypi.json}"
+
+    if [[ ! -s "\$hf_file" ]]; then
+        echo "[provision] ERROR: HF/CDN qualification did not produce a fresh result: \$hf_file" >&2
+        return 1
+    fi
+    if [[ ! -s "\$pypi_file" ]]; then
+        echo "[provision] ERROR: PyPI/CDN qualification did not produce a fresh result: \$pypi_file" >&2
+        return 1
+    fi
+
+    python3 - "\$hf_file" "\$pypi_file" <<'PY'
+import json
+import sys
+
+hf_path, pypi_path = sys.argv[1:3]
+
+try:
+    with open(hf_path, "r", encoding="utf-8") as fh:
+        hf = json.load(fh)
+    with open(pypi_path, "r", encoding="utf-8") as fh:
+        pypi = json.load(fh)
+except Exception as exc:
+    print(f"[provision] ERROR: could not parse qualification result: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+hf_result = hf.get("huggingface") or {}
+hf_class = str(hf_result.get("classification") or "").strip().lower()
+try:
+    hf_mbps = float(hf_result.get("mbps") or 0)
+except (TypeError, ValueError):
+    hf_mbps = 0.0
+if hf_result.get("enabled") is not True or hf_class in {"", "skipped", "probe-failed", "failed"} or hf_mbps <= 0:
+    print(
+        f"[provision] ERROR: HF/CDN qualification is incomplete "
+        f"(enabled={hf_result.get('enabled')!r}, class={hf_class!r}, mbps={hf_mbps}).",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+pypi_class = str(pypi.get("classification") or "").strip().lower()
+try:
+    pypi_mbps = float(pypi.get("mbps") or 0)
+except (TypeError, ValueError):
+    pypi_mbps = 0.0
+if pypi_class in {"", "skipped", "probe-failed", "failed"} or pypi_mbps <= 0:
+    print(
+        f"[provision] ERROR: PyPI/CDN qualification is incomplete "
+        f"(class={pypi_class!r}, mbps={pypi_mbps}).",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+print(f"[provision] Verified fresh HF/CDN result: {hf_mbps:.1f} Mbps ({hf_class})")
+print(f"[provision] Verified fresh PyPI/CDN result: {pypi_mbps:.1f} Mbps ({pypi_class})")
+PY
+}
+
 if ! declare -F network_probe_startup_guarded >/dev/null 2>&1; then
     echo "[provision] ERROR: network qualification helper is unavailable in image-owned runtime." >&2
     exit 69
 fi
 
+# A self-provisioning image may already have written startup probe files before
+# rent-pod reaches SSH. Remove them so acceptance can only use results produced
+# by this qualification pass.
+hf_result="\${NETWORK_LOG_FILE:-/workspace/logs/network_probe.json}"
+pypi_result="\${NETWORK_PYPI_LOG_FILE:-/workspace/logs/network_probe_pypi.json}"
+rm -f "\$hf_result" "\$pypi_result"
+
 echo "[provision] Qualifying network performance..."
 network_probe_startup_guarded || true
+
+if ! _validate_qualification_results; then
+    echo "[provision] ERROR: required HF/PyPI qualification did not complete; refusing pod acceptance." >&2
+    echo "[provision] Image-owned runtime/HFF were left untouched." >&2
+    exit 70
+fi
 
 if _network_replacement_recommended; then
     if _provision_bool_true "\$PROVISION_ALLOW_SLOW_NETWORK"; then
