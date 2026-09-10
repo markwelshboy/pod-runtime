@@ -21,6 +21,13 @@
     "paths": [
       "/workspace/qwen3/qwen3-vl-captioning-validation/runs",
       "/workspace/qwen3/images"
-    ]
+    ],
+    "retention": {
+      "recent": 5,
+      "daily": 7,
+      "weekly": 4,
+      "grace_hours": 48,
+      "auto_prune_after_snapshot": true
+    }
   }
 }
