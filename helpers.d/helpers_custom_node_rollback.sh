@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Transaction-style rollback support for install_custom_nodes.
 
-: "${CUSTOM_NODES_ROLLBACK_TOOL:=${POD_RUNTIME_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)}/bin/custom_nodes_rollback.py}"
+: "${CUSTOM_NODES_ROLLBACK_TOOL:=${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}/bin/custom_nodes_rollback.py}"
 
 if declare -F install_custom_nodes >/dev/null 2>&1 && ! declare -F _install_custom_nodes_without_rollback >/dev/null 2>&1; then
   eval "$(declare -f install_custom_nodes | sed '1s/^install_custom_nodes /_install_custom_nodes_without_rollback /')"

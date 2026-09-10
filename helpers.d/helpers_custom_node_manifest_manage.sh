@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Manifest set/tag management layered over install_custom_nodes.
 
-: "${CUSTOM_NODES_MANIFEST_MANAGE_TOOL:=${POD_RUNTIME_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)}/bin/custom_node_manifest_manage.py}"
+: "${CUSTOM_NODES_MANIFEST_MANAGE_TOOL:=${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}/bin/custom_node_manifest_manage.py}"
 
 _custom_nodes_local_manifest_default() {
-  local runtime_dir="${POD_RUNTIME_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)}"
+  local runtime_dir="${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}"
   if [[ -f "$runtime_dir/default_custom_nodes_manifest.json" ]]; then
     printf '%s\n' "$runtime_dir/default_custom_nodes_manifest.json"
   elif [[ "${CUSTOM_NODES_MANIFEST_URL:-}" != http://* && "${CUSTOM_NODES_MANIFEST_URL:-}" != https://* ]]; then

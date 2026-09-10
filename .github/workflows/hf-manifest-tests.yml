@@ -5,16 +5,11 @@ on:
   push:
     paths:
       - helpers.sh
-      - helpers_session.sh
-      - helpers_network.sh
-      - helpers_network_transfers.sh
-      - helpers_network_guard.sh
-      - helpers_hff_runtime.sh
-      - helpers_hf_manifest.sh
-      - helpers_hf_manifest_selection.sh
-      - helpers_hf_manifest_tree.sh
-      - helpers_hf_manifest.d/**
+      - helpers_core.sh
+      - helpers_shell.sh
+      - helpers.d/**
       - bin/hf_manifest_expand.py
+      - tests/test_helpers_layout.py
       - tests/test_hf_manifest_expand.py
       - start.sh
       - start.minimax.sh
@@ -26,6 +21,8 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      POD_RUNTIME_DIR: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,7 +30,12 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
 
       - name: Check shell syntax
-        run: bash -n helpers.sh helpers_session.sh helpers_network.sh helpers_network_transfers.sh helpers_network_guard.sh helpers_hff_runtime.sh helpers_hf_manifest.sh helpers_hf_manifest_selection.sh helpers_hf_manifest_tree.sh helpers_hf_manifest.d/*.sh start.sh start.minimax.sh
+        run: |
+          bash -n helpers.sh helpers_core.sh helpers_shell.sh start.sh start.minimax.sh
+          find helpers.d -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+
+      - name: Test helper layout and quiet loading
+        run: python -m unittest -v tests.test_helpers_layout
 
       - name: Guard runtime launchers
         shell: bash
@@ -67,7 +69,7 @@ jobs:
           set -euo pipefail
           export POD_TIMEZONE=America/Los_Angeles
           export POD_SESSION_STARTED_AT_EPOCH="$(( $(date +%s) - 3723 ))"
-          source ./helpers_session.sh
+          source ./helpers.d/helpers_session.sh
           [[ "$TZ" == "America/Los_Angeles" ]]
           age="$(pod_session_age_seconds)"
           (( age >= 3723 && age < 3730 ))
@@ -82,7 +84,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source ./helpers_hff_runtime.sh
+          source ./helpers.d/helpers_hff_runtime.sh
 
           export HF_TOKEN='hf_1234567890abcdefghijkl'
           export CIVITAI_TOKEN='civitai_1234567890mnopqrstuv'
@@ -158,7 +160,7 @@ jobs:
 
           export HFF_VENV="$test_root/hff"
           export COMFY_LOGS="$test_root/logs"
-          source ./helpers_hf_manifest.sh
+          source ./helpers.d/helpers_hf_manifest.sh
 
           HF_DOWNLOADER=false aria2_download_from_manifest | grep -q ARIA2_ORIGINAL
 
