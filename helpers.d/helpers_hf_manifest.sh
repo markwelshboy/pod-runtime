@@ -6,7 +6,7 @@ if [[ -n "${__HF_MANIFEST_HELPERS_LOADED:-}" ]]; then
 fi
 __HF_MANIFEST_HELPERS_LOADED=1
 
-_hf_manifest_root_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+_hf_manifest_root_dir="${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}/helpers.d"
 _hf_manifest_lib_dir="${_hf_manifest_root_dir}/helpers_hf_manifest.d"
 # shellcheck source=/dev/null
 source "${_hf_manifest_lib_dir}/01-common.sh"
