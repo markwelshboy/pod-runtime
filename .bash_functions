@@ -21,10 +21,9 @@ load_runtime_env() {
   # Tokens & session env
   source_if_exists "$secrets"
 
-  # ComfyUI repo env + helpers
+  # ComfyUI repo env + public helper entrypoint
   source_if_exists "$repo_root/.env"
   source_if_exists "$repo_root/helpers.sh"
-  source_if_exists "$repo_root/helpers_shell.sh"
 
 }
 

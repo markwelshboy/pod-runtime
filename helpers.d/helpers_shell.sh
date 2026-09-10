@@ -1,0 +1,2268 @@
+# helpers_shell.sh — minimal, portable helpers (LAN + pods)
+# Intended to be sourced from ~/.bash_functions OR from helpers.sh on pods.
+
+# Avoid double-loading
+#[[ -n "${__HELPERS_SHELL_LOADED:-}" ]] && return 0
+#__HELPERS_SHELL_LOADED=1
+
+# ---- defaults for non-root machines ----
+# Put ~/.local/bin on PATH (safe to do repeatedly)
+if [[ -n "${HOME:-}" && ":${PATH}:" != *":${HOME}/.local/bin:"* ]]; then
+  export PATH="${HOME}/.local/bin:${PATH}"
+fi
+
+# Default venv / install locations (override via env if you want)
+: "${HFF_VENV:=${HOME:-/tmp}/.venvs/hf-tools}"
+: "${HFF_PY:=${HOME:-/tmp}/.local/bin/hff.py}"
+: "${HFF_SRC_PY:=${POD_RUNTIME_DIR:-}/bin/hff.py}"
+
+# Repo defaults (override in your shell rc if needed)
+: "${HFF_REPO:=${HF_MY_REPO_ID:-markwelshboyx/diffusionetc}}"
+: "${HFF_REPO_TYPE:=${HF_MY_REPO_TYPE:-model}}"
+: "${HFF_SNAPSHOT_DIR:=snapshot}"
+
+_hff_info() { echo "[hff] $*" >&2; }
+_hff_warn() { echo "[hff] WARN: $*" >&2; }
+_hff_err()  { echo "[hff] ERROR: $*" >&2; }
+
+_hff_pip() {
+  # Keep the HFF venv isolated from ComfyUI's global pip constraints.
+  env \
+    -u PIP_CONSTRAINT \
+    -u PIP_BUILD_CONSTRAINT \
+    PIP_CONFIG_FILE=/dev/null \
+    "${HFF_VENV}/bin/python" -m pip "$@"
+}
+
+# -------- venv bootstrap (LAN-friendly) --------
+_hff_is_home_network() {
+  case "${HFF_ENVIRONMENT:-}" in
+    home|local) return 0 ;;
+    pod|remote) return 1 ;;
+  esac
+
+  local fqdn domains
+  fqdn="$(hostname -f 2>/dev/null || true)"
+  domains="$(
+    {
+      grep -hE '^[[:space:]]*(search|domain)[[:space:]]+' /etc/resolv.conf 2>/dev/null || true
+      command -v resolvectl >/dev/null 2>&1 && resolvectl domain 2>/dev/null || true
+    } | tr '\n' ' '
+  )"
+  [[ "$fqdn" == *.home.arpa ]] || [[ "$domains" == *home.arpa* ]]
+}
+
+ensure_hf_tools_venv() {
+  local venv="${HFF_VENV}"
+  local py="${PYTHON:-python3}"
+  local hub_spec install_mode installed_version copy_support
+
+  if [[ ! -x "$venv/bin/python" ]]; then
+    _hff_info "Creating venv: $venv"
+    mkdir -p "$(dirname "$venv")" || true
+    "$py" -m venv "$venv" || return 1
+  fi
+
+  export HFF_VENV="$venv"
+  _hff_pip install -U pip >/dev/null || return 1
+
+  if [[ -n "${HFF_HUB_VER:-}" ]]; then
+    hub_spec="huggingface-hub==${HFF_HUB_VER}"
+    install_mode="explicit pin"
+  elif [[ "${HFF_PINNED:-0}" == "1" ]]; then
+    HFF_HUB_VER="1.3.1"
+    hub_spec="huggingface-hub==${HFF_HUB_VER}"
+    install_mode="pod-compatible pin"
+  elif _hff_is_home_network; then
+    hub_spec="huggingface-hub"
+    install_mode="latest stable (home/local)"
+  else
+    HFF_HUB_VER="1.3.1"
+    hub_spec="huggingface-hub==${HFF_HUB_VER}"
+    install_mode="conservative fallback"
+  fi
+
+  _hff_pip install -U "$hub_spec" >/dev/null || return 1
+
+  installed_version="$(
+    "$venv/bin/python" -c 'import huggingface_hub; print(huggingface_hub.__version__)'
+  )" || return 1
+  copy_support="$(
+    "$venv/bin/python" -c 'from huggingface_hub import HfApi; print("yes" if callable(getattr(HfApi(), "copy_files", None)) else "no")'
+  )" || return 1
+
+  _hff_info "Ready: $venv"
+  _hff_info "huggingface-hub: ${installed_version} (${install_mode})"
+  _hff_info "Server-side repo copy support: ${copy_support}"
+}
+
+# -------- install/link hff.py from pod-runtime --------
+install_hff_py() {
+  local src="${1:-${HFF_SRC_PY}}"
+  local dst="${2:-${HFF_PY}}"
+
+  if [[ -z "$src" ]]; then
+    _hff_err "install_hff_py: source not set. Export POD_RUNTIME_DIR or HFF_SRC_PY"
+    return 1
+  fi
+  if [[ ! -f "$src" ]]; then
+    _hff_err "hff.py not found: $src"
+    return 1
+  fi
+
+  mkdir -p "$(dirname "$dst")" || true
+
+  # Prefer symlink to keep “golden” file in sync; copy if HFF_INSTALL_MODE=copy
+  if [[ "${HFF_INSTALL_MODE:-symlink}" == "copy" ]]; then
+    install -m 0755 "$src" "$dst"
+    _hff_info "Installed (copy): $dst"
+  else
+    ln -sfn "$src" "$dst"
+    chmod 0755 "$src" 2>/dev/null || true
+    _hff_info "Installed (symlink): $dst -> $src"
+  fi
+}
+
+hf_tools_verify() {
+  local venv="${HFF_VENV}"
+  "$venv/bin/python" - <<'PY'
+import os
+try:
+  import huggingface_hub
+  print("huggingface_hub:", getattr(huggingface_hub, "__version__", "?"))
+except Exception as e:
+  print("huggingface_hub: ERROR:", e)
+
+print("HF_XET_HIGH_PERFORMANCE:", os.environ.get("HF_XET_HIGH_PERFORMANCE"))
+
+try:
+  import hf_transfer
+  print("hf_transfer:", getattr(hf_transfer, "__version__", "OK"))
+except Exception as e:
+  print("hf_transfer: missing/ERROR:", e)
+PY
+
+  # CLI is optional; report whether hf exists (newer default) or huggingface-cli exists
+  if [[ -x "$venv/bin/hf" ]]; then
+    echo "hf (cli): OK"
+  elif [[ -x "$venv/bin/huggingface-cli" ]]; then
+    echo "huggingface-cli: OK"
+  else
+    echo "cli: missing (OK if hff.py uses python APIs only)"
+  fi
+}
+
+install_user_hff() {
+  ensure_hf_tools_venv || return 1
+  install_hff_py || return 1
+  hf_tools_verify
+}
+
+# -------- main wrapper --------
+hff() {
+  # Preserve the caller's shell-option state.
+  local __had_e=0
+  local __had_u=0
+  local __had_pipefail=0
+
+  [[ $- == *e* ]] && __had_e=1
+  [[ $- == *u* ]] && __had_u=1
+  shopt -qo pipefail && __had_pipefail=1
+
+  set +e
+  set -u
+  set -o pipefail
+
+  _hff_usage() {
+    cat <<'EOF'
+hff — HuggingFace File Manager (wrapper)
+
+Environment defaults:
+  HF_TOKEN               required for all operations
+  HFF_REPO               default repo id (owner/name)
+  HFF_REPO_TYPE          model|dataset
+  HFF_SNAPSHOT_DIR       remote snapshot directory (default: snapshot)
+  HFF_VENV               venv path used by wrapper
+  HFF_PY                 path to hff.py used by wrapper
+
+Usage:
+  hff <command> [args...]
+
+Commands:
+  ensure|init|setup        Install/ensure hff toolchain (wrapper)
+  doctor [--json]          Diagnostics for HF token, repo access, cli candidates
+  ls [path]                List repo files (supports globs)
+  mkdir <path>             Create a directory (via .gitkeep)
+  mv <src> <dst>           Move/rename; supports prefix and globs (dst is treated as a dir for multi-move)
+  rm <path> [--dry-run]    Delete file(s); supports globs and prefix dirs
+  put <local> <dst> [-m]   Upload file; supports local globs; multi-file dst must end with /
+  cp <src> <dst> [--local] Copy local file or hf:// source; --local downloads/uploads one file
+  get <src> [out]          Download file(s); supports prefix/globs; optional --cache-dir, --move, --flat
+  snapshot <subcmd> ...    Snapshot management
+  help                     Show this help
+
+Snapshot subcommands:
+  hff snapshot create --name "label" [--compress gz|none] [--tmp-dir DIR] <items...>
+  hff snapshot list
+  hff snapshot show <id>
+  hff snapshot get <id> [--extract-dir DIR] [--cache-dir DIR]
+  hff snapshot destroy <id> [-y]
+
+Examples:
+  hff ls loras/
+  hff ls 'loras/*.safetensors'
+  hff put *.pt ultralytics/bbox/
+  hff get loras/my.safetensors ./my.safetensors
+  hff snapshot create --name "pod_2026-02-09" ComfyUI/models ComfyUI/workflows
+
+Notes:
+  - Repo paths are repo-relative (leading / is stripped)
+  - Globs are supported for `ls`, `rm`, `mv`, and `get` (and local globs for `put`)
+EOF
+  }
+
+# In your hff() wrapper case:
+#   help|-h|--help|"")
+#     hff_usage
+#     rc=0
+#     ;;
+
+  local venv="${HFF_VENV}"
+  local hff_py="${HFF_PY}"
+  local repo_id="${HFF_REPO}"
+  local repo_type="${HFF_REPO_TYPE}"
+  local snapdir="${HFF_SNAPSHOT_DIR}"
+
+  local cmd="${1:-}"; shift || true
+  local rc=0
+
+  case "$cmd" in
+    ensure|init|setup)
+      install_user_hff; rc=$?
+      ;;
+    doctor)
+      [[ -x "$venv/bin/python" && -x "$hff_py" ]] || install_user_hff
+      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" doctor "$@"; rc=$?
+      ;;
+    snapshot)
+      [[ -x "$venv/bin/python" && -x "$hff_py" ]] || install_user_hff
+      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" snapshot --snapdir "$snapdir" "$@"; rc=$?
+      ;;
+    ls|mkdir|mv|rm|put|cp|get)
+      [[ -x "$venv/bin/python" && -x "$hff_py" ]] || install_user_hff
+      "$venv/bin/python" "$hff_py" --repo "$repo_id" --type "$repo_type" "$cmd" "$@"; rc=$?
+      ;;
+    help|-h|--help|"")
+      # ... your existing help text ...
+      _hff_usage
+      rc=0
+      ;;
+    *)
+      _hff_err "unknown command: ${cmd:-<none>} (try: hff help)"
+      rc=2
+      ;;
+  esac
+
+  # Restore the caller's shell-option state.
+  if (( __had_pipefail )); then
+    set -o pipefail
+  else
+    set +o pipefail
+  fi
+
+  if (( __had_u )); then
+    set -u
+  else
+    set +u
+  fi
+
+  if (( __had_e )); then
+    set -e
+  else
+    set +e
+  fi
+
+  return "$rc"
+
+}
+
+
+hfd() {
+  if [[ $# -lt 1 ]]; then
+    echo "Usage: hfd <huggingface_url> [local_dir]"
+    return 1
+  fi
+
+  local url="$1"
+  local local_dir="${2:-.}"
+
+  local path="${url#https://huggingface.co/}"
+  path="${path#http://huggingface.co/}"
+
+  IFS='/' read -r org repo mode branch rest <<< "$path"
+
+  if [[ -z "$org" || -z "$repo" || -z "$rest" ]]; then
+    echo "❌ Could not parse HuggingFace URL"
+    return 1
+  fi
+
+  local filename="$rest"
+  local base="$(basename "$filename")"
+  local target_dir="$local_dir"
+  local target_path="$target_dir/$base"
+
+  mkdir -p "$target_dir"
+
+  echo "→ hf download $org/$repo $filename --local-dir $target_dir"
+  hf download "$org/$repo" "$filename" --local-dir "$target_dir" || return $?
+
+  # If it already ended up flattened (or was at root), we're done.
+  if [[ -f "$target_path" ]]; then
+    return 0
+  fi
+
+  # Common expected locations
+  local cand1="$target_dir/$filename"
+  local cand2="$target_dir/split_files/$filename"
+
+  local found=""
+  if [[ -f "$cand1" ]]; then
+    found="$cand1"
+  elif [[ -f "$cand2" ]]; then
+    found="$cand2"
+  else
+    # Fallback: search under local_dir for the basename; prefer something under split_files
+    # If multiple matches, take the newest.
+    found="$(
+      find "$target_dir" -type f -name "$base" 2>/dev/null \
+        | awk '
+            {print}
+          ' \
+        | while IFS= read -r f; do
+            # Score split_files hits higher
+            if [[ "$f" == *"/split_files/"* ]]; then
+              printf "2\t%s\t%s\n" "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"
+            else
+              printf "1\t%s\t%s\n" "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"
+            fi
+          done \
+        | sort -k1,1nr -k2,2nr \
+        | head -n1 \
+        | cut -f3-
+    )"
+  fi
+
+  if [[ -z "${found:-}" || ! -f "$found" ]]; then
+    echo "❌ Download completed but couldn't locate '$base' under '$target_dir'"
+    return 1
+  fi
+
+  echo "→ flatten: $(realpath -m "$found") -> $(realpath -m "$target_path")"
+  mv -f "$found" "$target_path" || return $?
+
+  # Cleanup: remove empty dirs (best-effort)
+  # Try removing split_files subtree first if it exists, then prune empties generally.
+  [[ -d "$target_dir/split_files" ]] && find "$target_dir/split_files" -type d -empty -delete 2>/dev/null || true
+  find "$target_dir" -type d -empty -delete 2>/dev/null || true
+}
+
+cdlv() {
+  local version_id="$1"
+  local out="$2"
+
+  curl -fL \
+    -H "Authorization: Bearer $CIVITAI_TOKEN" \
+    "https://civitai.com/api/download/models/${version_id}" \
+    -o "$out"
+}
+
+need_apt() {
+  local cmd="$1"
+  local pkg="${2:-$1}"
+
+  if command -v "$cmd" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "[need_apt] missing: $cmd — attempting apt install: $pkg"
+
+  # Choose runner (root vs sudo)
+  local run=()
+  if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+    run=(bash -lc)
+  else
+    if command -v sudo >/dev/null 2>&1; then
+      run=(sudo -E bash -lc)
+    else
+      echo "ERROR: $cmd missing and not root; sudo not installed. Run as root or install sudo." >&2
+      return 127
+    fi
+  fi
+
+  # Install (best effort, then verify)
+  "${run[@]}" "apt-get update -y" || true
+  "${run[@]}" "apt-get install -y $pkg" || true
+
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "ERROR: required command not found after apt install: $cmd (pkg: $pkg)" >&2
+    return 127
+  fi
+}
+
+download_civitai() {
+  set -euo pipefail
+
+  local model_id="${1:-}"
+  local outdir="${2:-.}"
+  local version_id="${3:-}"     # optional: force specific modelVersionId
+  local want_file="${4:-}"      # optional: exact filename to fetch (e.g. realvisxlV50_v50LightningBakedvae.safetensors)
+
+  # Behavior toggles
+  local sanitize="${CIVITAI_SANITIZE:-0}"   # 1 => replace spaces with underscores
+  local list_only="${CIVITAI_LIST_ONLY:-0}" # 1 => just list candidate files, no download
+  local COMFY="${COMFY:-${COMFY_STATE:-${COMFY_HOME:-/workspace/ComfyUI}}}"  
+
+  need_apt curl || {
+    echo "ERROR: curl is required but could not be installed"
+    return 127
+  }
+  need_apt jq || {
+    echo "ERROR: jq is required but could not be installed"
+    return 127
+  }
+
+  if [[ -z "$model_id" ]]; then
+    echo "usage: download_civitai <model_id> [outdir] [modelVersionId] [filename]"
+    echo "  ex: download_civitai 139562 \"$COMFY/models/checkpoints\" 798204 realvisxlV50_v50LightningBakedvae.safetensors"
+    return 2
+  fi
+  if [[ -z "${CIVITAI_TOKEN:-}" ]]; then
+    echo "ERROR: CIVITAI_TOKEN is not set"
+    return 2
+  fi
+
+  mkdir -p "$outdir"
+
+  # Fetch model JSON once
+  local json
+  json="$(curl -fsSL "https://civitai.com/api/v1/models/${model_id}")" || {
+    echo "ERROR: failed to fetch model metadata for id=${model_id}"
+    return 1
+  }
+
+  # Pick version:
+  # - If version_id provided: use it
+  # - Else: pick newest by publishedAt (fallback createdAt)
+  local chosen_vid
+  if [[ -n "$version_id" ]]; then
+    chosen_vid="$version_id"
+  else
+    chosen_vid="$(
+      jq -r '
+        .modelVersions
+        | map(. + { _sort: ((.publishedAt // .createdAt // "1970-01-01T00:00:00.000Z")) })
+        | sort_by(._sort)
+        | last
+        | .id
+      ' <<<"$json"
+    )"
+  fi
+
+  if [[ -z "$chosen_vid" || "$chosen_vid" == "null" ]]; then
+    echo "ERROR: could not determine modelVersionId for model_id=${model_id}"
+    return 1
+  fi
+
+  # Build manifest for chosen version: TSV name<tab>downloadUrl
+  # - filter safetensors
+  # - de-duplicate by (name, url)
+  local manifest
+  manifest="$(
+    jq -r --argjson vid "$chosen_vid" '
+      .modelVersions
+      | map(select(.id == $vid))
+      | .[0]
+      | .files
+      | map(select(.name | test("\\.safetensors$"; "i")))
+      | map({name:.name, url:.downloadUrl})
+      | unique_by(.name + "\u0000" + .url)
+      | .[]
+      | "\(.name)\t\(.url)"
+    ' <<<"$json"
+  )"
+
+  if [[ -z "$manifest" ]]; then
+    echo "WARNING: no .safetensors files found for modelVersionId=${chosen_vid}"
+    return 0
+  fi
+
+  echo "[civitai] model_id=${model_id} modelVersionId=${chosen_vid}"
+  echo "[civitai] outdir=${outdir}"
+
+  # If a specific filename requested, validate it exists in this version manifest
+  if [[ -n "$want_file" ]]; then
+    local found=0
+    while IFS=$'\t' read -r name url; do
+      [[ -z "${name:-}" || -z "${url:-}" ]] && continue
+      if [[ "$name" == "$want_file" ]]; then
+        found=1
+        break
+      fi
+    done <<<"$manifest"
+
+    if [[ "$found" -ne 1 ]]; then
+      echo "WARNING: requested file not found in modelVersionId=${chosen_vid}: $want_file"
+      echo "Available .safetensors in this version:"
+      awk -F'\t' '{print "  - " $1}' <<<"$manifest"
+      return 3
+    fi
+  fi
+
+  # Option: list-only
+  if [[ "$list_only" == "1" ]]; then
+    echo "Files:"
+    awk -F'\t' '{print "  - " $1}' <<<"$manifest"
+    return 0
+  fi
+
+  # Pass 2: download
+  while IFS=$'\t' read -r name url; do
+    [[ -z "${name:-}" || -z "${url:-}" ]] && continue
+
+    # If user requested a specific file, skip others
+    if [[ -n "$want_file" && "$name" != "$want_file" ]]; then
+      continue
+    fi
+
+    local outname="$name"
+    if [[ "$sanitize" == "1" ]]; then
+      outname="${outname// /_}"
+    fi
+
+    local outpath="${outdir%/}/$outname"
+    echo "[civitai] -> $outpath"
+
+    curl -fL \
+      -H "Authorization: Bearer ${CIVITAI_TOKEN}" \
+      "$url" \
+      -o "$outpath"
+  done <<<"$manifest"
+
+  echo "[civitai] done"
+}
+
+civitai() {
+  # civitai - Civitai downloader/listing helper (GNU-style)
+  #
+  # Adds:
+  #   --fp fp8|fp16         (metadata.fp)
+  #   --format SafeTensor   (metadata.format)  default SafeTensor
+  #   --size pruned|full    (metadata.size)    ONLY enforced if user sets --size
+  #   --all                 When version-pinned (@ or --version): download ALL files in that version
+  #   --debug               Prints helpful dumps (version files + selection reasons)
+  #
+  # Key behaviors:
+  #   - Default download (no explicit version): download ONE SafeTensor (and optional extras via --download-files).
+  #     If multiple SafeTensor fp variants exist and no --fp given: prefers fp8, else first fp found.
+  #   - Explicit version (@ or --version):
+  #       default: download SafeTensor (filtered by --fp/--format/--size if set; size only if explicitly set)
+  #       with --all: download everything in that version (may overwrite if same filename appears multiple times).
+  #
+  # List:
+  #   - --list prints per-version SafeTensor fp variants (marks default with *).
+
+  local model_id=""
+  local outdir="."
+  local version_id=""
+  local want_file=""
+  local mode="download"
+  local sanitize="${CIVITAI_SANITIZE:-0}"
+  local quiet=0
+  local urn_id=""
+
+  local list_files=""           # e.g. "zip json"
+  local download_files=""       # e.g. "zip json safetensors"
+  local explicit_version=0      # set when URN had @ or user passed --version
+  local strict=0
+  local interactive=0
+  [[ $- == *i* ]] && interactive=1
+
+  # Variant selectors (metadata-driven)
+  local want_fp=""              # e.g. fp8, fp16
+  local want_format=""          # e.g. SafeTensor, GGUF  (default: SafeTensor)
+  local want_size=""            # e.g. full, pruned      (ONLY enforced if user set --size)
+  local size_set=0
+  local format_set=0
+  local fp_set=0
+
+  local download_all=0
+  local debug=0
+
+  _usage() {
+    cat <<'EOF'
+usage:
+  civitai --list <model_id_or_urn> [--list-files "zip json"] [--fp fp16] [--quiet] [--debug]
+  civitai <model_id_or_urn> [--out DIR] [--version ID] [--file NAME]
+                         [--download-files "zip json"] [--fp fp16] [--format SafeTensor] [--size pruned]
+                         [--all] [--sanitize] [--quiet] [--debug]
+
+options:
+  --list                  List versions (summary shows SafeTensor fp variants; default marked with *)
+  --list-files "exts"     Extra extensions to include in --list (space-separated, no dots)
+                          Example: --list-files "zip json"
+
+  --id, -id URN           CivitAI URN (e.g. urn:air:sdxl:checkpoint:civitai:1837476@2607296)
+  --out DIR               Output directory (default: .)
+  --version ID            Force modelVersionId (also makes download version-pinned)
+  --file NAME             Download only this exact filename (overrides extension filtering)
+
+  --download-files "exts" Extra extensions to include in download when not explicitly version-pinned.
+                          Example: --download-files "zip json"
+
+  --fp FP                 Select fp variant when available (e.g. fp8, fp16)
+  --format FORMAT          Select metadata.format (default: SafeTensor)
+  --size SIZE              Select metadata.size (ONLY enforced if explicitly provided)
+
+  --all                   When version-pinned: download ALL files in that version (may overwrite if same filenames)
+  --debug                 Print debug dumps (selected version files + selection criteria)
+  --sanitize              Replace spaces with underscores
+  --quiet                 Less output
+  --strict                In interactive shells, return non-zero on errors (otherwise errors return 0 to avoid killing SSH)
+  --help                  Show this help
+
+env:
+  CIVITAI_TOKEN           Required for downloads (not for --list)
+
+examples:
+  civitai --list 978314
+  civitai --list urn:air:flux1:checkpoint:civitai:978314@1413133
+  civitai 2305301 --out .                     # default SafeTensor (prefers fp8 if multiple)
+  civitai urn:air:zimageturbo:checkpoint:civitai:2305301@2593828 --fp fp8
+  civitai urn:air:flux1:checkpoint:civitai:978314@1413133 --fp fp16
+  civitai urn:air:flux1:checkpoint:civitai:978314@1413133 --all  # everything in that version
+EOF
+  }
+
+  _fail() {
+    local rc="$1"; shift
+    echo "ERROR: $*" >&2
+    # In interactive shells, avoid killing session if user has `set -e`, unless --strict.
+    if [[ "$interactive" == 1 && "$strict" == 0 ]]; then
+      return 0
+    fi
+    return "$rc"
+  }
+
+  _parse_urn() {
+    # Extract model_id + (optional) version_id from a civitai URN.
+    # Accepts @ or %40 for version separator.
+    local urn="$1"
+
+    # Trim whitespace + CR (copy/paste)
+    urn="${urn//$'\r'/}"
+    urn="${urn#"${urn%%[![:space:]]*}"}"
+    urn="${urn%"${urn##*[![:space:]]}"}"
+
+    if [[ "$urn" =~ civitai:([0-9]+)((@|%40)([0-9]+))? ]]; then
+      model_id="${BASH_REMATCH[1]}"
+      local vid="${BASH_REMATCH[4]}"
+
+      if [[ -n "$vid" ]]; then
+        explicit_version=1
+        # Only set version_id from URN if user didn't explicitly provide --version
+        if [[ -z "$version_id" ]]; then
+          version_id="$vid"
+        fi
+      fi
+      return 0
+    fi
+
+    return 1
+  }
+
+  _ext_regex_from_list() {
+    # Build a regex for file extensions from:
+    #  - always includes safetensors
+    #  - plus extra exts provided as space-separated tokens, no dots
+    # Output example: \.(safetensors|zip|json)$
+    local extra="$1"
+    local tok
+    local exts="safetensors"
+
+    for tok in $extra; do
+      tok="${tok#.}"
+      tok="${tok,,}"
+      [[ -z "$tok" ]] && continue
+      if [[ "$tok" =~ ^[a-z0-9]+$ ]]; then
+        exts="$exts|$tok"
+      fi
+    done
+
+    printf '\\.(%s)$' "$exts"
+  }
+
+  _debug_dump_version_files() {
+    local vid="$1"
+    echo ""
+    echo "=== civitai --debug: version files dump (vid=${vid}) ==="
+    jq --argjson vid "$vid" '
+      .modelVersions[]
+      | select(.id == $vid)
+      | .files[]
+      | {
+          name,
+          format,
+          size,
+          metadata,
+          downloadUrl
+        }
+    ' <<<"$json" || true
+    echo "=== /debug dump ==="
+    echo ""
+  }
+
+  _debug_dump_selection_summary() {
+    local vid="$1"
+    echo ""
+    echo "=== civitai --debug: selection summary (vid=${vid}) ==="
+    echo "want_format=${want_format}"
+    echo "want_fp=${want_fp:-<unset>}"
+    if [[ "$size_set" == 1 ]]; then
+      echo "want_size=${want_size} (enforced)"
+    else
+      echo "want_size=<unset> (NOT enforced)"
+    fi
+    echo "explicit_version=${explicit_version} download_all=${download_all}"
+    echo "rx=${rx}"
+    echo "=== /selection summary ==="
+    echo ""
+  }
+
+  # ---------- pre-scan: allow URN as first arg (positional) ----------
+  if [[ $# -gt 0 ]]; then
+    case "$1" in
+      urn:air:*|*":civitai:"*)
+        urn_id="$1"
+        shift
+        ;;
+    esac
+  fi
+
+  # ---------- parse args (order independent) ----------
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --list) mode="list"; shift ;;
+      --list-files) list_files="$2"; shift 2 ;;
+      --download-files) download_files="$2"; shift 2 ;;
+      --id|-id) urn_id="$2"; shift 2 ;;
+      --out) outdir="$2"; shift 2 ;;
+      --version) version_id="$2"; explicit_version=1; shift 2 ;;
+      --file) want_file="$2"; shift 2 ;;
+
+      --fp) want_fp="$2"; fp_set=1; shift 2 ;;
+      --format) want_format="$2"; format_set=1; shift 2 ;;
+      --size) want_size="$2"; size_set=1; shift 2 ;;
+
+      --all) download_all=1; shift ;;
+      --debug) debug=1; shift ;;
+
+      --sanitize) sanitize=1; shift ;;
+      --quiet) quiet=1; shift ;;
+      --strict) strict=1; shift ;;
+      --help) _usage; return 0 ;;
+
+      --*)
+        echo "ERROR: unknown option: $1" >&2
+        _usage
+        return 2
+        ;;
+      *)
+        if [[ -z "$model_id" ]]; then
+          if [[ "$1" == urn:air:* || "$1" == *":civitai:"* ]]; then
+            urn_id="$1"
+          else
+            model_id="$1"
+          fi
+        else
+          echo "ERROR: unexpected argument: $1" >&2
+          _usage
+          return 2
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  # ---------- if URN provided, extract model/version ----------
+  if [[ -n "$urn_id" ]]; then
+    _parse_urn "$urn_id" || { _fail 2 "invalid civitai URN: $urn_id"; return $?; }
+  fi
+
+  if [[ -z "$model_id" ]]; then
+    echo "ERROR: missing model_id" >&2
+    _usage
+    return 2
+  fi
+
+  # ---------- deps ----------
+  need_apt curl || { _fail 127 "curl is required but could not be installed"; return $?; }
+  need_apt jq   || { _fail 127 "jq is required but could not be installed"; return $?; }
+
+  # ---------- fetch metadata once ----------
+  local json
+  json="$(curl -fsSL "https://civitai.com/api/v1/models/${model_id}")" \
+    || { _fail 1 "failed to fetch model metadata for id=${model_id}"; return $?; }
+  [[ -z "$json" ]] && { _fail 1 "empty response fetching model metadata for id=${model_id}"; return $?; }
+
+  # Default format (safe + consistent). Size is NOT defaulted.
+  [[ -z "$want_format" ]] && want_format="SafeTensor"
+
+  # ---------- LIST MODE ----------
+  if [[ "$mode" == "list" ]]; then
+    # List versions newest-first with SafeTensor fp variants summary.
+    # If user provided --fp and it's present, mark it as default (*), else prefer fp8 if present, else first.
+    jq -r --arg wantfp "$want_fp" '
+      .modelVersions
+      | map(. + { _sort: (.publishedAt // .createdAt // "1970-01-01T00:00:00.000Z") })
+      | sort_by(._sort) | reverse
+      | .[]
+      | (
+          .files
+          | map(select((.metadata.format // "") == "SafeTensor"))
+          | map(.metadata.fp // empty)
+          | unique
+        ) as $fps
+      | (
+          .files
+          | map(select((.metadata.format // "") == "SafeTensor"))
+          | map(.name)
+          | unique
+        ) as $names
+      | if ($names | length) == 0 then
+          "Version: \(.id)  |  \(.name)  |  \(.publishedAt // .createdAt // "unknown") - (no SafeTensor files)"
+        else
+          (
+            if $wantfp != "" and ($fps | index($wantfp)) != null then $wantfp
+            elif ($fps | index("fp8")) != null then "fp8"
+            elif ($fps | length) > 0 then $fps[0]
+            else ""
+            end
+          ) as $default_fp
+          | "Version: \(.id)  |  \(.name)  |  \(.publishedAt // .createdAt // "unknown") - "
+            + ($names[0])
+            + " (fp: "
+            + (
+                if ($fps | length) == 0 then
+                  "unknown*"
+                else
+                  ($fps
+                    | map(if . == $default_fp then (. + "*") else . end)
+                    | join(", ")
+                  )
+                end
+              )
+            + ")"
+        end
+    ' <<<"$json"
+    return 0
+  fi
+
+  # ---------- DOWNLOAD MODE ----------
+  if [[ -z "${CIVITAI_TOKEN:-}" ]]; then
+    _fail 2 "CIVITAI_TOKEN is not set (required for downloads)"; return $?
+  fi
+
+  mkdir -p "$outdir" 2>/dev/null || { _fail 1 "cannot create outdir: $outdir"; return $?; }
+
+  # Choose modelVersionId
+  local chosen_vid
+  if [[ -n "$version_id" ]]; then
+    chosen_vid="$version_id"
+  else
+    chosen_vid="$(jq -r '
+      .modelVersions
+      | map(. + { _sort: (.publishedAt // .createdAt // "1970-01-01T00:00:00.000Z") })
+      | sort_by(._sort)
+      | last
+      | .id
+    ' <<<"$json")"
+  fi
+
+  if [[ -z "$chosen_vid" || "$chosen_vid" == "null" ]]; then
+    _fail 1 "could not determine modelVersionId"; return $?
+  fi
+
+  # Decide extension regex:
+  # - If --file: exact match later.
+  # - If version-pinned + --all: ALL files
+  # - Else: safetensors + extras
+  local rx=""
+  if [[ -z "$want_file" ]]; then
+    if [[ "$explicit_version" == 1 && "$download_all" == 1 ]]; then
+      rx=".*"
+    else
+      rx="$(_ext_regex_from_list "$download_files")"
+    fi
+  fi
+
+  # Default selection for fp:
+  # - If user set --fp: honor it (no fallback).
+  # - Else, if we're selecting SafeTensor (default): prefer fp8 if present, else first fp (if any), else unset.
+  if [[ "$fp_set" == 0 && -z "$want_file" && "$download_all" == 0 ]]; then
+    want_fp="$(jq -r --argjson vid "$chosen_vid" --arg fmt "$want_format" '
+      .modelVersions | map(select(.id == $vid)) | .[0].files
+      | map(select((.metadata.format // "") == $fmt))
+      | map(.metadata.fp // empty)
+      | unique
+      | if index("fp8") != null then "fp8"
+        elif length > 0 then .[0]
+        else ""
+        end
+    ' <<<"$json")"
+  fi
+
+  [[ "$quiet" != 1 ]] && {
+    echo "[civitai] model_id=${model_id} modelVersionId=${chosen_vid}"
+    [[ -n "$urn_id" ]] && echo "[civitai] urn=${urn_id}"
+    echo "[civitai] outdir=${outdir}"
+    echo "[civitai] format=${want_format}"
+    if [[ "$size_set" == 1 ]]; then
+      echo "[civitai] size=${want_size}"
+    else
+      echo "[civitai] size=<not enforced>"
+    fi
+    [[ -n "$want_fp" ]] && echo "[civitai] fp=${want_fp}"
+  }
+
+  [[ "$debug" == 1 ]] && {
+    _debug_dump_version_files "$chosen_vid"
+    _debug_dump_selection_summary "$chosen_vid"
+  }
+
+  # Build manifest: name + downloadUrl
+  local manifest
+  if [[ -n "$want_file" ]]; then
+    manifest="$(
+      jq -r --argjson vid "$chosen_vid" --arg want "$want_file" '
+        .modelVersions
+        | map(select(.id == $vid))
+        | .[0].files
+        | map(select(.name == $want))
+        | map({name:.name, url:.downloadUrl})
+        | unique_by(.name + "\u0000" + .url)
+        | .[]
+        | "\(.name)\t\(.url)"
+      ' <<<"$json"
+    )"
+  else
+    if [[ "$explicit_version" == 1 && "$download_all" == 1 ]]; then
+      # Version-pinned + --all: everything (may overwrite if same filenames differ by URL)
+      manifest="$(
+        jq -r --argjson vid "$chosen_vid" --arg rx "$rx" '
+          .modelVersions
+          | map(select(.id == $vid))
+          | .[0].files
+          | map(select(.name | test($rx; "i")))
+          | map({name:.name, url:.downloadUrl})
+          | unique_by(.name + "\u0000" + .url)
+          | .[]
+          | "\(.name)\t\(.url)"
+        ' <<<"$json"
+      )"
+    else
+      # Default: select safetensors (and extras) but for safetensors, enforce format + optional fp + optional size.
+      # NOTE: size filter only applied when user set --size.
+      manifest="$(
+        jq -r --argjson vid "$chosen_vid" --arg rx "$rx" \
+              --arg fmt "$want_format" \
+              --arg fp "$want_fp" \
+              --arg size "$([[ "$size_set" == 1 ]] && echo "$want_size" || echo "")" '
+          .modelVersions
+          | map(select(.id == $vid))
+          | .[0].files
+          | map(select(.name | test($rx; "i")))
+          | map(
+              if (.name | test("\\.safetensors$"; "i")) then
+                select((.metadata.format // "") == $fmt)
+                | (if $size != "" then select((.metadata.size // "") == $size) else . end)
+                | (if $fp   != "" then select((.metadata.fp   // "") == $fp)   else . end)
+              else
+                .
+              end
+            )
+          | map({name:.name, url:.downloadUrl})
+          | unique_by(.name + "\u0000" + .url)
+          | .[]
+          | "\(.name)\t\(.url)"
+        ' <<<"$json"
+      )"
+    fi
+  fi
+
+  if [[ -z "$manifest" ]]; then
+    if [[ -n "$want_file" ]]; then
+      _fail 3 "file not found in version ${chosen_vid}: $want_file"; return $?
+    fi
+    echo "WARNING: no matching files found" >&2
+    [[ "$debug" == 1 ]] && {
+      echo "HINT: Run with --debug to see available files + metadata for this version." >&2
+    }
+    return 0
+  fi
+
+  # (Optional) show what will download in debug
+  [[ "$debug" == 1 ]] && {
+    echo "=== civitai --debug: manifest ==="
+    echo "$manifest" | sed 's/^/  /'
+    echo "=== /manifest ==="
+    echo ""
+  }
+
+  # Download loop
+  local name url outname outpath
+  while IFS=$'\t' read -r name url; do
+    [[ -z "$name" || -z "$url" ]] && continue
+
+    outname="$name"
+    [[ "$sanitize" == 1 ]] && outname="${outname// /_}"
+    outpath="${outdir%/}/$outname"
+
+    [[ "$quiet" != 1 ]] && echo "[civitai] -> $outpath"
+
+    curl -fL \
+      -H "Authorization: Bearer ${CIVITAI_TOKEN}" \
+      "$url" \
+      -o "$outpath" || { _fail 4 "download failed for $name"; return $?; }
+  done <<<"$manifest"
+
+  [[ "$quiet" != 1 ]] && echo "[civitai] done"
+  return 0
+}
+
+# ---------------------------
+# Google Drive folder downloader
+# ---------------------------
+_extract_gdrive_folder_id() {
+  # pulls the folder id out of typical URLs:
+  # https://drive.google.com/drive/folders/<ID>?usp=...
+  local url="$1"
+  local id=""
+  id="$(sed -nE 's#.*drive\.google\.com/drive/folders/([^?/]+).*#\1#p' <<<"$url")"
+  [[ -n "$id" ]] || id="$(sed -nE 's#.*folders/([^?/]+).*#\1#p' <<<"$url")"
+  printf "%s" "$id"
+}
+
+download_gdrive_folder() {
+  # NEW DEFAULT: keep everything inside ONE wrapper folder in target
+  # so downloads never “flatten” into /models unless you request --flatten.
+  #
+  # usage:
+  #   download_gdrive_folder <url> <target_parent_dir>              # creates target_parent_dir/gdrive_<id>/
+  #   download_gdrive_folder --top-name BiRefNet <url> <target_parent_dir>  # creates .../BiRefNet/
+  #   download_gdrive_folder --flatten <url> <target_dir>            # moves items directly into target_dir
+
+  local mode="wrap"     # wrap | flatten
+  local url=""
+  local target=""
+  local top_name=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --flatten)
+        mode="flatten"
+        shift
+        ;;
+      --top-name)
+        top_name="$2"
+        shift 2
+        ;;
+      --help|-h)
+        cat <<'EOF'
+usage:
+  download_gdrive_folder <url> <target_parent_dir>
+  download_gdrive_folder --top-name NAME <url> <target_parent_dir>
+  download_gdrive_folder --flatten <url> <target_dir>
+
+default:
+  Creates a single wrapper folder inside <target_parent_dir> and moves everything into it.
+  This prevents “flattening” into ComfyUI/models by accident.
+
+--flatten:
+  Moves contents directly into target (only when explicitly required).
+EOF
+        return 0
+        ;;
+      *)
+        if [[ -z "$url" ]]; then
+          url="$1"
+        elif [[ -z "$target" ]]; then
+          target="$1"
+        else
+          echo "ERROR: unexpected arg: $1" >&2
+          return 2
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  [[ -n "$url" ]]    || { echo "ERROR: missing url" >&2; return 2; }
+  [[ -n "$target" ]] || { echo "ERROR: missing target" >&2; return 2; }
+
+  command -v gdown >/dev/null 2>&1 || {
+    echo "ERROR: gdown not installed" >&2
+    return 127
+  }
+
+  local tmp
+  tmp="$(mktemp -d)"
+
+  echo "[gdown] downloading into temp: $tmp"
+  gdown --folder "$url" -O "$tmp" || {
+    echo "ERROR: gdown failed"
+    rm -rf "$tmp"
+    return 1
+  }
+
+  mkdir -p "$target" || {
+    echo "ERROR: cannot create target: $target"
+    rm -rf "$tmp"
+    return 1
+  }
+
+  if [[ "$mode" == "flatten" ]]; then
+    echo "[gdown] flattening into: $target"
+    # Move everything downloaded into target dir
+    shopt -s dotglob nullglob
+    mv "$tmp"/* "$target"/
+    shopt -u dotglob nullglob
+    rm -rf "$tmp"
+    echo "[gdown] done"
+    return 0
+  fi
+
+  # WRAP mode: create deterministic wrapper folder
+  if [[ -z "$top_name" ]]; then
+    local fid
+    fid="$(_extract_gdrive_folder_id "$url")"
+    if [[ -n "$fid" ]]; then
+      top_name="gdrive_${fid}"
+    else
+      top_name="gdrive_$(date +%Y%m%d_%H%M%S)"
+    fi
+  fi
+
+  local outdir="${target%/}/${top_name}"
+  mkdir -p "$outdir" || {
+    echo "ERROR: cannot create outdir: $outdir" >&2
+    rm -rf "$tmp"
+    return 1
+  }
+
+  echo "[gdown] wrapping into: $outdir"
+  shopt -s dotglob nullglob
+  mv "$tmp"/* "$outdir"/
+  shopt -u dotglob nullglob
+  rm -rf "$tmp"
+  echo "[gdown] done (wrapped)"
+}
+
+
+log_if_exists() {
+  local path="$1"
+  local source="${2:-unknown}"
+  local ref="${3:-}"
+  if [[ -f "$path" ]]; then manifest_add_file "$path" "$source" "$ref"; fi
+  if [[ -d "$path" ]]; then manifest_add_dir  "$path" "$source" "$ref"; fi
+}
+
+# ---------------------------
+# Manifest logging
+# ---------------------------
+manifest_init() {
+  # usage: manifest_init <workflow_slug> [manifest_dir]
+  local wf="${1:-}"
+  local dir="${2:-/workspace/manifests}"
+  [[ -n "$wf" ]] || { echo "usage: manifest_init <workflow_slug> [manifest_dir]" >&2; return 2; }
+
+  mkdir -p "$dir" 2>/dev/null || true
+  export WF_SLUG="$wf"
+  export WF_MANIFEST="$dir/${wf}_downloads.jsonl"
+  echo "[manifest] WF_SLUG=$WF_SLUG"
+  echo "[manifest] WF_MANIFEST=$WF_MANIFEST"
+}
+
+manifest_log_path() {
+  # usage: manifest_log_path <kind:file|dir> <path> <source> <ref> [extra_json]
+  local kind="$1"
+  local path="$2"
+  local source="$3"   # hf|civitai|gdrive|manual
+  local ref="$4"      # repo_id+path, model_id, url, etc
+  local extra="${5:-{}}"
+
+  [[ -n "${WF_MANIFEST:-}" ]] || { echo "ERROR: WF_MANIFEST not set (run manifest_init)" >&2; return 2; }
+
+  local size=0
+  if [[ "$kind" == "file" && -f "$path" ]]; then
+    size="$(stat -c '%s' "$path" 2>/dev/null || echo 0)"
+  elif [[ "$kind" == "dir" && -d "$path" ]]; then
+    size="$(du -sb "$path" 2>/dev/null | awk '{print $1}' || echo 0)"
+  fi
+
+  # optional hash for files (expensive on multi-GB; toggle with MANIFEST_SHA=1)
+  local sha="null"
+  if [[ "${MANIFEST_SHA:-0}" == "1" && "$kind" == "file" && -f "$path" && -x "$(command -v sha256sum)" ]]; then
+    sha="\"$(sha256sum "$path" | awk '{print $1}')\""
+  fi
+
+  printf '{"ts":"%s","workflow":"%s","kind":"%s","source":"%s","ref":"%s","path":"%s","bytes":%s,"sha256":%s,"extra":%s}\n' \
+    "$(date -Is)" \
+    "${WF_SLUG:-unknown}" \
+    "$kind" \
+    "$source" \
+    "$(printf '%s' "$ref" | sed 's/"/\\"/g')" \
+    "$(printf '%s' "$path" | sed 's/"/\\"/g')" \
+    "$size" \
+    "$sha" \
+    "$extra" >>"$WF_MANIFEST"
+}
+
+manifest_add_file() {
+  local path="$1"
+  local source="${2:-unknown}"   # hf|civitai|gdrive|manual
+  local ref="${3:-}"
+  [[ -n "${WF_MANIFEST:-}" ]] || { echo "ERROR: WF_MANIFEST not set (run manifest_init)"; return 2; }
+
+  [[ -f "$path" ]] || { echo "WARN: manifest_add_file: not a file: $path" >&2; return 1; }
+  local bytes; bytes="$(stat -c '%s' "$path" 2>/dev/null || echo 0)"
+
+  printf '{"ts":"%s","workflow":"%s","kind":"file","source":"%s","ref":"%s","path":"%s","bytes":%s}\n' \
+    "$(date -Is)" "${WF_SLUG:-unknown}" "$source" \
+    "$(printf '%s' "$ref" | sed 's/"/\\"/g')" \
+    "$(printf '%s' "$path" | sed 's/"/\\"/g')" \
+    "$bytes" >>"$WF_MANIFEST"
+}
+
+manifest_add_dir() {
+  local path="$1"
+  local source="${2:-unknown}"
+  local ref="${3:-}"
+  [[ -n "${WF_MANIFEST:-}" ]] || { echo "ERROR: WF_MANIFEST not set (run manifest_init)"; return 2; }
+
+  [[ -d "$path" ]] || { echo "WARN: manifest_add_dir: not a dir: $path" >&2; return 1; }
+  local bytes; bytes="$(du -sb "$path" 2>/dev/null | awk '{print $1}' || echo 0)"
+
+  printf '{"ts":"%s","workflow":"%s","kind":"dir","source":"%s","ref":"%s","path":"%s","bytes":%s}\n' \
+    "$(date -Is)" "${WF_SLUG:-unknown}" "$source" \
+    "$(printf '%s' "$ref" | sed 's/"/\\"/g')" \
+    "$(printf '%s' "$path" | sed 's/"/\\"/g')" \
+    "$bytes" >>"$WF_MANIFEST"
+}
+
+manifest_prune() {
+  # usage: manifest_prune <manifest_file>
+  local mf="$1"
+  [[ -f "$mf" ]] || { echo "ERROR: manifest not found: $mf" >&2; return 2; }
+
+  echo "[prune] reading: $mf"
+  jq -r 'select(.kind=="file") | .path' "$mf" | while read -r p; do
+    [[ -n "$p" ]] || continue
+    if [[ -f "$p" ]]; then
+      echo "[rm] $p"
+      rm -f "$p"
+    fi
+  done
+
+  jq -r 'select(.kind=="dir") | .path' "$mf" \
+    | awk '{ print length($0) "\t" $0 }' | sort -rn | cut -f2- \
+    | while read -r d; do
+      [[ -n "$d" ]] || continue
+      if [[ -d "$d" ]]; then
+        echo "[rm -rf] $d"
+        rm -rf "$d"
+      fi
+    done
+
+  echo "[prune] done"
+}
+
+rm_logged() {
+  # usage: rm_logged <path>...
+  for p in "$@"; do
+    [[ -e "$p" ]] || continue
+    echo "[rm] $p"
+    rm -rf "$p"
+  done
+}
+
+mv_logged() {
+  # usage: mv_logged <src> <dst> [--source hf] [--ref "repo:path"]
+  local src="$1"
+  local dst="$2"
+  shift 2
+
+  local source="unknown"
+  local ref=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --source) source="$2"; shift 2 ;;
+      --ref) ref="$2"; shift 2 ;;
+      *) break ;;
+    esac
+  done
+
+  mv -f "$src" "$dst" || return $?
+
+  if [[ -f "$dst" ]]; then
+    manifest_add_file "$dst" "$source" "$ref"
+  elif [[ -d "$dst" ]]; then
+    manifest_add_dir "$dst" "$source" "$ref"
+  fi
+}
+
+# Logged wrapper: create wrapper folder then log it (robust, no guessing)
+gdrive_folder_logged() {
+  # usage:
+  #   gdrive_folder_logged <url> <target_parent_dir> [--top-name NAME]
+  local url="$1"
+  local target="$2"
+  shift 2 || true
+
+  local top_name=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --top-name) top_name="$2"; shift 2 ;;
+      *) break ;;
+    esac
+  done
+
+  download_gdrive_folder ${top_name:+--top-name "$top_name"} "$url" "$target" || return $?
+
+  # Determine the folder we created (same logic as download_gdrive_folder)
+  if [[ -z "$top_name" ]]; then
+    local fid
+    fid="$(_extract_gdrive_folder_id "$url")"
+    if [[ -n "$fid" ]]; then
+      top_name="gdrive_${fid}"
+    else
+      # fallback: can't reliably detect; log target itself
+      manifest_log_path dir "$target" gdrive "$url" "{\"note\":\"wrapped_but_name_unknown\"}"
+      return 0
+    fi
+  fi
+
+  local outdir="${target%/}/${top_name}"
+  if [[ -d "$outdir" ]]; then
+    manifest_log_path dir "$outdir" gdrive "$url" "{}"
+  else
+    manifest_log_path dir "$target" gdrive "$url" "{\"note\":\"expected_wrapper_missing\",\"expected\":\"$outdir\"}"
+  fi
+}
+
+hf_download_logged() {
+  # usage: hf_download_logged <repo_id> [hf args...]
+  local repo="$1"; shift
+  local out
+  out="$(hf download "$repo" "$@" 2>&1)"
+  local rc=$?
+  echo "$out"
+  [[ $rc -eq 0 ]] || return $rc
+
+  # log any absolute paths printed by hf
+  # (hf usually prints one path per line, often absolute)
+  while IFS= read -r line; do
+    if [[ "$line" == /* && ( -f "$line" || -d "$line" ) ]]; then
+      if [[ -f "$line" ]]; then
+        manifest_log_path file "$line" hf "$repo" "{}"
+      else
+        manifest_log_path dir "$line" hf "$repo" "{}"
+      fi
+    fi
+  done <<<"$out"
+
+  return 0
+}
+
+# Logged wrapper: create wrapper folder then log it (robust, no guessing)
+gdrive_folder_logged() {
+  # usage:
+  #   gdrive_folder_logged <url> <target_parent_dir> [--top-name NAME]
+  local url="$1"
+  local target="$2"
+  shift 2 || true
+
+  local top_name=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --top-name) top_name="$2"; shift 2 ;;
+      *) break ;;
+    esac
+  done
+
+  download_gdrive_folder ${top_name:+--top-name "$top_name"} "$url" "$target" || return $?
+
+  # Determine the folder we created (same logic as download_gdrive_folder)
+  if [[ -z "$top_name" ]]; then
+    local fid
+    fid="$(_extract_gdrive_folder_id "$url")"
+    if [[ -n "$fid" ]]; then
+      top_name="gdrive_${fid}"
+    else
+      # fallback: can't reliably detect; log target itself
+      manifest_log_path dir "$target" gdrive "$url" "{\"note\":\"wrapped_but_name_unknown\"}"
+      return 0
+    fi
+  fi
+
+  local outdir="${target%/}/${top_name}"
+  if [[ -d "$outdir" ]]; then
+    manifest_log_path dir "$outdir" gdrive "$url" "{}"
+  else
+    manifest_log_path dir "$target" gdrive "$url" "{\"note\":\"expected_wrapper_missing\",\"expected\":\"$outdir\"}"
+  fi
+}
+
+civitai_logged() {
+  # usage: civitai_logged <model_id> --out DIR [other civitai args...]
+  local model_id="$1"; shift
+
+  # extract --out DIR from args (so we can scan it)
+  local outdir="."
+  local args=("$@")
+  for ((i=0; i<${#args[@]}; i++)); do
+    if [[ "${args[$i]}" == "--out" && $((i+1)) -lt ${#args[@]} ]]; then
+      outdir="${args[$((i+1))]}"
+      break
+    fi
+  done
+
+  mkdir -p "$outdir" 2>/dev/null || true
+  local before
+  before="$(find "$outdir" -maxdepth 1 -type f -name '*.safetensors' -printf '%f\n' 2>/dev/null | sort)"
+
+  civitai "$model_id" "$@" || return $?
+
+  local after
+  after="$(find "$outdir" -maxdepth 1 -type f -name '*.safetensors' -printf '%f\n' 2>/dev/null | sort)"
+
+  # diff to find new files
+  comm -13 <(printf "%s\n" "$before") <(printf "%s\n" "$after") | while read -r fn; do
+    [[ -n "$fn" ]] || continue
+    manifest_log_path file "$outdir/$fn" civitai "model:${model_id}" "{}"
+  done
+}
+
+install_gdrive_folder_as() {
+  # usage: install_gdrive_folder_as <gdrive_folder_url> <dest_parent_dir> <name>
+  # result: <dest_parent_dir>/<name>/...
+  local url="$1"
+  local parent="$2"
+  local name="$3"
+
+  [[ -n "$url" && -n "$parent" && -n "$name" ]] || {
+    echo "usage: install_gdrive_folder_as <url> <dest_parent_dir> <name>" >&2
+    return 2
+  }
+
+  need_apt gdown gdown || return 127
+
+  local tmp; tmp="$(mktemp -d)"
+  echo "[gdown] downloading into temp: $tmp"
+  gdown --folder "$url" -O "$tmp" || { rm -rf "$tmp"; return 1; }
+
+  mkdir -p "$parent" || { rm -rf "$tmp"; return 1; }
+
+  # What did we get at top level?
+  mapfile -t top_items < <(find "$tmp" -mindepth 1 -maxdepth 1)
+
+  if [[ "${#top_items[@]}" -eq 0 ]]; then
+    echo "ERROR: nothing downloaded?" >&2
+    rm -rf "$tmp"
+    return 1
+  fi
+
+  local dest="$parent/$name"
+  rm -rf "$dest" 2>/dev/null || true
+  mkdir -p "$dest"
+
+  if [[ "${#top_items[@]}" -eq 1 && -d "${top_items[0]}" ]]; then
+    # single folder: move its contents into dest (avoids double nesting)
+    echo "[gdown] single folder detected; installing contents into: $dest"
+    mv "${top_items[0]}"/* "$dest"/ 2>/dev/null || true
+  else
+    # many items: move them all under dest
+    echo "[gdown] multiple top-level items; installing into: $dest"
+    mv "$tmp"/* "$dest"/
+  fi
+
+  rm -rf "$tmp"
+  echo "[gdown] done -> $dest"
+
+  # Print the final path (useful for logging)
+  printf '%s\n' "$dest"
+}
+
+hf_download_from_manifest_non_parallel() {
+  _helpers_need curl; _helpers_need jq; _helpers_need awk
+  _helpers_need hf
+
+  # Optional arg: manifest source; if empty, fall back to MODEL_MANIFEST_URL.
+  # Source can be:
+  #   - local file path (JSON)
+  #   - URL (http/https)
+  local src="${1:-${MODEL_MANIFEST_URL:-}}"
+  if [[ -z "$src" ]]; then
+    echo "hf_download_from_manifest: no manifest source given and MODEL_MANIFEST_URL is not set." >&2
+    return 1
+  fi
+
+  local MAN tmp=""
+  if [[ -f "$src" ]]; then
+    MAN="$src"
+  else
+    MAN="$(mktemp)"
+    tmp="$MAN"
+    if ! curl -fsSL "$src" -o "$MAN"; then
+      echo "hf_download_from_manifest: failed to fetch manifest: $src" >&2
+      rm -f "$tmp"
+      return 1
+    fi
+  fi
+
+  # ---- (Optional but useful) export manifest vars/paths into env if not already set ----
+  # This makes {COMFY_HOME}, {DIFFUSION_MODELS_DIR}, etc resolvable even if caller didn't export them.
+  # Two-pass: vars first, then paths (paths may reference vars).
+  _hf_manifest_export_kv_block() {
+    local jq_expr="$1"
+    jq -r "$jq_expr" "$MAN" | while IFS=$'\t' read -r k v; do
+      [[ -z "$k" ]] && continue
+      [[ "$k" =~ ^[A-Z0-9_]+$ ]] || continue
+      # don't overwrite existing env
+      if [[ -z "${!k+x}" ]]; then
+        # resolve any {TOKENS} inside the value
+        local vv
+        vv="$(helpers_resolve_placeholders "$v")" || vv="$v"
+        export "$k=$vv"
+      fi
+    done
+  }
+
+  _hf_manifest_export_kv_block '.vars  // {} | to_entries[] | [.key, (.value|tostring)] | @tsv'
+  _hf_manifest_export_kv_block '.paths // {} | to_entries[] | [.key, (.value|tostring)] | @tsv'
+
+  # ---- find enabled sections (matches aria2_download_from_manifest logic) ----
+  local SECTIONS_ALL ENABLED sec dl_var
+  SECTIONS_ALL="$(jq -r '.sections | keys[]' "$MAN")"
+  ENABLED=()
+  while read -r sec; do
+    dl_var="download_${sec}"
+    if [[ "${!sec:-}" == "true" || "${!sec:-}" == "1" || \
+          "${!dl_var:-}" == "true" || "${!dl_var:-}" == "1" ]]; then
+      ENABLED+=("$sec")
+    fi
+  done <<<"$SECTIONS_ALL"
+
+  if ((${#ENABLED[@]} == 0)); then
+    echo "hf_download_from_manifest: no sections enabled in manifest '$src'." >&2
+    echo 0
+    [[ -n "$tmp" ]] && rm -f "$tmp"
+    return 0
+  fi
+  mapfile -t ENABLED < <(printf '%s\n' "${ENABLED[@]}" | awk '!seen[$0]++')
+
+  # ---- helper: parse HF URL into repo_id, revision, repo_file_path ----
+  _hf_parse_url() {
+    local url="$1"
+    local p org repo mode rev rest
+
+    p="${url#https://huggingface.co/}"
+    p="${p#http://huggingface.co/}"
+
+    IFS='/' read -r org repo mode rev rest <<<"$p"
+
+    if [[ -z "$org" || -z "$repo" || -z "$mode" || -z "$rev" || -z "$rest" ]]; then
+      return 1
+    fi
+
+    # mode usually: resolve|blob|raw
+    # rev: main|<commit_sha>|<tag>
+    # rest: path/to/file.ext
+    printf '%s\t%s\t%s\n' "${org}/${repo}" "$rev" "$rest"
+  }
+
+  # ---- helper: download ONE entry via hf download into temp dir then move to desired path ----
+  _hf_manifest_download_one() {
+    local url="$1" raw_path="$2"
+    local path dir out
+    local repo_id rev repo_file
+    local tmpdir srcfile
+
+    path="$(helpers_resolve_placeholders "$raw_path")" || return 1
+    dir="$(dirname -- "$path")"
+    out="$(basename -- "$path")"
+    mkdir -p -- "$dir"
+
+    if [[ -f "$path" ]]; then
+      echo " - ⏭️ SKIPPING: $out (file exists)" >&2
+      return 2   # special: skipped
+    fi
+
+    local parsed
+    if ! parsed="$(_hf_parse_url "$url")"; then
+      echo "ERROR: Could not parse HF URL: $url" >&2
+      return 1
+    fi
+    IFS=$'\t' read -r repo_id rev repo_file <<<"$parsed"
+
+    # Encourage hf_transfer if available
+    export HF_XET_HIGH_PERFORMANCE="${HF_XET_HIGH_PERFORMANCE:-1}"
+
+    # temp download dir (keeps your model dirs clean even when repo_file has subfolders)
+    tmpdir="$(mktemp -d -p "$dir" ".hf_tmp_${out}.XXXXXX")" || return 1
+
+    echo " - 📥 Download: $out" >&2
+    # NOTE: repo_file may contain slashes; hf download will create those dirs under tmpdir.
+    if ! hf download "$repo_id" "$repo_file" --revision "$rev" --local-dir "$tmpdir"; then
+      echo "ERROR: hf download failed for $repo_id@$rev:$repo_file" >&2
+      rm -rf -- "$tmpdir"
+      return 1
+    fi
+
+    srcfile="$tmpdir/$repo_file"
+    if [[ ! -f "$srcfile" ]]; then
+      # fallback: locate by basename if hf moved/linked unexpectedly
+      srcfile="$(find "$tmpdir" -type f -name "$out" -print -quit 2>/dev/null || true)"
+    fi
+    if [[ ! -f "$srcfile" ]]; then
+      echo "ERROR: Download succeeded but could not locate file under temp dir for: $out" >&2
+      rm -rf -- "$tmpdir"
+      return 1
+    fi
+
+    # Move into final flattened destination
+    mv -f -- "$srcfile" "$path"
+    rm -rf -- "$tmpdir"
+    return 0
+  }
+
+  # ---- parallel job control ----
+  local max_jobs="${HF_MANIFEST_JOBS:-2}"
+  [[ "$max_jobs" =~ ^[0-9]+$ ]] || max_jobs=2
+  (( max_jobs < 1 )) && max_jobs=1
+
+  local any=0
+  local failures=0
+
+  for sec in "${ENABLED[@]}"; do
+    echo ">>> Download section: $sec" >&2
+
+    local tsv
+    tsv="$(
+      jq -r --arg sec "$sec" '
+        def as_obj:
+          if   type=="object" then {url:(.url//""), path:(.path // ((.dir // "") + (if .out then "/" + .out else "" end)))}
+          elif type=="array"  then {url:(.[0]//""), path:(.[1]//"")}
+          elif type=="string" then {url:., path:""}
+          else {url:"", path:""} end;
+        (.sections[$sec] // [])[] | as_obj | select(.url|length>0)
+        | [.url, (if (.path|length)>0 then .path else (.url|sub("^.*/";"")) end)] | @tsv
+      ' "$MAN"
+    )"
+
+    [[ -z "$tsv" ]] && continue
+
+    while IFS=$'\t' read -r url raw_path; do
+      # throttle
+      while (( $(jobs -rp | wc -l) >= max_jobs )); do
+        sleep 0.2
+      done
+
+      (
+        _hf_manifest_download_one "$url" "$raw_path"
+        rc=$?
+        # 0 = downloaded, 2 = skipped, else = failure
+        exit "$rc"
+      ) &
+
+      any=1
+    done <<<"$tsv"
+  done
+
+  # wait for all jobs, count failures (ignore skips=2)
+  local pid rc
+  for pid in $(jobs -rp); do
+    if wait "$pid"; then
+      :
+    else
+      rc=$?
+      if [[ "$rc" -ne 2 ]]; then
+        failures=$((failures+1))
+      fi
+    fi
+  done
+
+  [[ -n "$tmp" ]] && rm -f "$tmp"
+
+  if [[ "$any" == "0" ]]; then
+    echo "hf_download_from_manifest: nothing new to download from '$src'." >&2
+  fi
+
+  if (( failures > 0 )); then
+    echo "hf_download_from_manifest: completed with $failures failure(s)." >&2
+    printf '%s\n' "$any"
+    return 1
+  fi
+
+  printf '%s\n' "$any"
+  return 0
+}
+
+#------------------------------------------------------------------------------
+# git_auth_bootstrap
+#
+# Installs GitHub deploy keys from environment variables:
+#   GIT_DEPLOY_KEY_<NAME>=base64_private_key
+#
+# Creates:
+#   ~/.ssh/github_<name>
+#   SSH host: github-<name>
+#
+# Idempotent, safe for repeated runs.
+#------------------------------------------------------------------------------
+
+git_auth_bootstrap() {
+  local ssh_dir="$HOME/.ssh"
+  mkdir -p "$ssh_dir"
+  chmod 700 "$ssh_dir"
+
+  local config_file="$ssh_dir/config"
+  touch "$config_file"
+  chmod 600 "$config_file"
+
+  local count=0
+  local ok=0
+  local failed=0
+
+  # Iterate env var NAMES safely (avoid parsing `env` output)
+  local var_name
+  for var_name in $(compgen -e); do
+    [[ "$var_name" =~ ^GIT_DEPLOY_KEY_ ]] || continue
+
+    local var_value="${!var_name:-}"
+    [[ -n "$var_value" ]] || continue
+
+    local name="${var_name#GIT_DEPLOY_KEY_}"
+    name="$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
+
+    local key_file="$ssh_dir/github_${name}"
+    local host_alias="github-${name}"
+
+    ((count++))
+
+    if [[ ! -f "$key_file" ]]; then
+      echo "🔐 Installing GitHub deploy key: $name"
+
+      local cleaned pad tmp
+      cleaned="$(printf '%s' "$var_value" | tr -d '\r\n\t ')"
+
+      pad=$(( ${#cleaned} % 4 ))
+      if [[ "$pad" -eq 2 ]]; then
+        cleaned="${cleaned}=="
+      elif [[ "$pad" -eq 3 ]]; then
+        cleaned="${cleaned}="
+      elif [[ "$pad" -eq 1 ]]; then
+        echo "❌ $var_name: base64 looks corrupted (len%4==1). len=${#cleaned}" >&2
+        ((failed++))
+        continue
+      fi
+
+      tmp="${key_file}.tmp"
+      rm -f "$tmp"
+
+      if ! printf '%s' "$cleaned" | base64 -d > "$tmp" 2>/tmp/base64_err; then
+        echo "❌ $var_name: base64 decode failed: $(cat /tmp/base64_err 2>/dev/null)" >&2
+        echo "   len(cleaned)=${#cleaned} tail='$(printf '%s' "$cleaned" | tail -c 12)'" >&2
+        rm -f "$tmp"
+        ((failed++))
+        continue
+      fi
+
+      if ! head -n 1 "$tmp" | grep -q "BEGIN OPENSSH PRIVATE KEY"; then
+        echo "❌ $var_name: decoded content not an OpenSSH private key" >&2
+        head -n 2 "$tmp" | sed 's/^/   decoded: /' >&2 || true
+        rm -f "$tmp"
+        ((failed++))
+        continue
+      fi
+
+      mv -f "$tmp" "$key_file"
+      chmod 600 "$key_file"
+    fi
+
+    # Ensure SSH config stanza
+    if ! grep -q "Host $host_alias" "$config_file"; then
+      cat <<EOF >> "$config_file"
+
+Host $host_alias
+  HostName github.com
+  User git
+  IdentityFile $key_file
+  IdentitiesOnly yes
+EOF
+    fi
+
+    # Quick verify key file looks sane (doesn't require network)
+    if ssh-keygen -yf "$key_file" >/dev/null 2>&1; then
+      ((ok++))
+    else
+      echo "❌ $var_name: private key file failed ssh-keygen validation: $key_file" >&2
+      ((failed++))
+      # Leave file for inspection rather than deleting
+    fi
+  done
+
+  if [[ "$count" -eq 0 ]]; then
+    echo "ℹ️  No GitHub deploy keys found in environment"
+    return 0
+  fi
+
+  echo "🔐 Git auth bootstrap: found=$count ok=$ok failed=$failed"
+  # IMPORTANT: never crash your pod boot; just report failures
+  return 0
+}
+
+
+#------------------------------------------------------------------------------
+# git_repo_use_deploy_key <repo_dir> <env_name> [<owner/repo>]
+#
+# Example:
+#   git_repo_use_deploy_key /workspace/ComfyUI/cache/.git_repo/comfyui-templates COMFYUI_TEMPLATES markwelshboy/comfyui-templates
+#
+# Requires:
+#   git_auth_bootstrap has already run and installed:
+#     ~/.ssh/github_<env_name_normalized>
+#   and configured SSH host alias:
+#     github-<env_name_normalized>
+#
+# If <owner/repo> is omitted, it tries to infer it from the current origin URL.
+#------------------------------------------------------------------------------
+
+git_repo_use_deploy_key() {
+  local repo_dir="${1:-}"
+  local env_name="${2:-}"
+  local owner_repo="${3:-}"
+
+  if [[ -z "$repo_dir" || -z "$env_name" ]]; then
+    echo "usage: git_repo_use_deploy_key <repo_dir> <env_name> [<owner/repo>]" >&2
+    return 2
+  fi
+
+  if [[ ! -d "$repo_dir/.git" ]]; then
+    echo "❌ Not a git repo: $repo_dir" >&2
+    return 2
+  fi
+
+  # Normalize env_name -> comfyui-templates style
+  local name
+  name="$(echo "$env_name" | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
+
+  local key_file="$HOME/.ssh/github_${name}"
+  local host_alias="github-${name}"
+
+  if [[ ! -f "$key_file" ]]; then
+    echo "❌ Deploy key not found: $key_file" >&2
+    echo "   Did you set GIT_DEPLOY_KEY_${env_name} and run git_auth_bootstrap?" >&2
+    return 2
+  fi
+
+  # Infer owner/repo from existing origin if not provided
+  if [[ -z "$owner_repo" ]]; then
+    local origin
+    origin="$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)"
+
+    # Accept:
+    #   https://github.com/owner/repo.git
+    #   git@github.com:owner/repo.git
+    #   git@something:owner/repo.git
+    if [[ "$origin" =~ github\.com[:/]+([^/]+/[^/.]+)(\.git)?$ ]]; then
+      owner_repo="${BASH_REMATCH[1]}"
+    elif [[ "$origin" =~ ^git@[^:]+:([^/]+/[^/.]+)(\.git)?$ ]]; then
+      owner_repo="${BASH_REMATCH[1]}"
+    fi
+  fi
+
+  if [[ -z "$owner_repo" ]]; then
+    echo "❌ Could not infer owner/repo for origin in $repo_dir" >&2
+    echo "   Provide it explicitly: git_repo_use_deploy_key $repo_dir $env_name owner/repo" >&2
+    return 2
+  fi
+
+  local desired="git@${host_alias}:${owner_repo}.git"
+  local current
+  current="$(git -C "$repo_dir" remote get-url origin 2>/dev/null || true)"
+
+  if [[ "$current" != "$desired" ]]; then
+    echo "🔧 Setting origin for $(basename "$repo_dir") -> $desired"
+    git -C "$repo_dir" remote set-url origin "$desired"
+    echo "✅ Origin set for $(basename "$repo_dir")"
+  else
+    echo "✅ Origin already set for $(basename "$repo_dir")"
+  fi
+
+  # Optional quick auth sanity check (fast, no network clone)
+  # Only runs if github is reachable; doesn't fail hard.
+  {
+    local _ssh_out
+    _ssh_out="$(ssh \
+        -o BatchMode=yes \
+        -o ConnectTimeout=5 \
+        -o StrictHostKeyChecking=accept-new \
+        -o UserKnownHostsFile=/tmp/github_known_hosts \
+        -o GlobalKnownHostsFile=/dev/null \
+        -T "git@${host_alias}" 2>&1 || true)"
+
+    if echo "$_ssh_out" | grep -q "successfully authenticated"; then
+      echo "✅ SSH auth check passed for host alias: $host_alias"
+    else
+      echo "⚠️ SSH auth check inconclusive for $host_alias" >&2
+      echo "   Last line: $(echo "$_ssh_out" | tail -n 1)" >&2
+    fi
+  } || true
+
+  return 0
+}
+
+#------------------------------------------------------------------------------
+# git_repo_ensure_clean_or_warn <repo_dir>
+# Prints repo status + ahead/behind and working tree cleanliness.
+# Returns:
+#   0 = clean
+#   1 = dirty (changes present) OR cannot determine
+#   2 = not a git repo / error
+#------------------------------------------------------------------------------
+git_repo_ensure_clean_or_warn() {
+  local repo_dir="${1:-}"
+  if [[ -z "$repo_dir" || ! -d "$repo_dir/.git" ]]; then
+    echo "❌ Not a git repo: $repo_dir" >&2
+    return 2
+  fi
+
+  # Make sure we have up-to-date ahead/behind info (best effort)
+  git -C "$repo_dir" fetch --prune --quiet 2>/dev/null || true
+
+  local branch upstream ab
+  branch="$(git -C "$repo_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")"
+  upstream="$(git -C "$repo_dir" rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || true)"
+  ab="?"
+  if [[ -n "$upstream" ]]; then
+    # format: "<behind> <ahead>"
+    ab="$(git -C "$repo_dir" rev-list --left-right --count "${upstream}...HEAD" 2>/dev/null || echo "?")"
+  fi
+
+  local dirty=0
+  if ! git -C "$repo_dir" diff --quiet 2>/dev/null; then dirty=1; fi
+  if ! git -C "$repo_dir" diff --cached --quiet 2>/dev/null; then dirty=1; fi
+  if [[ -n "$(git -C "$repo_dir" ls-files --others --exclude-standard 2>/dev/null)" ]]; then dirty=1; fi
+
+  echo "— git repo: $repo_dir"
+  echo "  branch:   $branch"
+  if [[ -n "$upstream" ]]; then
+    echo "  upstream: $upstream"
+    echo "  behind/ahead: $ab"
+  else
+    echo "  upstream: (none)"
+  fi
+
+  if [[ "$dirty" -eq 1 ]]; then
+    echo "  status:   ⚠️  working tree NOT clean"
+    # Short status can be very helpful
+    git -C "$repo_dir" status --porcelain=v1 2>/dev/null | sed 's/^/    /' || true
+    return 1
+  else
+    echo "  status:   ✅ clean"
+    return 0
+  fi
+}
+
+
+#------------------------------------------------------------------------------
+# git_repo_push_if_ahead <repo_dir> [--remote origin] [--branch <branch>] [--force]
+#
+# Pushes ONLY if:
+#   - there is an upstream and HEAD is ahead of it, OR
+#   - upstream missing and you pass --branch (will push -u)
+#
+# Returns:
+#   0 = pushed or nothing to do
+#   1 = push attempted but failed
+#   2 = invalid repo / error
+#------------------------------------------------------------------------------
+git_repo_push_if_ahead() {
+  local repo_dir="${1:-}"; shift || true
+  local remote="origin"
+  local branch=""
+  local force=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --remote) remote="$2"; shift 2 ;;
+      --branch) branch="$2"; shift 2 ;;
+      --force) force=1; shift ;;
+      --help|-h)
+        echo "usage: git_repo_push_if_ahead <repo_dir> [--remote origin] [--branch <branch>] [--force]"
+        return 0
+        ;;
+      *) echo "unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+
+  if [[ -z "$repo_dir" || ! -d "$repo_dir/.git" ]]; then
+    echo "❌ Not a git repo: $repo_dir" >&2
+    return 2
+  fi
+
+  # Best effort fetch to compute ahead/behind
+  git -C "$repo_dir" fetch --prune --quiet 2>/dev/null || true
+
+  local cur_branch upstream
+  cur_branch="$(git -C "$repo_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  [[ -z "$branch" ]] && branch="$cur_branch"
+
+  upstream="$(git -C "$repo_dir" rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || true)"
+  if [[ -z "$upstream" ]]; then
+    echo "ℹ️  No upstream for $repo_dir ($branch). Pushing with -u..."
+    if [[ "$force" -eq 1 ]]; then
+      git -C "$repo_dir" push --force-with-lease -u "$remote" "$branch" && return 0
+    else
+      git -C "$repo_dir" push -u "$remote" "$branch" && return 0
+    fi
+    echo "❌ Push failed: $repo_dir" >&2
+    return 1
+  fi
+
+  # Count ahead/behind: "<behind> <ahead>"
+  local counts behind ahead
+  counts="$(git -C "$repo_dir" rev-list --left-right --count "${upstream}...HEAD" 2>/dev/null || echo "")"
+  behind="$(echo "$counts" | awk '{print $1}')"
+  ahead="$(echo "$counts" | awk '{print $2}')"
+
+  if [[ -z "$ahead" ]]; then
+    echo "⚠️  Could not determine ahead/behind for $repo_dir; attempting push anyway (safe)..."
+  elif [[ "$ahead" == "0" ]]; then
+    echo "✅ Nothing to push (ahead=0): $repo_dir"
+    return 0
+  else
+    echo "⬆️  Ahead by $ahead commit(s): $repo_dir"
+  fi
+
+  if [[ "$force" -eq 1 ]]; then
+    git -C "$repo_dir" push --force-with-lease "$remote" "$branch" && return 0
+  else
+    git -C "$repo_dir" push "$remote" "$branch" && return 0
+  fi
+
+  echo "❌ Push failed: $repo_dir" >&2
+  return 1
+}
+
+
+#------------------------------------------------------------------------------
+# Helper: list active deploy-key host aliases produced by git_auth_bootstrap
+# Output: one per line, e.g. "github-comfyui-templates"
+#------------------------------------------------------------------------------
+git_auth_list_hosts() {
+  env | awk -F= '/^GIT_DEPLOY_KEY_/ {print $1}' \
+    | sed 's/^GIT_DEPLOY_KEY_//' \
+    | tr '[:upper:]' '[:lower:]' \
+    | tr '_' '-' \
+    | sed 's/^/github-/' \
+    | sort -u
+}
+
+
+#------------------------------------------------------------------------------
+# Helper: find git repos under roots
+# Usage: git_find_repos_under /path1 /path2 ...
+# Prints repo paths, one per line
+#------------------------------------------------------------------------------
+git_find_repos_under() {
+  local root
+  for root in "$@"; do
+    [[ -d "$root" ]] || continue
+    # Find ".git" dirs up to depth 5 (adjust if you want)
+    find "$root" -maxdepth 5 -type d -name ".git" 2>/dev/null \
+      | sed 's#/\.git$##'
+  done | sort -u
+}
+
+
+#------------------------------------------------------------------------------
+# session_wrapup
+#
+# Does:
+#  1) Optional hff snapshot (if hff exists)
+#  2) For each git repo under roots:
+#     - if its origin host matches an active deploy-key host alias (github-xxx)
+#     - then git add -A, optionally commit, and push if ahead
+#
+# Defaults:
+#  - roots: /workspace/ComfyUI/cache/.git_repo and /workspace (if present)
+#
+# Flags:
+#  --tag <tag>           tag/name passed to hff snapshot (and used in commit msg)
+#  --name <name>         same as tag; whichever you prefer
+#  --hff-repo <repo>     (optional) repo id for hff snapshot if your hff expects it
+#  --hff-type <type>     (optional) model|dataset|space (default: model)
+#  --hff-keep <paths>    comma-separated paths to keep in snapshot (best-effort)
+#  --no-snapshot         skip hff snapshot
+#  --no-commit           do not auto-commit; just push if already committed
+#  --commit-msg <msg>    override commit message
+#  --roots <p1,p2,...>   scan these for repos
+#  --push-all            push all repos under roots (ignore deploy-key host filter)
+#------------------------------------------------------------------------------
+session_wrapup() {
+  local tag=""
+  local name=""
+  local do_snapshot=1
+  local do_commit=1
+  local commit_msg=""
+  local roots_csv=""
+  local push_all=0
+
+  local hff_repo=""
+  local hff_type="model"
+  local hff_keep="ComfyUI,ComfyUI/models,ComfyUI/workflows,ComfyUI/custom_nodes,ComfyUI/cache"  # sensible-ish defaults
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --tag) tag="$2"; shift 2 ;;
+      --name) name="$2"; shift 2 ;;
+      --no-snapshot) do_snapshot=0; shift ;;
+      --no-commit) do_commit=0; shift ;;
+      --commit-msg) commit_msg="$2"; shift 2 ;;
+      --roots) roots_csv="$2"; shift 2 ;;
+      --push-all) push_all=1; shift ;;
+      --hff-repo) hff_repo="$2"; shift 2 ;;
+      --hff-type) hff_type="$2"; shift 2 ;;
+      --hff-keep) hff_keep="$2"; shift 2 ;;
+      --help|-h)
+        echo "usage: session_wrapup [--tag t|--name n] [--no-snapshot] [--no-commit] [--commit-msg msg] [--roots p1,p2] [--push-all] [--hff-repo id] [--hff-type model] [--hff-keep paths]"
+        return 0
+        ;;
+      *) echo "unknown arg: $1" >&2; return 2 ;;
+    esac
+  done
+
+  [[ -z "$name" ]] && name="$tag"
+  [[ -z "$tag" ]] && tag="$name"
+  [[ -z "$tag" ]] && tag="$(date +"%Y-%m-%d-%H%M%S")"
+
+  if [[ -z "$commit_msg" ]]; then
+    commit_msg="Wrapup: ${tag}"
+  fi
+
+  # ---- 1) Snapshot (best effort) ----
+  if [[ "$do_snapshot" -eq 1 ]]; then
+    if command -v hff >/dev/null 2>&1; then
+      echo "📸 hff snapshot: tag=$tag"
+      # This is intentionally "best effort" because your exact hff snapshot CLI may differ.
+      # Common patterns:
+      #   hff snapshot --tag "$tag" --keep "a,b,c"
+      #   hff snapshot <repo> --tag "$tag" --keep ...
+      if [[ -n "$hff_repo" ]]; then
+        hff snapshot "$hff_repo" --type "$hff_type" --tag "$tag" --keep "$hff_keep" || true
+      else
+        hff snapshot --tag "$tag" --keep "$hff_keep" || true
+      fi
+    else
+      echo "ℹ️  hff not found; skipping snapshot"
+    fi
+  fi
+
+  # ---- 2) Determine roots ----
+  local roots=()
+  if [[ -n "$roots_csv" ]]; then
+    IFS=',' read -r -a roots <<< "$roots_csv"
+  else
+    [[ -d "/workspace/ComfyUI/cache/.git_repo" ]] && roots+=("/workspace/ComfyUI/cache/.git_repo")
+    [[ -d "/workspace" ]] && roots+=("/workspace")
+  fi
+
+  if [[ "${#roots[@]}" -eq 0 ]]; then
+    echo "ℹ️  No roots to scan; done."
+    return 0
+  fi
+
+  # ---- 3) Active deploy-key hosts ----
+  local active_hosts
+  active_hosts="$(git_auth_list_hosts | tr '\n' ' ' | sed 's/[[:space:]]\+$//')"
+  if [[ -z "$active_hosts" && "$push_all" -ne 1 ]]; then
+    echo "ℹ️  No deploy keys active (no GIT_DEPLOY_KEY_* vars). Nothing to push."
+    return 0
+  fi
+  [[ -n "$active_hosts" ]] && echo "🔑 Active deploy-key hosts: $active_hosts"
+
+  # ---- 4) Find repos and push ----
+  local repo
+  local repos
+  repos="$(git_find_repos_under "${roots[@]}")"
+
+  if [[ -z "$repos" ]]; then
+    echo "ℹ️  No git repos found under roots."
+    return 0
+  fi
+
+  echo "🧹 Session wrapup: scanning repos..."
+  while IFS= read -r repo; do
+    [[ -d "$repo/.git" ]] || continue
+
+    local origin host
+    origin="$(git -C "$repo" remote get-url origin 2>/dev/null || true)"
+    host=""
+
+    # Parse host:
+    #   git@github-foo:owner/repo.git -> github-foo
+    #   ssh://git@github-foo/owner/repo.git -> github-foo (rare)
+    if [[ "$origin" =~ ^git@([^:]+): ]]; then
+      host="${BASH_REMATCH[1]}"
+    elif [[ "$origin" =~ ^ssh://git@([^/]+)/ ]]; then
+      host="${BASH_REMATCH[1]}"
+    fi
+
+    local should_push=0
+    if [[ "$push_all" -eq 1 ]]; then
+      should_push=1
+    else
+      # only push repos that use one of the active deploy-key hosts
+      if [[ -n "$host" ]]; then
+        # word-boundary-ish match
+        echo " $active_hosts " | grep -q " $host " && should_push=1
+      fi
+    fi
+
+    if [[ "$should_push" -ne 1 ]]; then
+      # Not managed by deploy-key bootstrap; skip quietly
+      continue
+    fi
+
+    echo ""
+    echo "📦 Repo: $repo"
+    echo "   origin: $origin"
+
+    if [[ "$do_commit" -eq 1 ]]; then
+      git -C "$repo" add -A 2>/dev/null || true
+
+      # Commit if there is anything staged/unstaged
+      if ! git -C "$repo" diff --cached --quiet 2>/dev/null; then
+        echo "📝 Committing: $commit_msg"
+        git -C "$repo" commit -m "$commit_msg" >/dev/null 2>&1 || true
+      fi
+    fi
+
+    git_repo_push_if_ahead "$repo" || true
+  done <<< "$repos"
+
+  echo ""
+  echo "✅ session_wrapup complete"
+  return 0
+}

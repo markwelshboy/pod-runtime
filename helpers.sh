@@ -1,11 +1,77 @@
 #!/usr/bin/env bash
 # ======================================================================
-# helpers.sh — runtime entrypoint
+# helpers.sh — public runtime entrypoint
 # ======================================================================
+#
+# POD_RUNTIME_DIR is the canonical root for every helper implementation.  It
+# may be supplied by the caller (for example SL's private
+# /workspace/.sl/runtime/pod-runtime checkout); otherwise derive it once from
+# this public entrypoint.  Files below helpers.d must not need to guess where
+# the repository itself lives.
 
-_helpers_entry_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+if [[ -z "${POD_RUNTIME_DIR:-}" ]]; then
+  POD_RUNTIME_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+else
+  POD_RUNTIME_DIR="$(cd -- "$POD_RUNTIME_DIR" && pwd -P)"
+fi
+export POD_RUNTIME_DIR
+
+: "${repo_root:=$POD_RUNTIME_DIR}"
+export repo_root
+
+_helpers_entry_dir="${POD_RUNTIME_DIR}/helpers.d"
+
 # shellcheck source=/dev/null
 source "${_helpers_entry_dir}/helpers_core.sh"
+
+# helpers_core.sh predates the relocatable helpers.d layout and its legacy
+# dotfile installer derives the repository root from its own file location.
+# Override only that root-sensitive function at the public boundary.
+install_root_shell_dotfiles() {
+  local runtime_root="${1:-${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}}"
+  local target_home="/root"
+  local ts
+  ts="$(date +%Y%m%d_%H%M%S)"
+
+  mkdir -p "$target_home"
+
+  for f in .bashrc .bash_aliases .bash_functions .bash_prompt .git-qol.sh; do
+    if [[ -f "${target_home}/${f}" ]]; then
+      cp -a "${target_home}/${f}" "${target_home}/${f}.bak.${ts}"
+    fi
+  done
+
+  local src_bashrc="${runtime_root}/.bashrc"
+  local tmp
+  tmp="$(mktemp "${target_home}/.bashrc.tmp.XXXXXX")"
+
+  awk -v rr="$runtime_root" '
+    BEGIN {done=0}
+    /^[[:space:]]*REPO_ROOT=<CHANGEME>[[:space:]]*$/ {
+      print "REPO_ROOT=" rr
+      done=1
+      next
+    }
+    {print}
+    END {
+      if (!done) {
+        print "ERROR: REPO_ROOT=<CHANGEME> placeholder not found" > "/dev/stderr"
+        exit 2
+      }
+    }
+  ' "$src_bashrc" > "$tmp"
+
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "${target_home}/.bashrc"
+
+  install -m 0644 "${runtime_root}/.bash_aliases"    "${target_home}/.bash_aliases"
+  install -m 0644 "${runtime_root}/.bash_functions"  "${target_home}/.bash_functions"
+  install -m 0644 "${runtime_root}/.bash_prompt"     "${target_home}/.bash_prompt"
+  install -m 0644 "${runtime_root}/.git-qol.sh"      "${target_home}/.git-qol.sh"
+
+  echo "[dotfiles] Installed bash dotfiles into ${target_home} (repo_root=${runtime_root})"
+}
+
 # shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/helpers_session.sh" ]] && source "${_helpers_entry_dir}/helpers_session.sh"
 # shellcheck source=/dev/null
@@ -21,15 +87,15 @@ source "${_helpers_entry_dir}/helpers_core.sh"
 # shellcheck source=/dev/null
 source "${_helpers_entry_dir}/helpers_hf_manifest.sh"
 # shellcheck source=/dev/null
-[[ -f "${_helpers_entry_dir}/custom_nodes.env" ]] && source "${_helpers_entry_dir}/custom_nodes.env"
+[[ -f "${POD_RUNTIME_DIR}/custom_nodes.env" ]] && source "${POD_RUNTIME_DIR}/custom_nodes.env"
 # shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/helpers_git_auth.sh" ]] && source "${_helpers_entry_dir}/helpers_git_auth.sh"
 
 : "${CUSTOM_NODES_MANIFEST_URL:=https://raw.githubusercontent.com/markwelshboy/pod-runtime/main/default_custom_nodes_manifest.json}"
 : "${CUSTOM_NODE_SETS:=}"
-: "${CUSTOM_NODES_TOOL:=${_helpers_entry_dir}/bin/custom_nodes_profiled.py}"
-: "${CUSTOM_NODES_PROFILE_TOOL:=${_helpers_entry_dir}/bin/custom_nodes_profile_report.py}"
-: "${CUSTOM_NODES_WORKFLOW_TOOL:=${_helpers_entry_dir}/bin/custom_nodes_from_workflow.py}"
+: "${CUSTOM_NODES_TOOL:=${POD_RUNTIME_DIR}/bin/custom_nodes_profiled.py}"
+: "${CUSTOM_NODES_PROFILE_TOOL:=${POD_RUNTIME_DIR}/bin/custom_nodes_profile_report.py}"
+: "${CUSTOM_NODES_WORKFLOW_TOOL:=${POD_RUNTIME_DIR}/bin/custom_nodes_from_workflow.py}"
 
 custom_node_manifest() {
   local command="${1:-help}"
