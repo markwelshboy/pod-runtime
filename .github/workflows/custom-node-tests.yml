@@ -9,7 +9,11 @@ on:
       - bin/custom_nodes_profile_report.py
       - custom_nodes_manifest.json
       - helpers.sh
+      - helpers_core.sh
+      - helpers.d/helpers_custom_node_*.sh
+      - helpers.d/helpers_active_workflow.sh
       - tests/test_custom_nodes_profile_report.py
+      - tests/test_helpers_layout.py
       - .github/workflows/custom-node-tests.yml
 
 permissions:
@@ -26,7 +30,7 @@ jobs:
 
       - name: Check syntax
         run: |
-          bash -n helpers.sh
+          bash -n helpers.sh helpers_core.sh helpers.d/helpers_custom_node_*.sh helpers.d/helpers_active_workflow.sh
           python -m py_compile \
             bin/custom_nodes.py \
             bin/custom_nodes_profiled.py \
@@ -37,3 +41,6 @@ jobs:
 
       - name: Test profiling recommendations
         run: python -m pytest -q tests/test_custom_nodes_profile_report.py
+
+      - name: Test helper layout
+        run: python -m unittest -v tests.test_helpers_layout
