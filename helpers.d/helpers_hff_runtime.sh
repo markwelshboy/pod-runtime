@@ -228,7 +228,7 @@ hff() {
     shift || true
 
     local telemetry_py
-    telemetry_py="${HFF_TELEMETRY_PY:-${POD_RUNTIME_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)}/bin/hff_telemetry.py}"
+    telemetry_py="${HFF_TELEMETRY_PY:-${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}/bin/hff_telemetry.py}"
 
     [[ $# -gt 0 ]] || {
       _hff_err "usage: hff telemetry <file> [--prefix PATH] [-m MESSAGE]"
