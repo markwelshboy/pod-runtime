@@ -2,11 +2,10 @@
 # Active-browser-tab workflow bridge helpers. Sourced after helpers.sh defines
 # the standard custom-node installer so this file can extend that interface.
 
-_active_workflow_helpers_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-: "${CUSTOM_NODES_CURRENT_WORKFLOW_TOOL:=${POD_RUNTIME_DIR:-${_active_workflow_helpers_dir}}/bin/current_comfy_workflow.py}"
+: "${CUSTOM_NODES_CURRENT_WORKFLOW_TOOL:=${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}/bin/current_comfy_workflow.py}"
 
 custom_node_workflow_bridge_install() {
-  local runtime_dir="${POD_RUNTIME_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)}"
+  local runtime_dir="${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}"
   local src="${runtime_dir}/custom_nodes/pod_runtime_workflow_bridge"
   local custom_dir="${CUSTOM_DIR:-${COMFY_HOME:-/workspace/ComfyUI}/custom_nodes}"
   local dst="${custom_dir}/pod_runtime_workflow_bridge"
@@ -157,5 +156,3 @@ install_custom_nodes() {
   echo "[custom-nodes] Optional sets: ${selected_sets:-<none>} (default is always included)"
   "${PY_BIN:-${PY:-python}}" "$CUSTOM_NODES_TOOL" "${args[@]}"
 }
-
-unset _active_workflow_helpers_dir
