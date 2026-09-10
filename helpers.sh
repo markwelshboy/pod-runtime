@@ -3,11 +3,19 @@
 # helpers.sh — public runtime entrypoint
 # ======================================================================
 #
-# POD_RUNTIME_DIR is the canonical root for every helper implementation.  It
-# may be supplied by the caller (for example SL's private
+# POD_RUNTIME_DIR is the canonical root for every helper implementation. It may
+# be supplied by the caller (for example SL's private
 # /workspace/.sl/runtime/pod-runtime checkout); otherwise derive it once from
-# this public entrypoint.  Files below helpers.d must not need to guess where
-# the repository itself lives.
+# this public entrypoint. Files below helpers.d must not rediscover the runtime
+# root themselves.
+
+# Avoid wrapping/defining the helper graph twice in one shell. Do not export
+# this guard: child Bash processes must load their own functions through
+# BASH_ENV.
+if [[ -n "${__POD_RUNTIME_HELPERS_LOADED:-}" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+__POD_RUNTIME_HELPERS_LOADED=1
 
 if [[ -z "${POD_RUNTIME_DIR:-}" ]]; then
   POD_RUNTIME_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -21,56 +29,15 @@ export repo_root
 
 _helpers_entry_dir="${POD_RUNTIME_DIR}/helpers.d"
 
+# helpers_core.sh is the large legacy foundation and remains at repository root
+# because it still contains a small amount of self-location compatibility code.
+# Tell it not to perform its old companion-loader block; helpers.sh owns the
+# module graph now and loads helpers_shell.sh explicitly, without chatter.
+__PODRUNTIME_SHELL_LOADED=1
 # shellcheck source=/dev/null
-source "${_helpers_entry_dir}/helpers_core.sh"
-
-# helpers_core.sh predates the relocatable helpers.d layout and its legacy
-# dotfile installer derives the repository root from its own file location.
-# Override only that root-sensitive function at the public boundary.
-install_root_shell_dotfiles() {
-  local runtime_root="${1:-${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}}"
-  local target_home="/root"
-  local ts
-  ts="$(date +%Y%m%d_%H%M%S)"
-
-  mkdir -p "$target_home"
-
-  for f in .bashrc .bash_aliases .bash_functions .bash_prompt .git-qol.sh; do
-    if [[ -f "${target_home}/${f}" ]]; then
-      cp -a "${target_home}/${f}" "${target_home}/${f}.bak.${ts}"
-    fi
-  done
-
-  local src_bashrc="${runtime_root}/.bashrc"
-  local tmp
-  tmp="$(mktemp "${target_home}/.bashrc.tmp.XXXXXX")"
-
-  awk -v rr="$runtime_root" '
-    BEGIN {done=0}
-    /^[[:space:]]*REPO_ROOT=<CHANGEME>[[:space:]]*$/ {
-      print "REPO_ROOT=" rr
-      done=1
-      next
-    }
-    {print}
-    END {
-      if (!done) {
-        print "ERROR: REPO_ROOT=<CHANGEME> placeholder not found" > "/dev/stderr"
-        exit 2
-      }
-    }
-  ' "$src_bashrc" > "$tmp"
-
-  chmod 0644 "$tmp"
-  mv -f "$tmp" "${target_home}/.bashrc"
-
-  install -m 0644 "${runtime_root}/.bash_aliases"    "${target_home}/.bash_aliases"
-  install -m 0644 "${runtime_root}/.bash_functions"  "${target_home}/.bash_functions"
-  install -m 0644 "${runtime_root}/.bash_prompt"     "${target_home}/.bash_prompt"
-  install -m 0644 "${runtime_root}/.git-qol.sh"      "${target_home}/.git-qol.sh"
-
-  echo "[dotfiles] Installed bash dotfiles into ${target_home} (repo_root=${runtime_root})"
-}
+source "${POD_RUNTIME_DIR}/helpers_core.sh"
+# shellcheck source=/dev/null
+source "${_helpers_entry_dir}/helpers_shell.sh"
 
 # shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/helpers_session.sh" ]] && source "${_helpers_entry_dir}/helpers_session.sh"
