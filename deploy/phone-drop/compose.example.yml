@@ -1,0 +1,23 @@
+services:
+  phone-drop:
+    build:
+      context: ${POD_RUNTIME_SRC:-/home/markr/git/pod-runtime}
+      dockerfile: deploy/phone-drop/Dockerfile
+    container_name: phone-drop
+    restart: unless-stopped
+    networks:
+      - t3_proxy
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
+      PHONE_DROP_BUCKET: ${PHONE_DROP_BUCKET:-pod-phone-drop}
+      PHONE_DROP_POLL_SECONDS: ${PHONE_DROP_POLL_SECONDS:-20}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      TELEGRAM_API_BASE: http://telegram-bot:8081
+      TELEGRAM_LOCAL_FILE_ROOT: /phone-drop
+    volumes:
+      - ${DOCKERDIR}/appdata/phone-drop:/spool
+
+networks:
+  t3_proxy:
+    external: true

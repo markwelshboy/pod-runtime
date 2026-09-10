@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${HF_XET_HIGH_PERFORMANCE:=1}"
+export HF_XET_HIGH_PERFORMANCE
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+BASE_PYTHON="${PHONE_DROP_BASE_PYTHON:-${POD_STATE_PYTHON:-$(command -v python3)}}"
+
+if [[ -n "${PHONE_DROP_VENV:-}" ]]; then
+  VENV="$PHONE_DROP_VENV"
+elif [[ -d /workspace ]]; then
+  VENV="/workspace/.venvs/phone-drop"
+else
+  VENV="${XDG_CACHE_HOME:-${HOME}/.cache}/pod-runtime/phone-drop-venv"
+fi
+
+PY="$VENV/bin/python"
+
+phone_drop_python_ready() {
+  [[ -x "$PY" ]] || return 1
+  "$PY" - <<'PY' >/dev/null 2>&1
+from huggingface_hub import batch_bucket_files, create_bucket, download_bucket_files, list_bucket_tree
+import huggingface_hub
+parts = tuple(int(p) for p in huggingface_hub.__version__.split(".")[:2])
+raise SystemExit(0 if parts >= (1, 29) else 1)
+PY
+}
+
+if ! phone_drop_python_ready; then
+  echo "[send-phone] preparing isolated Hugging Face bucket client in $VENV" >&2
+  mkdir -p "$(dirname "$VENV")"
+  if [[ ! -x "$PY" ]]; then
+    "$BASE_PYTHON" -m venv "$VENV"
+  fi
+  env \
+    -u PIP_CONSTRAINT \
+    -u PIP_BUILD_CONSTRAINT \
+    PIP_CONFIG_FILE=/dev/null \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    "$PY" -m pip install -q --upgrade 'huggingface-hub>=1.29,<2'
+fi
+
+exec "$PY" "$SCRIPT_DIR/phone_drop.py" enqueue "$@"

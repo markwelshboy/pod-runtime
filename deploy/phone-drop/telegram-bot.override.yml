@@ -1,0 +1,6 @@
+services:
+  telegram-bot:
+    environment:
+      TELEGRAM_LOCAL: "1"
+    volumes:
+      - ${DOCKERDIR}/appdata/phone-drop:/phone-drop:ro
