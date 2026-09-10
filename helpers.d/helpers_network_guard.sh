@@ -189,8 +189,7 @@ network_probe_pypi_startup() {
 
 network_probe_startup_guarded() {
   local limit="${NETWORK_TEST_TOTAL_TIMEOUT_SECONDS:-45}"
-  local helper_dir
-  helper_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+  local runtime_dir="${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}"
 
   if ! declare -F network_probe_startup >/dev/null 2>&1; then
     echo "[network] WARN: network_probe_startup is unavailable; skipping qualification." >&2
@@ -206,14 +205,14 @@ network_probe_startup_guarded() {
 
   [[ "$limit" =~ ^[1-9][0-9]*$ ]] || limit=45
 
-  # Re-source helpers in the child so all network and Telegram functions are
-  # available. RunPod/template variables are inherited through the environment.
-  # timeout creates a separate process group; --kill-after also cleans up any
-  # curl children that ignore the initial TERM.
+  # Re-source the public entrypoint in the child so all network and Telegram
+  # functions are available. RunPod/template variables are inherited through
+  # the environment. timeout creates a separate process group; --kill-after
+  # also cleans up any curl children that ignore the initial TERM.
   local rc=0
   timeout --kill-after=3s "${limit}s" \
     bash -c 'set +e; source "$1/helpers.sh"; network_probe_startup; network_probe_pypi_startup; exit 0' \
-    _ "$helper_dir" || rc=$?
+    _ "$runtime_dir" || rc=$?
 
   case "$rc" in
     0)
