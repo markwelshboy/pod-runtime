@@ -6,8 +6,7 @@ if [[ -n "${__HF_MANIFEST_TREE_LOADED:-}" ]]; then
 fi
 __HF_MANIFEST_TREE_LOADED=1
 
-_hf_manifest_tree_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-: "${HF_MANIFEST_TREE_EXPANDER:=${_hf_manifest_tree_root}/bin/hf_manifest_expand.py}"
+: "${HF_MANIFEST_TREE_EXPANDER:=${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}/bin/hf_manifest_expand.py}"
 export HF_MANIFEST_TREE_EXPANDER
 
 _hf_manifest_expand_trees() {
@@ -44,5 +43,3 @@ _hf_manifest_plan() {
   _hf_manifest_expand_trees "$manifest" "$expanded" || return $?
   _hf_manifest_plan_without_tree "$expanded" "$state"
 }
-
-unset _hf_manifest_tree_root
