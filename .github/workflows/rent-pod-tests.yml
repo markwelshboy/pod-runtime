@@ -1,0 +1,33 @@
+name: Rent-pod tests
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - rent-pod
+      - rpods
+      - bin/rent_pod*.py
+      - bin/rpods.py
+      - tests/test_rent_pod*.py
+      - tests/test_rpods.py
+      - .github/workflows/rent-pod-tests.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check syntax
+        run: |
+          bash -n rent-pod rpods
+          python -m py_compile bin/rent_pod*.py bin/rpods.py
+
+      - name: Run rent-pod tests
+        run: python -m unittest discover -s tests -p 'test_rent_pod*.py'
+
+      - name: Run rpods tests
+        run: python -m unittest discover -s tests -p 'test_rpods.py'
