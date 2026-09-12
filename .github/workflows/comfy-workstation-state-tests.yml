@@ -82,6 +82,7 @@ jobs:
           trap 'rm -rf "$test_root"' EXIT
           export COMFY_HOME="$test_root/ComfyUI"
           export COMFY_WORKSTATION_STATE_DIR="$test_root/state"
+          export HFF_VENV="$test_root/no-hff-venv"
           mkdir -p "$COMFY_HOME/models/diffusion_models" "$test_root/item"
           model="$COMFY_HOME/models/diffusion_models/base.safetensors"
           printf base >"$model"
