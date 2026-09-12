@@ -1,6 +1,5 @@
 import importlib.util
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -85,6 +84,22 @@ class ComfyStateEventTests(unittest.TestCase):
         ]
         self.assertEqual([row["mode"] for row in rows], ["already-present", "downloaded"])
         self.assertEqual(rows[-1]["revision"], "abc123")
+
+    def test_huggingface_paths_are_url_decoded(self):
+        destination = self.comfy / "models" / "loras" / "high quality.safetensors"
+        destination.write_bytes(b"foo")
+
+        events.acquire(
+            self._args(
+                destination,
+                remote_path="loras/high%20quality.safetensors",
+                revision="refs%2Fpr%2F7",
+            )
+        )
+
+        row = json.loads((self.state_dir / "events.jsonl").read_text().splitlines()[-1])
+        self.assertEqual(row["remote_path"], "loras/high quality.safetensors")
+        self.assertEqual(row["revision"], "refs/pr/7")
 
 
 if __name__ == "__main__":
