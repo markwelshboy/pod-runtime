@@ -13,12 +13,12 @@ spec.loader.exec_module(cli)
 class RentPodCliTests(unittest.TestCase):
     def test_min_cuda_is_normalized_to_legacy_internal_flag(self):
         self.assertEqual(
-            cli.normalize_cuda_option(["4090", "--min-cuda", "12.8"]),
-            ["4090", "--cuda-min", "12.8"],
+            cli.normalize_cuda_option(["4090", "--min-cuda", "13.3"]),
+            ["4090", "--cuda-min", "13.3"],
         )
         self.assertEqual(
-            cli.normalize_cuda_option(["4090", "--min-cuda=13.0"]),
-            ["4090", "--cuda-min=13.0"],
+            cli.normalize_cuda_option(["4090", "--min-cuda=13.3"]),
+            ["4090", "--cuda-min=13.3"],
         )
 
     def test_legacy_cuda_min_remains_accepted(self):
@@ -36,8 +36,9 @@ class RentPodCliTests(unittest.TestCase):
         cli.print_help(stream)
         text = stream.getvalue()
         self.assertIn("--min-cuda VERSION", text)
-        self.assertIn("allowedCudaVersions", text)
-        self.assertIn("minCudaVersion", text)
+        self.assertIn("GraphQL minCudaVersion", text)
+        self.assertNotIn("allowedCudaVersions", text)
+        self.assertIn("newer RunPod CUDA versions do not require a client update", text)
         self.assertIn("RENT_POD_CUDA_MIN", text)
         self.assertIn("Legacy alias for --min-cuda", text)
 
