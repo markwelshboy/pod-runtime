@@ -9,6 +9,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 SCHEMA_VERSION = 1
 
@@ -64,6 +65,14 @@ def acquire(args: argparse.Namespace) -> int:
     if args.comfy_only and not is_within(destination, comfy_root):
         return 0
 
+    remote_path = args.remote_path
+    revision = args.revision
+    if args.source == "huggingface":
+        if remote_path:
+            remote_path = unquote(remote_path)
+        if revision:
+            revision = unquote(revision)
+
     event: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "time": utc_now(),
@@ -77,9 +86,9 @@ def acquire(args: argparse.Namespace) -> int:
         "mode": args.mode,
         "repo": args.repo,
         "repo_type": args.repo_type,
-        "remote_path": args.remote_path,
+        "remote_path": remote_path,
         "remote_request": args.remote_request,
-        "revision": args.revision,
+        "revision": revision,
         "url": args.url,
         "section": args.section,
     }
