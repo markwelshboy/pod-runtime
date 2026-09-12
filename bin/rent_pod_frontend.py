@@ -4,9 +4,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -18,43 +20,77 @@ import rent_pod as core
 
 GRAPHQL_URL = os.environ.get("RUNPOD_GRAPHQL_URL", "https://api.runpod.io/graphql")
 
-# Current Pod-create API enum. --cuda-min derives an allowed set from this so
-# the REST API gets true >= semantics even though it accepts a list rather than
-# a minCudaVersion field for Pods.
-CUDA_VERSIONS = (
-    "13.0",
-    "12.9",
-    "12.8",
-    "12.7",
-    "12.6",
-    "12.5",
-    "12.4",
-    "12.3",
-    "12.2",
-    "12.1",
-    "12.0",
-    "11.8",
-)
+# Template/profile handling is installed by rent_pod_entry before main() runs.
+# Keeping this hook in the frontend lets the CUDA/GraphQL create path reuse the
+# exact same profile expansion as the normal REST create path without coupling
+# this module back to rent_pod_templates.
+_create_context_hook: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+
+CREATE_POD_MUTATION = """
+mutation createPod($input: PodFindAndDeployOnDemandInput!) {
+  podFindAndDeployOnDemand(input: $input) {
+    id
+    name
+    imageName
+    desiredStatus
+    costPerHr
+    adjustedCostPerHr
+    containerDiskInGb
+    volumeInGb
+    volumeMountPath
+    gpuCount
+    memoryInGb
+    vcpuCount
+    ports
+    lastStatusChange
+    machineId
+    machine {
+      gpuDisplayName
+      location
+    }
+  }
+}
+"""
 
 
 def version_key(value: str) -> tuple[int, ...]:
+    text = value.strip()
+    if not text:
+        raise ValueError("CUDA version cannot be empty")
     try:
-        return tuple(int(part) for part in value.strip().split("."))
+        parts = tuple(int(part) for part in text.split("."))
     except ValueError as exc:
         raise ValueError(f"invalid CUDA version: {value!r}") from exc
+    if not parts or any(part < 0 for part in parts):
+        raise ValueError(f"invalid CUDA version: {value!r}")
+    return parts
 
 
-def allowed_cuda_versions(min_version: str | None) -> list[str]:
-    if not min_version:
-        return []
-    minimum = version_key(min_version)
-    allowed = [version for version in CUDA_VERSIONS if version_key(version) >= minimum]
-    if not allowed:
-        raise ValueError(
-            f"CUDA >= {min_version} is not available in the current RunPod Pod API; "
-            f"highest advertised version is {CUDA_VERSIONS[0]}"
-        )
-    return allowed
+def validate_cuda_version(value: str | None) -> str | None:
+    """Validate syntax without imposing a client-side maximum CUDA version.
+
+    RunPod's GraphQL Pod scheduler accepts minCudaVersion directly.  Keeping a
+    local enum here would make rent-pod stale every time RunPod adds a host CUDA
+    version, which is exactly what happened when 13.1+ appeared.
+    """
+    if value is None:
+        return None
+    text = value.strip()
+    version_key(text)
+    return text
+
+
+def set_create_context_hook(
+    hook: Callable[[dict[str, Any]], dict[str, Any]] | None,
+) -> None:
+    global _create_context_hook
+    _create_context_hook = hook
+
+
+def apply_create_context(payload: dict[str, Any]) -> dict[str, Any]:
+    if _create_context_hook is None:
+        return dict(payload)
+    return _create_context_hook(dict(payload))
 
 
 def split_frontend_args(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
@@ -74,7 +110,7 @@ def split_frontend_args(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
             continue
         if arg == "--cuda-min":
             if i + 1 >= len(argv):
-                raise ValueError("--cuda-min requires a version, e.g. --cuda-min 13.0")
+                raise ValueError("--cuda-min requires a version, e.g. --cuda-min 13.3")
             options["cuda_min"] = argv[i + 1]
             i += 2
             continue
@@ -140,8 +176,15 @@ def option_value(argv: list[str], name: str, default: float) -> float:
     return default
 
 
-def graphql_request(api_key: str, query: str) -> dict[str, Any]:
-    payload = json.dumps({"query": query}).encode("utf-8")
+def graphql_request(
+    api_key: str,
+    query: str,
+    variables: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    request_payload: dict[str, Any] = {"query": query}
+    if variables is not None:
+        request_payload["variables"] = variables
+    payload = json.dumps(request_payload).encode("utf-8")
     req = urllib.request.Request(
         GRAPHQL_URL,
         data=payload,
@@ -192,7 +235,6 @@ def list_gpus(
         f"minUpload: {int(min_upload)}",
     ]
     if cuda_min:
-        # GraphQL availability supports genuine minCudaVersion directly.
         price_args.append(f"minCudaVersion: {json.dumps(cuda_min)}")
 
     query = f"""
@@ -262,40 +304,10 @@ query {{
     return 0
 
 
-def patch_create_for_cuda(cuda_min: str | None) -> None:
-    allowed = allowed_cuda_versions(cuda_min)
-    if not allowed:
-        return
-
-    def create_pod(api_key: str, args: Any, attempt: int) -> dict[str, Any]:
-        slug = re.sub(r"[^a-z0-9]+", "-", args.gpu_alias.lower()).strip("-") or "gpu"
-        payload: dict[str, Any] = {
-            "name": args.name or f"podlet-{slug}-{int(core.time.time())}-a{attempt}",
-            "templateId": args.template,
-            "gpuTypeIds": [args.gpu],
-            "gpuCount": 1,
-            "gpuTypePriority": "availability",
-            "supportPublicIp": True,
-            "minDownloadMbps": args.min_download,
-            "minUploadMbps": args.min_upload,
-            "cloudType": args.cloud,
-            "allowedCudaVersions": allowed,
-        }
-        if args.min_disk is not None:
-            payload["minDiskBandwidthMBps"] = args.min_disk
-        result = core.api_request(api_key, "POST", "/pods", payload)
-        if not isinstance(result, dict):
-            raise core.RunPodError(f"unexpected create response: {result!r}")
-        return result
-
-    core.create_pod = create_pod
-
-
-def dry_run(forwarded: list[str], cuda_min: str | None) -> int:
-    args = core.build_parser().parse_args(forwarded)
-    args.gpu = core.resolve_gpu(args.gpu_alias)
-    preview: dict[str, Any] = {
-        "name": args.name or "podlet-<gpu>-<timestamp>-a1",
+def base_create_payload(args: Any, attempt: int) -> dict[str, Any]:
+    slug = re.sub(r"[^a-z0-9]+", "-", args.gpu_alias.lower()).strip("-") or "gpu"
+    payload: dict[str, Any] = {
+        "name": args.name or f"podlet-{slug}-{int(core.time.time())}-a{attempt}",
         "templateId": args.template,
         "gpuTypeIds": [args.gpu],
         "gpuCount": 1,
@@ -306,10 +318,164 @@ def dry_run(forwarded: list[str], cuda_min: str | None) -> int:
         "cloudType": args.cloud,
     }
     if args.min_disk is not None:
-        preview["minDiskBandwidthMBps"] = args.min_disk
-    allowed = allowed_cuda_versions(cuda_min)
-    if allowed:
-        preview["allowedCudaVersions"] = allowed
+        payload["minDiskBandwidthMBps"] = args.min_disk
+    return apply_create_context(payload)
+
+
+def _docker_args_from_rest_payload(payload: dict[str, Any]) -> str | None:
+    entrypoint = payload.get("dockerEntrypoint")
+    start_cmd = payload.get("dockerStartCmd")
+    if entrypoint:
+        raise ValueError(
+            "--min-cuda uses RunPod GraphQL Pod creation, which cannot preserve a "
+            "dockerEntrypoint override from a local template; use the image's "
+            "ENTRYPOINT, a remote RunPod template, or omit --min-cuda"
+        )
+    if not start_cmd:
+        return None
+    if not isinstance(start_cmd, list) or not all(isinstance(item, str) for item in start_cmd):
+        raise ValueError("dockerStartCmd must be a list of strings")
+    return shlex.join(start_cmd)
+
+
+def graphql_create_input(payload: dict[str, Any], cuda_min: str) -> dict[str, Any]:
+    """Translate the existing REST-shaped create/profile payload to GraphQL."""
+    cuda_min = validate_cuda_version(cuda_min) or ""
+    supported = {
+        "name",
+        "templateId",
+        "gpuTypeIds",
+        "gpuCount",
+        "gpuTypePriority",
+        "supportPublicIp",
+        "minDownloadMbps",
+        "minUploadMbps",
+        "minDiskBandwidthMBps",
+        "cloudType",
+        "imageName",
+        "containerDiskInGb",
+        "volumeInGb",
+        "volumeMountPath",
+        "ports",
+        "dockerEntrypoint",
+        "dockerStartCmd",
+        "minVCPUPerGPU",
+        "minRAMPerGPU",
+        "networkVolumeId",
+        "containerRegistryAuthId",
+        "globalNetworking",
+        "env",
+    }
+    unknown = sorted(set(payload) - supported)
+    if unknown:
+        raise ValueError(
+            "--min-cuda GraphQL create cannot translate Pod field(s): "
+            + ", ".join(unknown)
+        )
+
+    gpu_ids = payload.get("gpuTypeIds") or []
+    if not isinstance(gpu_ids, list) or not gpu_ids:
+        raise ValueError("Pod creation requires at least one GPU type")
+
+    result: dict[str, Any] = {
+        "name": payload.get("name"),
+        "gpuCount": int(payload.get("gpuCount") or 1),
+        "cloudType": payload.get("cloudType"),
+        "supportPublicIp": bool(payload.get("supportPublicIp")),
+        "startSsh": True,
+        "minCudaVersion": cuda_min,
+    }
+    if len(gpu_ids) == 1:
+        result["gpuTypeId"] = str(gpu_ids[0])
+    else:
+        result["gpuTypeIdList"] = [str(value) for value in gpu_ids]
+
+    direct_fields = (
+        "templateId",
+        "imageName",
+        "containerDiskInGb",
+        "volumeInGb",
+        "volumeMountPath",
+        "networkVolumeId",
+        "containerRegistryAuthId",
+    )
+    for field in direct_fields:
+        value = payload.get(field)
+        if value is not None and value != "":
+            result[field] = value
+
+    if payload.get("minDownloadMbps") is not None:
+        result["minDownload"] = int(float(payload["minDownloadMbps"]))
+    if payload.get("minUploadMbps") is not None:
+        result["minUpload"] = int(float(payload["minUploadMbps"]))
+    if payload.get("minDiskBandwidthMBps") is not None:
+        result["minDisk"] = int(float(payload["minDiskBandwidthMBps"]))
+    if payload.get("minVCPUPerGPU") is not None:
+        result["minVcpuCount"] = int(payload["minVCPUPerGPU"])
+    if payload.get("minRAMPerGPU") is not None:
+        result["minMemoryInGb"] = int(payload["minRAMPerGPU"])
+    if payload.get("globalNetworking") is not None:
+        result["globalNetwork"] = bool(payload["globalNetworking"])
+
+    ports = payload.get("ports")
+    if ports:
+        if isinstance(ports, list):
+            result["ports"] = ",".join(str(value) for value in ports)
+        else:
+            result["ports"] = str(ports)
+
+    docker_args = _docker_args_from_rest_payload(payload)
+    if docker_args is not None:
+        result["dockerArgs"] = docker_args
+
+    env = payload.get("env")
+    if env:
+        if not isinstance(env, dict):
+            raise ValueError("Pod env must be a mapping for GraphQL creation")
+        result["env"] = [
+            {"key": str(key), "value": str(value)}
+            for key, value in sorted(env.items())
+        ]
+
+    return {key: value for key, value in result.items() if value is not None}
+
+
+def graphql_create_pod(
+    api_key: str,
+    payload: dict[str, Any],
+    cuda_min: str,
+) -> dict[str, Any]:
+    input_payload = graphql_create_input(payload, cuda_min)
+    data = graphql_request(
+        api_key,
+        CREATE_POD_MUTATION,
+        {"input": input_payload},
+    )
+    result = data.get("podFindAndDeployOnDemand")
+    if not isinstance(result, dict):
+        raise core.RunPodError(f"unexpected GraphQL create response: {data!r}")
+    return result
+
+
+def patch_create_for_cuda(cuda_min: str | None) -> None:
+    cuda_min = validate_cuda_version(cuda_min)
+    if not cuda_min:
+        return
+
+    def create_pod(api_key: str, args: Any, attempt: int) -> dict[str, Any]:
+        return graphql_create_pod(api_key, base_create_payload(args, attempt), cuda_min)
+
+    core.create_pod = create_pod
+
+
+def dry_run(forwarded: list[str], cuda_min: str | None) -> int:
+    args = core.build_parser().parse_args(forwarded)
+    args.gpu = core.resolve_gpu(args.gpu_alias)
+    payload = base_create_payload(args, 1)
+    if cuda_min:
+        preview = graphql_create_input(payload, cuda_min)
+    else:
+        preview = payload
     print(json.dumps(preview, indent=2, sort_keys=True))
     return 0
 
@@ -318,9 +484,7 @@ def main() -> int:
     try:
         forwarded, options = split_frontend_args(sys.argv[1:])
         cloud, forwarded = cloud_from_args(forwarded, bool(options["community"]))
-        cuda_min = options["cuda_min"]
-        # Validate early, including list/dry-run.
-        allowed_cuda_versions(cuda_min)
+        cuda_min = validate_cuda_version(options["cuda_min"])
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -354,10 +518,7 @@ def main() -> int:
     patch_create_for_cuda(cuda_min)
     sys.argv = [sys.argv[0], *forwarded]
     if cuda_min:
-        print(
-            f"[rent-pod] CUDA minimum:        {cuda_min} "
-            f"(allowed: {', '.join(allowed_cuda_versions(cuda_min))})"
-        )
+        print(f"[rent-pod] CUDA minimum:        {cuda_min} (GraphQL minCudaVersion)")
     try:
         return core.main()
     except (ValueError, core.RunPodError) as exc:
