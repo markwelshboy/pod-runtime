@@ -18,14 +18,14 @@ def normalize_cuda_option(argv: list[str]) -> list[str]:
         arg = argv[i]
         if arg == "--min-cuda":
             if i + 1 >= len(argv) or argv[i + 1].startswith("-"):
-                raise ValueError("--min-cuda requires a version, e.g. --min-cuda 12.8")
+                raise ValueError("--min-cuda requires a version, e.g. --min-cuda 13.3")
             result.extend(["--cuda-min", argv[i + 1]])
             i += 2
             continue
         if arg.startswith("--min-cuda="):
             value = arg.split("=", 1)[1].strip()
             if not value:
-                raise ValueError("--min-cuda requires a version, e.g. --min-cuda 12.8")
+                raise ValueError("--min-cuda requires a version, e.g. --min-cuda 13.3")
             result.append(f"--cuda-min={value}")
             i += 1
             continue
@@ -61,9 +61,9 @@ Examples:
   rent-pod pro6000             # if defined in gpu-aliases.toml
 
 Selection floors:
-  --min-cuda VERSION       Require CUDA VERSION or newer. For Pod creation this
-                           is translated into RunPod allowedCudaVersions; for
-                           --list it is sent as minCudaVersion.
+  --min-cuda VERSION       Require CUDA VERSION or newer. Pod creation and
+                           --list both use RunPod GraphQL minCudaVersion, so
+                           newer RunPod CUDA versions do not require a client update.
   --min-download MBPS      Minimum advertised download bandwidth (default: 500).
   --min-upload MBPS        Minimum advertised upload bandwidth (default: 100).
   --min-disk MB_PER_SEC    Minimum advertised disk throughput, when specified.
