@@ -25,6 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install shell test tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
+
       - name: Check Python syntax
         run: |
           python3 -m py_compile \
@@ -42,3 +45,70 @@ jobs:
           python3 -m unittest -v \
             tests.test_comfy_state_event \
             tests.test_comfy_workstation_state
+
+      - name: Exercise hff acquisition hook
+        shell: bash
+        run: |
+          set -euo pipefail
+          export POD_RUNTIME_DIR="$PWD"
+          test_root="$(mktemp -d)"
+          trap 'rm -rf "$test_root"' EXIT
+          export COMFY_HOME="$test_root/ComfyUI"
+          export COMFY_WORKSTATION_STATE_DIR="$test_root/state"
+          export HFF_REPO="owner/assets"
+          export HFF_REPO_TYPE="model"
+          mkdir -p "$COMFY_HOME/models/loras"
+          model="$COMFY_HOME/models/loras/foo.safetensors"
+          printf foo >"$model"
+
+          source ./helpers.d/helpers_hff_runtime.sh
+          _hff_record_get_output 'loras/foo.safetensors' "$model"
+
+          event="$(tail -n1 "$COMFY_WORKSTATION_STATE_DIR/events.jsonl")"
+          jq -e '
+            .event == "asset_acquired"
+            and .source == "huggingface"
+            and .source_tool == "hff"
+            and .repo == "owner/assets"
+            and .remote_path == "loras/foo.safetensors"
+          ' <<<"$event" >/dev/null
+
+      - name: Exercise manifest acquisition hook
+        shell: bash
+        run: |
+          set -euo pipefail
+          export POD_RUNTIME_DIR="$PWD"
+          test_root="$(mktemp -d)"
+          trap 'rm -rf "$test_root"' EXIT
+          export COMFY_HOME="$test_root/ComfyUI"
+          export COMFY_WORKSTATION_STATE_DIR="$test_root/state"
+          mkdir -p "$COMFY_HOME/models/diffusion_models" "$test_root/item"
+          model="$COMFY_HOME/models/diffusion_models/base.safetensors"
+          printf base >"$model"
+          item="$test_root/item/0001.json"
+          cat >"$item" <<JSON
+          {
+            "transport": "hf",
+            "url": "https://huggingface.co/owner/base/resolve/main/base.safetensors",
+            "path": "$model",
+            "repo_type": "model",
+            "repo_id": "owner/base",
+            "revision": "main",
+            "repo_file": "base.safetensors",
+            "section": "base",
+            "completed_bytes": 4
+          }
+          JSON
+
+          source ./helpers.d/helpers_hf_manifest.sh
+          _hf_manifest_record_item_event "$item" already-present
+
+          event="$(tail -n1 "$COMFY_WORKSTATION_STATE_DIR/events.jsonl")"
+          jq -e '
+            .event == "asset_acquired"
+            and .source == "huggingface"
+            and .source_tool == "hf_download_from_manifest"
+            and .mode == "already-present"
+            and .repo == "owner/base"
+            and .remote_path == "base.safetensors"
+          ' <<<"$event" >/dev/null
