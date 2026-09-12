@@ -25,6 +25,58 @@ _hf_manifest_kill_tree() {
   kill -s "$signal" "$parent" 2>/dev/null || true
 }
 
+_hf_manifest_record_item_event() {
+  local item="${1:?item}" mode="${2:-downloaded}"
+  local recorder="${COMFY_STATE_EVENT_TOOL:-${POD_RUNTIME_DIR:-}/bin/comfy_state_event.py}"
+  [[ -n "$recorder" && -f "$recorder" ]] || return 0
+
+  local py row transport url path repo_type repo_id revision repo_file section bytes source
+  py="$(_hf_manifest_python)" || return 0
+  row="$(jq -r '[.transport,.url,.path,.repo_type,.repo_id,.revision,.repo_file,.section,(.completed_bytes // .total_bytes // 0 | tostring)] | join("\u001f")' "$item" 2>/dev/null)" || return 0
+  IFS=$'\x1f' read -r transport url path repo_type repo_id revision repo_file section bytes <<<"$row"
+  [[ -n "$path" && -f "$path" ]] || return 0
+  bytes="$(stat -c %s "$path" 2>/dev/null || printf '0')"
+
+  local -a args=(
+    "$recorder"
+    acquire
+    --destination "$path"
+    --tool hf_download_from_manifest
+    --mode "$mode"
+    --bytes "$bytes"
+    --section "$section"
+    --comfy-only
+  )
+
+  if [[ "$transport" == "hf" && -n "$repo_id" && -n "$repo_file" ]]; then
+    source="huggingface"
+    args+=(
+      --source "$source"
+      --repo "$repo_id"
+      --repo-type "${repo_type:-model}"
+      --remote-path "$repo_file"
+      --revision "$revision"
+      --url "$url"
+    )
+  else
+    source="url"
+    args+=(--source "$source" --url "$url")
+  fi
+
+  "$py" "${args[@]}" >/dev/null 2>&1 || true
+}
+
+_hf_manifest_record_present_items() {
+  local state="${1:?state}" item status
+  [[ -f "$state/items.list" ]] || return 0
+  while IFS= read -r item || [[ -n "$item" ]]; do
+    [[ -f "$item" ]] || continue
+    status="$(jq -r '.status // ""' "$item" 2>/dev/null || true)"
+    [[ "$status" == "completed" ]] || continue
+    _hf_manifest_record_item_event "$item" already-present
+  done <"$state/items.list"
+}
+
 _hf_manifest_download_item() {
   local item="${1:?item}" state="${2:?state}"
   local row id transport url path repo_type repo_id revision repo_file total work_dir log
@@ -149,6 +201,7 @@ _hf_manifest_controller() {
     if ((rc == 0)); then
       bytes="$(stat -c %s "$(jq -r '.path' "$item")" 2>/dev/null || echo 0)"
       _hf_manifest_set_item_status "$item" completed "downloaded" "$bytes" || true
+      _hf_manifest_record_item_event "$item" downloaded
     else
       failures=$((failures + 1))
       bytes="$(_hf_manifest_work_bytes "$(jq -r '.work_dir' "$item")")"
@@ -223,6 +276,11 @@ hf_download_from_manifest() {
 
   echo "[hf-manifest] Prepared $total item(s): pending=$pending already-present=$present"
   echo "[hf-manifest] Known total: $(helpers_human_bytes "$known") across $((total - unknown)) item(s); unknown size=$unknown"
+
+  # A clean seed may find files already present in the image/workspace. They are
+  # just as reconstructable as newly downloaded files, so record their manifest
+  # provenance before deciding there is nothing to transfer.
+  _hf_manifest_record_present_items "$state"
 
   if ((total == 0 || pending == 0)); then
     _hf_manifest_set_controller_status "$state" completed 0 "nothing to download"
