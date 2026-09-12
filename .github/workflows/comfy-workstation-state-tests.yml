@@ -1,0 +1,44 @@
+name: Comfy workstation state tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/comfy-workstation-state
+    paths:
+      - bin/comfy_state_event.py
+      - bin/comfy_workstation_state.py
+      - bin/comfy-state
+      - comfy-state
+      - helpers.d/helpers_hff_runtime.sh
+      - helpers.d/helpers_hf_manifest.d/**
+      - tests/test_comfy_state_event.py
+      - tests/test_comfy_workstation_state.py
+      - .github/workflows/comfy-workstation-state-tests.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Python syntax
+        run: |
+          python3 -m py_compile \
+            bin/comfy_state_event.py \
+            bin/comfy_workstation_state.py
+
+      - name: Check shell syntax
+        run: |
+          bash -n bin/comfy-state comfy-state
+          bash -n helpers.d/helpers_hff_runtime.sh
+          bash -n helpers.d/helpers_hf_manifest.d/02-download.sh
+
+      - name: Run workstation state tests
+        run: |
+          python3 -m unittest -v \
+            tests.test_comfy_state_event \
+            tests.test_comfy_workstation_state
