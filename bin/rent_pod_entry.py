@@ -112,12 +112,12 @@ except ValueError as exc:
 
 # Resolve a friendly --template name and merge profile env + per-run --env.
 # The friendly name remains in argv for readable CLI output; the real RunPod ID
-# is substituted only at the POST /pods API boundary. Local profiles instead
-# replace templateId with direct POST /pods image/storage/port settings.
+# is substituted at the create boundary. Local profiles replace templateId with
+# direct image/storage/port settings for either REST or GraphQL Pod creation.
 from rent_pod_templates import (  # noqa: E402
+    apply_context_to_payload,
     apply_template_profile,
     install_core_api_hook,
-    install_frontend_hooks,
     print_selected_profile,
 )
 
@@ -186,7 +186,28 @@ except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
 
-install_frontend_hooks(frontend, template_context)
+# The normal REST create path receives template/profile expansion through the
+# core api_request hook above.  CUDA-constrained Pods now use GraphQL, so give
+# that path the same transformation explicitly instead of duplicating template
+# semantics inside the frontend.
+frontend.set_create_context_hook(
+    lambda payload: apply_context_to_payload(payload, template_context)
+)
+
+# Preserve the useful profile details that the old frontend hook appended to a
+# dry run while letting the frontend itself render the actual transport payload
+# (REST normally, GraphQL when --min-cuda is supplied).
+_base_dry_run = frontend.dry_run
+
+
+def _dry_run_with_profile(forwarded: list[str], cuda_min: str | None) -> int:
+    rc = _base_dry_run(forwarded, cuda_min)
+    print_selected_profile(template_context)
+    return rc
+
+
+frontend.dry_run = _dry_run_with_profile
+
 if "--dry-run" not in effective_argv:
     print_selected_profile(template_context)
 if vcp_enabled:
