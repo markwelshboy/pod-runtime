@@ -217,8 +217,50 @@ PY
   fi
 }
 
-# Keep the normal hff dispatcher from helpers_shell.sh, then add one pod-runtime
-# command without duplicating the rest of hff's command parsing here.
+_hff_record_get_output() {
+  local remote_request="${1:-}" output="${2:-}"
+  local recorder="${COMFY_STATE_EVENT_TOOL:-${POD_RUNTIME_DIR:?POD_RUNTIME_DIR not set}/bin/comfy_state_event.py}"
+  [[ -f "$recorder" ]] || return 0
+
+  local py="${PY_BIN:-${PY:-python3}}"
+  command -v "$py" >/dev/null 2>&1 || [[ -x "$py" ]] || py="$(command -v python3 2>/dev/null || true)"
+  [[ -n "$py" ]] || return 0
+
+  local source_kind="huggingface" exact=1 normalized="$remote_request" path bytes
+  if [[ "$remote_request" == *'*'* || "$remote_request" == *'?'* || "$remote_request" == *'['* || "$remote_request" == */ ]]; then
+    exact=0
+    source_kind="huggingface-request"
+  fi
+  normalized="${normalized#/}"
+  while [[ "$normalized" == ./* ]]; do normalized="${normalized#./}"; done
+
+  while IFS= read -r path || [[ -n "$path" ]]; do
+    [[ -n "$path" && -f "$path" ]] || continue
+    bytes="$(stat -c %s "$path" 2>/dev/null || printf '0')"
+    local -a args=(
+      "$recorder"
+      acquire
+      --source "$source_kind"
+      --destination "$path"
+      --tool hff
+      --mode downloaded
+      --repo "${HFF_REPO}"
+      --repo-type "${HFF_REPO_TYPE}"
+      --revision "${HFF_REVISION:-main}"
+      --bytes "$bytes"
+      --comfy-only
+    )
+    if ((exact)); then
+      args+=(--remote-path "$normalized")
+    else
+      args+=(--remote-request "$remote_request")
+    fi
+    "$py" "${args[@]}" >/dev/null 2>&1 || true
+  done <<<"$output"
+}
+
+# Keep the normal hff dispatcher from helpers_shell.sh, then add pod-runtime
+# commands/policy without duplicating the rest of hff's command parsing here.
 if declare -F hff >/dev/null 2>&1 && ! declare -F _hff_base_dispatch >/dev/null 2>&1; then
   eval "$(declare -f hff | sed '1s/^hff /_hff_base_dispatch /')"
 fi
@@ -249,6 +291,17 @@ hff() {
   fi
 
   if declare -F _hff_base_dispatch >/dev/null 2>&1; then
+    if [[ "${1:-}" == "get" ]]; then
+      local remote_request="${2:-}" output rc
+      output="$(_hff_base_dispatch "$@")"
+      rc=$?
+      [[ -n "$output" ]] && printf '%s\n' "$output"
+      if ((rc == 0)); then
+        _hff_record_get_output "$remote_request" "$output"
+      fi
+      return "$rc"
+    fi
+
     _hff_base_dispatch "$@"
     return $?
   fi
