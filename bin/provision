@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+# Resolve through /usr/local/bin/provision (or any other symlink) so the
+# companion provision scripts are always located relative to the real repo.
+script_path="$(readlink -f -- "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd -- "$(dirname -- "$script_path")" && pwd -P)"
 FULL_PROVISION="${SCRIPT_DIR}/provision_full"
 QUALIFY_ONLY="${SCRIPT_DIR}/provision_qualify"
 
