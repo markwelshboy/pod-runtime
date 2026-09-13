@@ -6,8 +6,12 @@ on:
     paths:
       - rent-pod
       - rpods
+      - bin/provision
+      - bin/provision_full
+      - bin/provision_qualify
       - bin/rent_pod*.py
       - bin/rpods.py
+      - tests/test_provision*.py
       - tests/test_rent_pod*.py
       - tests/test_rpods.py
       - .github/workflows/rent-pod-tests.yml
@@ -23,8 +27,11 @@ jobs:
 
       - name: Check syntax
         run: |
-          bash -n rent-pod rpods
+          bash -n rent-pod rpods bin/provision bin/provision_full bin/provision_qualify
           python -m py_compile bin/rent_pod*.py bin/rpods.py
+
+      - name: Run provision tests
+        run: python -m unittest discover -s tests -p 'test_provision*.py'
 
       - name: Run rent-pod tests
         run: python -m unittest discover -s tests -p 'test_rent_pod*.py'
