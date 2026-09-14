@@ -59,6 +59,8 @@ Examples:
   rent-pod l40s
   rent-pod "RTX PRO 6000"
   rent-pod pro6000             # if defined in gpu-aliases.toml
+  rent-pod --template qwen3-captioning \\
+    --startup 'configure-pod --template qwen3-captioning --snapshot latest' l40s
 
 Selection floors:
   --min-cuda VERSION       Require CUDA VERSION or newer. Pod creation and
@@ -77,6 +79,8 @@ Template / Pod configuration:
   --name NAME              Name assigned to the rented Pod.
   --env KEY=VALUE          Per-run environment override. Repeatable; a quoted
                            ';'-separated list is also accepted. CLI values win.
+  --startup COMMAND        Run COMMAND remotely after successful provisioning.
+                           A CLI command overrides startup from the template profile.
   --list-templates         Show remote and local template profiles and their type.
 
 Local template files use their filename as the profile name. Example:
@@ -88,12 +92,18 @@ Local template files use their filename as the profile name. Example:
   volume_mount_path = "/workspace"
   ports = ["22/tcp", "8000/http"]
   docker_start_cmd = ["sleep", "infinity"]
+  startup = "configure-pod --template qwen3-captioning --snapshot latest"
 
   [env]
   PROJECT = "qwen3"
 
   [secrets]
   HF_TOKEN = "huggingface_token"
+
+`docker_start_cmd` controls the container process at Pod boot. `startup` is a
+rent-pod action executed over the proven SSH connection only after provision and
+qualification succeed. Startup runs synchronously; failure leaves the Pod running
+for diagnosis and rent-pod exits with the startup command's return code.
 
 [secrets] values are RunPod account secret names, not secret values. rent-pod
 passes them as {{ RUNPOD_SECRET_name }} references for substitution by RunPod.
@@ -109,7 +119,7 @@ Rental / admission:
   --ssh-key PATH           SSH private key for the Pod.
   --allow-seen-machine     Permit a recently rejected machine/IP.
   --keep-failed            Keep candidates that would normally be auto-deleted.
-  --no-provision           Stop after SSH readiness; do not run provision.
+  --no-provision           Stop after SSH readiness; do not run provision/startup.
   --dry-run                Show the Pod-create payload without renting anything.
 
 Inventory / account / management:
