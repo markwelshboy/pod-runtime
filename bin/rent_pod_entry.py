@@ -40,6 +40,14 @@ except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
 
+# Post-provision startup is rent-pod control-plane metadata, not a RunPod Pod
+# field. Register the template key before *any* template registry load so both
+# --list-templates and normal rentals accept startup = "...".
+import rent_pod_startup as startup_handoff  # noqa: E402
+import rent_pod_templates as template_profiles  # noqa: E402
+
+startup_handoff.register_template_option(template_profiles)
+
 # Local template-profile discovery is intentionally first: it needs neither a
 # RunPod API key nor HF_TOKEN and should never be polluted by rental defaults.
 from rent_pod_templates import handle_template_meta_command  # noqa: E402
@@ -101,6 +109,9 @@ import rent_pod_vcp as vcp_handoff  # noqa: E402
 
 try:
     effective_argv = apply_env_defaults(public_argv, os.environ)
+    effective_argv, cli_startup_command = startup_handoff.consume_startup_args(
+        effective_argv
+    )
     effective_argv, ssh_exposure_timeout = ssh_phases.consume_ssh_phase_args(
         effective_argv, os.environ
     )
@@ -123,6 +134,10 @@ from rent_pod_templates import (  # noqa: E402
 
 try:
     effective_argv, template_context = apply_template_profile(effective_argv, os.environ)
+    startup_command, startup_source = startup_handoff.resolve_startup_command(
+        cli_startup_command,
+        template_context,
+    )
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -163,12 +178,15 @@ install_core_api_hook(template_context)
 # Install the lifecycle display first, then replace only its readiness wait with
 # the more detailed direct-SSH phase probe. Provision/identity display hooks stay
 # owned by rent_pod_lifecycle. VCP wraps those final hooks so its handoff always
-# receives the endpoint that actually passed authenticated SSH.
+# receives the endpoint that actually passed authenticated SSH. Startup wraps
+# the resulting provision pipeline last, so it runs only after provision (and
+# optional VCP registration) succeeds and before core reports ACCEPTED.
 from rent_pod_lifecycle import install_core_hooks  # noqa: E402
 
 install_core_hooks()
 ssh_phases.install_core_hook(ssh_exposure_timeout)
 vcp_handoff.install_core_hooks(vcp_enabled, rent_name)
+startup_handoff.install_core_hook(startup_command)
 
 import rent_pod_frontend as frontend  # noqa: E402
 from rent_pod_gpu_aliases import install_core_gpu_resolver  # noqa: E402
@@ -194,6 +212,16 @@ frontend.set_create_context_hook(
     lambda payload: apply_context_to_payload(payload, template_context)
 )
 
+
+def _print_startup_selection() -> None:
+    if not startup_command:
+        return
+    source = startup_source or "configured"
+    suffix = "; skipped by --no-provision" if "--no-provision" in effective_argv else ""
+    print(f"[rent-pod] Post-provision startup: {startup_command}")
+    print(f"           source: {source}{suffix}")
+
+
 # Preserve the useful profile details that the old frontend hook appended to a
 # dry run while letting the frontend itself render the actual transport payload
 # (REST normally, GraphQL when --min-cuda is supplied).
@@ -203,6 +231,7 @@ _base_dry_run = frontend.dry_run
 def _dry_run_with_profile(forwarded: list[str], cuda_min: str | None) -> int:
     rc = _base_dry_run(forwarded, cuda_min)
     print_selected_profile(template_context)
+    _print_startup_selection()
     return rc
 
 
@@ -210,6 +239,7 @@ frontend.dry_run = _dry_run_with_profile
 
 if "--dry-run" not in effective_argv:
     print_selected_profile(template_context)
+    _print_startup_selection()
 if vcp_enabled:
     suffix = f" as target {rent_name}" if rent_name else " as a named target"
     print(f"[rent-pod] VCP auto-config:       enabled after successful provision{suffix}")
