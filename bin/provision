@@ -14,6 +14,7 @@ fi
 
 shift
 SSH_ARGS=("$@")
+PROVISION_IMPL="$FULL_PROVISION"
 
 # Self-provisioning images own their live pod-runtime checkout and HFF venv.
 # Detect the opt-in from PID 1's container environment rather than the SSH
@@ -24,7 +25,39 @@ if ssh "${SSH_ARGS[@]}" \
 then
     echo "[provision] Self-provisioning template detected."
     echo "[provision] Image owns pod-runtime/HFF; running qualification only."
-    exec "$QUALIFY_ONLY" ssh "${SSH_ARGS[@]}"
+    PROVISION_IMPL="$QUALIFY_ONLY"
 fi
 
-exec "$FULL_PROVISION" ssh "${SSH_ARGS[@]}"
+"$PROVISION_IMPL" ssh "${SSH_ARGS[@]}"
+
+# Capture a clean exported-environment baseline only after successful
+# provisioning/qualification. snapshot-pod later stores just the safe delta
+# from this point, so transient working variables such as RUN_DIR can be
+# restored without archiving the whole container environment or any secrets.
+REMOTE_RUNTIME_DIR="${RUNTIME_DIR:-/workspace/pod-runtime}"
+echo "[provision] Capturing post-provision environment baseline..."
+if ! ssh "${SSH_ARGS[@]}" "RUNTIME_DIR=$(printf '%q' "$REMOTE_RUNTIME_DIR") bash -s" <<'REMOTE_ENV_EOF'
+set -euo pipefail
+RUNTIME_DIR="${RUNTIME_DIR:-/workspace/pod-runtime}"
+export POD_RUNTIME_DIR="$RUNTIME_DIR"
+
+if [[ -f /etc/rp_environment ]]; then
+    # shellcheck disable=SC1091
+    source /etc/rp_environment
+fi
+if [[ -f /root/.secrets/env.provisioned ]]; then
+    # Values matching secret-like variable names are filtered by pod_env_state.
+    # shellcheck disable=SC1091
+    source /root/.secrets/env.provisioned
+fi
+if [[ -f "$RUNTIME_DIR/.env" ]]; then
+    # shellcheck disable=SC1090
+    source "$RUNTIME_DIR/.env"
+fi
+
+export PATH="$RUNTIME_DIR:$RUNTIME_DIR/bin:$PATH"
+python3 "$RUNTIME_DIR/bin/pod_env_state.py" capture-baseline
+REMOTE_ENV_EOF
+then
+    echo "[provision] WARNING: environment baseline capture failed; snapshots will fall back to the container baseline." >&2
+fi
