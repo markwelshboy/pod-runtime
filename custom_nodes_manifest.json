@@ -173,7 +173,7 @@
     },
     "comfyui-enricos-nodes": {
       "remote": "https://github.com/erosDiffusion/ComfyUI-enricos-nodes",
-      "local": "ComfyUI-enricos-nodes"
+      "local": "comfyui-enricos-nodes"
     },
     "comfyui-tinyterranodes": {
       "remote": "https://github.com/TinyTerra/ComfyUI_tinyterraNodes",
@@ -391,8 +391,8 @@
       "local": "ComfyUI-LinkSpotlight"
     },
     "minimax-h3-hybrid-conditioning": {
-      "remote": "https://github.com/kitsune123150/Minimax-H3-Hybrid-Conditioning",
-      "local": "Minimax-H3-Hybrid-Conditioning"
+      "remote": "https://github.com/kitsune123150/minimax-h3-hybrid-cond",
+      "local": "minimax-h3-hybrid-cond"
     },
     "krea2-multi-character-lora-node-with-bounding-box-scene-and-outfit-edit": {
       "remote": "https://github.com/CliffNodes/Krea2-Multi-Character-Lora-Node-with-bounding-box-Scene-and-Outfit-Edit",
