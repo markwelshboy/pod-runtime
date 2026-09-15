@@ -401,6 +401,18 @@
     "comfyui-minimax-h3-hybrid-loader": {
       "remote": "https://github.com/scottmudge/ComfyUI_MinimaxH3HybridLoader",
       "local": "ComfyUI_MinimaxH3HybridLoader"
+    },
+    "comfyui-openrouter-node": {
+      "remote": "https://github.com/gabe-init/ComfyUI-Openrouter_node.git",
+      "local": "ComfyUI-Openrouter_node"
+    },
+    "comfyui-spectrum-minimax-h3": {
+      "remote": "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
+      "local": "ComfyUI-Spectrum-MiniMax-H3"
+    },
+    "comfyui-minimax-refpack": {
+      "remote": "https://github.com/Hearmeman24/ComfyUI-MiniMaxRefPack.git",
+      "local": "ComfyUI-MiniMaxRefPack"
     }
   },
   "sets": {
@@ -512,7 +524,10 @@
     "minimax": [
       "comfyui-starnodes",
       "minimax-h3-hybrid-conditioning",
-      "comfyui-minimax-h3-hybrid-loader"
+      "comfyui-minimax-h3-hybrid-loader",
+      "comfyui-openrouter-node",
+      "comfyui-spectrum-minimax-h3",
+      "comfyui-minimax-refpack"
     ]
   }
 }
