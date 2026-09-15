@@ -7,6 +7,7 @@ on:
       - start.minimax.sh
       - run_comfy_mux.sh
       - model_manifest.minimax.json
+      - custom_nodes.env
       - custom_nodes_manifest.json
       - .github/workflows/minimax-runtime-tests.yml
 
@@ -20,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check shell syntax
-        run: bash -n start.minimax.sh run_comfy_mux.sh
+        run: bash -n start.minimax.sh run_comfy_mux.sh custom_nodes.env
 
       - name: Validate MiniMax model catalog
         run: |
@@ -54,6 +55,17 @@ jobs:
           assert "ENABLE_MY_WORKFLOWS_DOWNLOAD" not in data
           assert "prepare_sage.sh" not in data
           assert "ensure_sage_from_bundle_or_build" in data
+          PY
+
+      - name: Guard runtime-local custom-node manifest
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          data = Path("custom_nodes.env").read_text()
+          assert '${POD_RUNTIME_DIR}/custom_nodes_manifest.json' in data
+          assert 'raw.githubusercontent.com/markwelshboy/pod-runtime/main/custom_nodes_manifest.json' not in data
+          assert 'CUSTOM_NODES_MANIFEST_URL_OVERRIDE' in data
           PY
 
       - name: Guard selectable attention backends
