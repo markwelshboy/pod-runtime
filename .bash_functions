@@ -25,6 +25,11 @@ load_runtime_env() {
   source_if_exists "$repo_root/.env"
   source_if_exists "$repo_root/helpers.sh"
 
+  # Snapshot working environment. configure-pod writes only safe exported
+  # values here (for example RUN_DIR); credentials/secrets are never persisted.
+  # Load it last so the restored working state can override runtime defaults.
+  source_if_exists "/workspace/.pod-state/env.current"
+
 }
 
 # Quick Git identity helper (does NOT run automatically)
