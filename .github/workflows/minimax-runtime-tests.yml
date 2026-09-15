@@ -96,6 +96,10 @@ jobs:
           assert "hf_hub_download" in sage
           assert "HfApi" in sage
           assert "upload_file" in sage
+          assert "EntryNotFoundError" in sage
+          assert "SystemExit(44)" in sage
+          assert "Cache miss: no exact bundle" in sage
+          assert "SAGE_HF_VERBOSE" in sage
           PY
 
       - name: Guard runtime-local custom-node manifest
