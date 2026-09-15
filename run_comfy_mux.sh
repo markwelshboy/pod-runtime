@@ -17,7 +17,12 @@ set -euo pipefail
 #   COMFY_LOGS    e.g. /workspace/logs
 #
 # Env (optional):
-#   ENABLE_SAGE=true|false      (default true)
+#   COMFY_USE_SAGE_ATTENTION=true|false
+#       Controls ComfyUI's global --use-sage-attention flag. When unset, falls
+#       back to ENABLE_SAGE for backward compatibility with existing profiles.
+#   ENABLE_SAGE=true|false
+#       Legacy launch control and, in newer profiles, Sage availability/build
+#       control. Prefer COMFY_USE_SAGE_ATTENTION for launch policy.
 #   START_TIMEOUT=seconds       (default 60)  # wait for 8188
 #   GPU_PORT_BASE=8288          (default 8288) # gpu0=8288, gpu1=8388, ...
 #   MAX_GPU_SESSIONS=4          (default 4)    # how many gpu sessions to spawn max
@@ -62,10 +67,16 @@ need_cmd curl
 need_cmd ps
 need_cmd awk
 
-sage_attention=$({ [[ "${ENABLE_SAGE:-true}" == "true" ]] && printf '%s' --use-sage-attention; } || true)
+# Backward-compatible split between "Sage is available" and "launch every
+# ComfyUI process with global Sage attention". Existing profiles that only set
+# ENABLE_SAGE retain their old behavior; newer profiles can keep Sage installed
+# for KJ/per-workflow use while leaving the global backend disabled.
+comfy_use_sage_attention="${COMFY_USE_SAGE_ATTENTION:-${ENABLE_SAGE:-true}}"
+sage_attention=$({ [[ "${comfy_use_sage_attention}" == "true" ]] && printf '%s' --use-sage-attention; } || true)
 
 gpus="$(python -c 'import torch; print(torch.cuda.device_count() if torch.cuda.is_available() else 0)')"
 printf "INFO: Available GPUs: %s\n" "${gpus}"
+printf "INFO: Global Sage attention: %s\n" "${comfy_use_sage_attention}"
 
 # ---- RunPod proxy / CORS compatibility ----
 #
