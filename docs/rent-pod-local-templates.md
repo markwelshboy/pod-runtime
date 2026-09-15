@@ -71,6 +71,9 @@ Example:
 description = "Qwen3 captioning development pod"
 image = "runpod/pytorch:latest"
 
+# Admission requirement: do not rent a host below this CUDA version.
+min_cuda = "13.0"
+
 # These override templates.toml defaults when present.
 container_disk_gb = 60
 ports = ["22/tcp", "8000/http", "8888/http"]
@@ -87,6 +90,28 @@ OPENAI_API_KEY = "openai_key"
 ```
 
 A local profile must define `image`. A remote profile defines `id`. Defining both is rejected.
+
+### CUDA admission floor
+
+`min_cuda` is rent-pod admission metadata, not a container environment variable or a REST `POST /pods` field. When present, `rent-pod` uses RunPod GraphQL `minCudaVersion` for both candidate selection and Pod creation, so the template cannot be scheduled onto a machine below that CUDA floor.
+
+It can be specified on a directory-backed local template, inherited from `[defaults]`, or placed on an inline/remote `[templates.NAME]` profile. Keep it quoted as a version string:
+
+```toml
+min_cuda = "13.0"
+```
+
+CUDA precedence is:
+
+```text
+RENT_POD_CUDA_MIN
+        ↓
+template/default min_cuda
+        ↓
+--min-cuda VERSION
+```
+
+In other words, an explicit CLI value wins; otherwise the selected template wins over the controller-wide environment default. Templates without `min_cuda` retain the existing `RENT_POD_CUDA_MIN` behavior.
 
 Supported local Pod fields are:
 
@@ -105,7 +130,7 @@ Supported local Pod fields are:
 | `container_registry_auth_id` | `containerRegistryAuthId` |
 | `global_networking` | `globalNetworking` |
 
-GPU, GPU count, cloud, CUDA versions, network admission floors, name, and other rental-specific values remain owned by the `rent-pod` command and are layered on top of the local template.
+GPU, GPU count, cloud, network admission floors, name, and other rental-specific values remain owned by the `rent-pod` command and are layered on top of the local template. `min_cuda` is the exception deliberately supported as template admission metadata because it describes an image/runtime compatibility requirement rather than a particular rental request.
 
 ## RunPod secrets
 
