@@ -1,0 +1,93 @@
+name: MiniMax runtime tests
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - start.minimax.sh
+      - run_comfy_mux.sh
+      - model_manifest.minimax.json
+      - custom_nodes_manifest.json
+      - .github/workflows/minimax-runtime-tests.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check shell syntax
+        run: bash -n start.minimax.sh run_comfy_mux.sh
+
+      - name: Validate MiniMax model catalog
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path("model_manifest.minimax.json").read_text())
+          sections = manifest["sections"]
+          for name in (
+              "minimax_base",
+              "minimax_common_base",
+              "minimax_big_base",
+              "minimax_medium_base",
+              "minimax_loras",
+          ):
+              assert name in sections, f"missing MiniMax family section: {name}"
+              assert isinstance(sections[name], list), f"{name} must be a list"
+          PY
+
+      - name: Guard generic HF family plumbing
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          data = Path("start.minimax.sh").read_text()
+          assert "HF_BASE_DOWNLOADS" in data
+          assert "HF_LORA_DOWNLOADS" in data
+          assert "MINIMAX_QUANT" not in data
+          assert "MINIMAX_TASKS" not in data
+          assert "ENABLE_MY_WORKFLOWS_DOWNLOAD" not in data
+          assert "prepare_sage.sh" not in data
+          assert "ensure_sage_from_bundle_or_build" in data
+          PY
+
+      - name: Guard selectable attention backends
+        run: |
+          grep -q -- '--use-sage-attention' run_comfy_mux.sh
+          grep -q -- '--use-ck-attention' run_comfy_mux.sh
+          grep -q -- '--disable-dynamic-vram' run_comfy_mux.sh
+          grep -q 'COMFY_USE_SAGE_ATTENTION' run_comfy_mux.sh
+          grep -q 'COMFY_USE_KITCHEN_ATTENTION' run_comfy_mux.sh
+
+      - name: Validate MiniMax custom-node set
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path("custom_nodes_manifest.json").read_text())
+          selected = set(manifest["sets"]["minimax"])
+          required = {
+              "comfyui-starnodes",
+              "minimax-h3-hybrid-conditioning",
+              "comfyui-minimax-h3-hybrid-loader",
+              "comfyui-ultimatesdupscale",
+              "comfyui-rmbg",
+              "comfyui-segment-anything-2",
+              "comfyui-openrouter-node",
+              "comfyui-spectrum-minimax-h3",
+              "comfyui-minimax-refpack",
+              "comfyui-minimax-h3-latent-upscaler",
+              "comfyui-minimax-h3-mod",
+              "comfyui-viggle-animate-h3",
+          }
+          missing = sorted(required - selected)
+          assert not missing, f"MiniMax set missing required nodes: {missing}"
+          for node_id in selected:
+              assert node_id in manifest["nodes"], f"unknown node in minimax set: {node_id}"
+          PY
