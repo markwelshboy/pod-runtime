@@ -6,6 +6,8 @@ on:
     paths:
       - start.minimax.sh
       - run_comfy_mux.sh
+      - helpers.sh
+      - helpers.d/helpers_sage_runtime.sh
       - model_manifest.minimax.json
       - custom_nodes.env
       - custom_nodes_manifest.json
@@ -21,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check shell syntax
-        run: bash -n start.minimax.sh run_comfy_mux.sh custom_nodes.env
+        run: bash -n start.minimax.sh run_comfy_mux.sh helpers.sh helpers.d/helpers_sage_runtime.sh custom_nodes.env
 
       - name: Validate MiniMax model catalog
         run: |
@@ -55,6 +57,45 @@ jobs:
           assert "ENABLE_MY_WORKFLOWS_DOWNLOAD" not in data
           assert "prepare_sage.sh" not in data
           assert "ensure_sage_from_bundle_or_build" in data
+          PY
+
+      - name: Guard isolated HFF and dependency-safe ORT repair
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          start = Path("start.minimax.sh").read_text()
+          assert "install_system_hff" in start
+          assert "hf_transfer_install" not in start
+          assert "hf_transfer_verify" not in start
+          assert '"$PIP" install --constraint /opt/constraints.txt --no-deps --force-reinstall onnxruntime-gpu' in start
+          PY
+
+      - name: Guard modern Sage fallback and Hub transfers
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          helpers = Path("helpers.sh").read_text()
+          sage = Path("helpers.d/helpers_sage_runtime.sh").read_text()
+
+          assert "helpers_sage_runtime.sh" in helpers
+          assert "helpers_hff_runtime.sh" in helpers
+          assert helpers.index("helpers_hff_runtime.sh") < helpers.index("helpers_sage_runtime.sh")
+
+          assert "gcc-12" not in sage
+          assert "g++-12" not in sage
+          assert "build-essential" in sage
+          assert "command -v nvcc" in sage
+          assert "TORCH_CUDA_ARCH_LIST" in sage
+          assert "archive/${ref}.tar.gz" in sage
+          assert "--no-build-isolation" in sage
+
+          assert "huggingface-cli" not in sage
+          assert "git clone" not in sage
+          assert "hf_hub_download" in sage
+          assert "HfApi" in sage
+          assert "upload_file" in sage
           PY
 
       - name: Guard runtime-local custom-node manifest
