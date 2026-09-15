@@ -100,6 +100,16 @@ jobs:
           assert "SystemExit(44)" in sage
           assert "Cache miss: no exact bundle" in sage
           assert "SAGE_HF_VERBOSE" in sage
+
+          # PUSH_SAGE_BUNDLE is idempotent: if the exact stack artifact already
+          # exists on the Hub, do not spend time rebuilding/re-uploading it.
+          assert ".file_exists(" in sage
+          assert "Exact bundle already published" in sage
+          assert "SAGE_FORCE_REBUILD" in sage
+          publish = sage.index("push_sage_bundle_if_requested()")
+          exists_check = sage.index(".file_exists(", publish)
+          bundle_build = sage.index('tarpath="$(build_sage_bundle_wrapper', publish)
+          assert exists_check < bundle_build
           PY
 
       - name: Guard runtime-local custom-node manifest
