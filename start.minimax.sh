@@ -64,14 +64,15 @@ if [[ "${MINIMAX_DEBUG_HOLD:-0}" == "1" ]]; then
   echo "[debug] Continuing startup..."
 fi
 
+# Runtime Hub operations use the isolated HFF tooling venv. Do not reinstall or
+# verify hf_transfer/huggingface-hub inside the ComfyUI venv: custom nodes own
+# their application dependencies and bootstrap tooling must not mutate them.
 install_system_hff
+hf_transfer_tune
 install_root_shell_dotfiles || true
 ensure_comfy_dirs
 link_comfy_state_into_app
 git_auth_bootstrap || true
-hf_transfer_tune
-hf_transfer_install
-hf_transfer_verify
 
 # Install custom nodes before bulk model transfers. The generic resolver always
 # includes the shared default set and then adds CUSTOM_NODE_SETS=minimax. A
@@ -89,8 +90,9 @@ if [[ "${INSTALL_CUSTOM_NODES}" == true ]]; then
   snapshot_custom_nodes_state "after-minimax-install" || true
 
   # A custom-node requirement can install CPU onnxruntime after the image's GPU
-  # package. Reassert the GPU package only when provider enumeration proves it
-  # was displaced.
+  # package. Reassert the baked GPU package only when provider enumeration proves
+  # it was displaced. --no-deps is intentional: a repair must not upgrade numpy,
+  # protobuf, or any other already-constrained application dependency.
   if python - <<'PY'
 try:
     import onnxruntime as ort
@@ -104,9 +106,9 @@ PY
   then
     echo "[onnxruntime] CUDA provider intact; keeping baked onnxruntime-gpu installation."
   else
-    echo "[onnxruntime] CUDA provider missing after custom-node install; repairing GPU runtime."
-    pip uninstall -y onnxruntime onnxruntime-gpu >/dev/null 2>&1 || true
-    pip install --constraint /opt/constraints.txt --force-reinstall onnxruntime-gpu
+    echo "[onnxruntime] CUDA provider missing after custom-node install; repairing GPU runtime without dependency churn."
+    "$PIP" uninstall -y onnxruntime onnxruntime-gpu >/dev/null 2>&1 || true
+    "$PIP" install --constraint /opt/constraints.txt --no-deps --force-reinstall onnxruntime-gpu
   fi
 fi
 
