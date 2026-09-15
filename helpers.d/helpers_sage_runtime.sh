@@ -149,7 +149,7 @@ PY
 
 hf_fetch_sage_bundle() {
   local key="${1:?SAGE_KEY}"
-  local repo repo_type revision py filename local_tgz
+  local repo repo_type revision py filename local_tgz rc=0
 
   repo="$(_sage_hf_repo_id)"
   repo_type="$(_sage_hf_repo_type)"
@@ -171,28 +171,50 @@ hf_fetch_sage_bundle() {
      HF_SAGE_REVISION="$revision" \
      HF_SAGE_FILENAME="$filename" \
      HF_SAGE_DEST="$local_tgz" \
+     HF_SAGE_TRACEBACK="${HFF_VERBOSE:-${SAGE_HF_VERBOSE:-false}}" \
      "$py" - <<'PY'
 import os
 import shutil
+import sys
 from huggingface_hub import hf_hub_download
+from huggingface_hub.errors import EntryNotFoundError
 
-src = hf_hub_download(
-    repo_id=os.environ["HF_SAGE_REPO"],
-    repo_type=os.environ["HF_SAGE_REPO_TYPE"],
-    filename=os.environ["HF_SAGE_FILENAME"],
-    revision=os.environ["HF_SAGE_REVISION"],
-    token=os.environ.get("HF_TOKEN") or None,
-)
+try:
+    src = hf_hub_download(
+        repo_id=os.environ["HF_SAGE_REPO"],
+        repo_type=os.environ["HF_SAGE_REPO_TYPE"],
+        filename=os.environ["HF_SAGE_FILENAME"],
+        revision=os.environ["HF_SAGE_REVISION"],
+        token=os.environ.get("HF_TOKEN") or None,
+    )
+except EntryNotFoundError:
+    # A missing cache artifact is an ordinary cache miss, not an operational
+    # error. Exit with a dedicated status so the shell can build it locally
+    # without dumping a traceback into bootstrap logs.
+    raise SystemExit(44)
+except Exception as exc:
+    verbose = os.environ.get("HF_SAGE_TRACEBACK", "").lower() in {"1", "true", "yes", "on"}
+    if verbose:
+        raise
+    print(f"[sage-hf] ERROR: Hub fetch failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
 shutil.copy2(src, os.environ["HF_SAGE_DEST"])
 PY
   then
     echo "[sage-hf] Restored $(basename "$local_tgz") directly from Hub." >&2
     printf '%s\n' "$local_tgz"
     return 0
+  else
+    rc=$?
   fi
 
   rm -f "$local_tgz"
-  echo "[sage-hf] Exact bundle not found for key=${key}." >&2
+  if [[ "$rc" -eq 44 ]]; then
+    echo "[sage-hf] Cache miss: no exact bundle for key=${key}; source build required." >&2
+  else
+    echo "[sage-hf] ERROR: failed to fetch Sage bundle for key=${key} (rc=${rc})." >&2
+  fi
   return 1
 }
 
@@ -202,7 +224,7 @@ push_sage_bundle_if_requested() {
     return 0
   }
 
-  local key tarpath repo repo_type revision py filename
+  local key tarpath repo repo_type revision py filename rc=0
   key="$(torch_sage_key)" || return 1
 
   if ! "$PY" - <<'PY'
@@ -233,25 +255,41 @@ PY
   fi
 
   echo "[sage-hf] Publishing ${filename} directly via HFF/HfApi..." >&2
-  HF_SAGE_REPO="$repo" \
-  HF_SAGE_REPO_TYPE="$repo_type" \
-  HF_SAGE_REVISION="$revision" \
-  HF_SAGE_FILENAME="$filename" \
-  HF_SAGE_LOCAL="$tarpath" \
-  HF_SAGE_COMMIT_MESSAGE="torch_sage bundle ${key}" \
-  "$py" - <<'PY'
+  if HF_SAGE_REPO="$repo" \
+     HF_SAGE_REPO_TYPE="$repo_type" \
+     HF_SAGE_REVISION="$revision" \
+     HF_SAGE_FILENAME="$filename" \
+     HF_SAGE_LOCAL="$tarpath" \
+     HF_SAGE_COMMIT_MESSAGE="torch_sage bundle ${key}" \
+     HF_SAGE_TRACEBACK="${HFF_VERBOSE:-${SAGE_HF_VERBOSE:-false}}" \
+     "$py" - <<'PY'
 import os
+import sys
 from huggingface_hub import HfApi
 
-HfApi(token=os.environ.get("HF_TOKEN") or None).upload_file(
-    path_or_fileobj=os.environ["HF_SAGE_LOCAL"],
-    path_in_repo=os.environ["HF_SAGE_FILENAME"],
-    repo_id=os.environ["HF_SAGE_REPO"],
-    repo_type=os.environ["HF_SAGE_REPO_TYPE"],
-    revision=os.environ["HF_SAGE_REVISION"],
-    commit_message=os.environ["HF_SAGE_COMMIT_MESSAGE"],
-)
+try:
+    HfApi(token=os.environ.get("HF_TOKEN") or None).upload_file(
+        path_or_fileobj=os.environ["HF_SAGE_LOCAL"],
+        path_in_repo=os.environ["HF_SAGE_FILENAME"],
+        repo_id=os.environ["HF_SAGE_REPO"],
+        repo_type=os.environ["HF_SAGE_REPO_TYPE"],
+        revision=os.environ["HF_SAGE_REVISION"],
+        commit_message=os.environ["HF_SAGE_COMMIT_MESSAGE"],
+    )
+except Exception as exc:
+    verbose = os.environ.get("HF_SAGE_TRACEBACK", "").lower() in {"1", "true", "yes", "on"}
+    if verbose:
+        raise
+    print(f"[sage-hf] ERROR: Hub publish failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+    raise SystemExit(1)
 PY
+  then
+    echo "[sage-hf] Uploaded $(basename "$tarpath") without cloning the Hub repository." >&2
+    return 0
+  else
+    rc=$?
+  fi
 
-  echo "[sage-hf] Uploaded $(basename "$tarpath") without cloning the Hub repository." >&2
+  echo "[sage-hf] ERROR: Sage bundle publish failed for key=${key} (rc=${rc})." >&2
+  return "$rc"
 }
