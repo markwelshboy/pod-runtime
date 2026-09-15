@@ -413,6 +413,21 @@
     "comfyui-minimax-refpack": {
       "remote": "https://github.com/Hearmeman24/ComfyUI-MiniMaxRefPack.git",
       "local": "ComfyUI-MiniMaxRefPack"
+    },
+    "comfyui-minimax-h3-latent-upscaler": {
+      "remote": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler.git",
+      "local": "Comfyui_Minimax_h3_latent_Upscaler",
+      "ref": "d7c01b9011f2e8439493f6c02c29995a27df276f"
+    },
+    "comfyui-minimax-h3-mod": {
+      "remote": "https://github.com/Luisacaotica/ComfyUI-MiniMaxH3Mod.git",
+      "local": "ComfyUI-MiniMaxH3Mod",
+      "ref": "22ca77e247375dd47fc7340286b5f391887d3410"
+    },
+    "comfyui-viggle-animate-h3": {
+      "remote": "https://github.com/Saganaki22/ComfyUI-Viggle-Animate-H3.git",
+      "local": "ComfyUI-Viggle-Animate-H3",
+      "ref": "77425b6f955e98e96c5e0dc6ca199dc62e63ad8a"
     }
   },
   "sets": {
@@ -530,7 +545,10 @@
       "comfyui-segment-anything-2",
       "comfyui-openrouter-node",
       "comfyui-spectrum-minimax-h3",
-      "comfyui-minimax-refpack"
+      "comfyui-minimax-refpack",
+      "comfyui-minimax-h3-latent-upscaler",
+      "comfyui-minimax-h3-mod",
+      "comfyui-viggle-animate-h3"
     ]
   }
 }
