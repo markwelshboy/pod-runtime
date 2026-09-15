@@ -226,6 +226,64 @@ push_sage_bundle_if_requested() {
 
   local key tarpath repo repo_type revision py filename rc=0
   key="$(torch_sage_key)" || return 1
+  repo="$(_sage_hf_repo_id)"
+  repo_type="$(_sage_hf_repo_type)"
+  revision="$(_sage_hf_revision)"
+  py="$(_sage_hf_python)" || return 1
+  filename="bundles/torch_sage_bundle_${key}.tgz"
+
+  if [[ -z "$repo" ]]; then
+    echo "[sage-hf] ERROR: HF_REPO_ID/HFF_REPO is not configured." >&2
+    return 1
+  fi
+
+  # PUSH_SAGE_BUNDLE means "publish this stack if it is missing", not
+  # "repackage and overwrite the exact same artifact on every pod boot".
+  # This is intentionally a remote existence check rather than a local-file
+  # check: a locally cached bundle may be the result of a previous failed
+  # upload, in which case it still needs to be published.
+  if ! _sage_true "${SAGE_FORCE_REBUILD:-0}"; then
+    echo "[sage-hf] Checking whether ${repo}:${filename} is already published..." >&2
+    if HF_SAGE_REPO="$repo" \
+       HF_SAGE_REPO_TYPE="$repo_type" \
+       HF_SAGE_REVISION="$revision" \
+       HF_SAGE_FILENAME="$filename" \
+       HF_SAGE_TRACEBACK="${HFF_VERBOSE:-${SAGE_HF_VERBOSE:-false}}" \
+       "$py" - <<'PY'
+import os
+import sys
+from huggingface_hub import HfApi
+
+try:
+    exists = HfApi(token=os.environ.get("HF_TOKEN") or None).file_exists(
+        repo_id=os.environ["HF_SAGE_REPO"],
+        filename=os.environ["HF_SAGE_FILENAME"],
+        repo_type=os.environ["HF_SAGE_REPO_TYPE"],
+        revision=os.environ["HF_SAGE_REVISION"],
+    )
+except Exception as exc:
+    verbose = os.environ.get("HF_SAGE_TRACEBACK", "").lower() in {"1", "true", "yes", "on"}
+    if verbose:
+        raise
+    print(f"[sage-hf] ERROR: Hub existence check failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+raise SystemExit(0 if exists else 44)
+PY
+    then
+      echo "[sage-hf] Exact bundle already published for key=${key}; skipping rebuild/re-upload." >&2
+      return 0
+    else
+      rc=$?
+      if [[ "$rc" -ne 44 ]]; then
+        echo "[sage-hf] ERROR: could not determine whether Sage bundle is already published (rc=${rc}); skipping publish attempt." >&2
+        return "$rc"
+      fi
+      echo "[sage-hf] Exact bundle is not published for key=${key}; preparing upload." >&2
+    fi
+  else
+    echo "[sage-hf] SAGE_FORCE_REBUILD is enabled; rebuilding/re-publishing key=${key}." >&2
+  fi
 
   if ! "$PY" - <<'PY'
 import importlib
@@ -243,16 +301,6 @@ PY
   fi
 
   tarpath="$(build_sage_bundle_wrapper "$key")" || return 1
-  repo="$(_sage_hf_repo_id)"
-  repo_type="$(_sage_hf_repo_type)"
-  revision="$(_sage_hf_revision)"
-  py="$(_sage_hf_python)" || return 1
-  filename="bundles/$(basename "$tarpath")"
-
-  if [[ -z "$repo" ]]; then
-    echo "[sage-hf] ERROR: HF_REPO_ID/HFF_REPO is not configured." >&2
-    return 1
-  fi
 
   echo "[sage-hf] Publishing ${filename} directly via HFF/HfApi..." >&2
   if HF_SAGE_REPO="$repo" \
