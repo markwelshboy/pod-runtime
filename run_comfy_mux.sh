@@ -19,7 +19,14 @@ set -euo pipefail
 # Env (optional):
 #   COMFY_USE_SAGE_ATTENTION=true|false
 #       Controls ComfyUI's global --use-sage-attention flag. When unset, falls
-#       back to ENABLE_SAGE for backward compatibility with existing profiles.
+#       back to ENABLE_SAGE for backward compatibility with existing profiles,
+#       unless Kitchen attention was explicitly selected.
+#   COMFY_USE_KITCHEN_ATTENTION=true|false
+#       Controls ComfyUI's global --use-ck-attention flag. Sage and Kitchen are
+#       mutually exclusive instance-wide backends.
+#   COMFY_DISABLE_DYNAMIC_VRAM=true|false
+#       Adds --disable-dynamic-vram when true. Defaults false globally; profiles
+#       such as MiniMax may opt in.
 #   ENABLE_SAGE=true|false
 #       Legacy launch control and, in newer profiles, Sage availability/build
 #       control. Prefer COMFY_USE_SAGE_ATTENTION for launch policy.
@@ -67,16 +74,44 @@ need_cmd curl
 need_cmd ps
 need_cmd awk
 
-# Backward-compatible split between "Sage is available" and "launch every
-# ComfyUI process with global Sage attention". Existing profiles that only set
-# ENABLE_SAGE retain their old behavior; newer profiles can keep Sage installed
-# for KJ/per-workflow use while leaving the global backend disabled.
-comfy_use_sage_attention="${COMFY_USE_SAGE_ATTENTION:-${ENABLE_SAGE:-true}}"
-sage_attention=$({ [[ "${comfy_use_sage_attention}" == "true" ]] && printf '%s' --use-sage-attention; } || true)
+# Backward-compatible split between "Sage is available" and the instance-wide
+# attention backend. Existing profiles that only set ENABLE_SAGE retain their
+# old global-Sage behavior. Explicit Kitchen selection suppresses that fallback.
+comfy_use_kitchen_attention="${COMFY_USE_KITCHEN_ATTENTION:-false}"
+if [[ -n "${COMFY_USE_SAGE_ATTENTION+x}" ]]; then
+  comfy_use_sage_attention="${COMFY_USE_SAGE_ATTENTION}"
+elif [[ "${comfy_use_kitchen_attention}" == "true" ]]; then
+  comfy_use_sage_attention=false
+else
+  comfy_use_sage_attention="${ENABLE_SAGE:-true}"
+fi
+
+if [[ "${comfy_use_sage_attention}" == "true" && "${comfy_use_kitchen_attention}" == "true" ]]; then
+  echo "ERROR: COMFY_USE_SAGE_ATTENTION and COMFY_USE_KITCHEN_ATTENTION cannot both be true." >&2
+  exit 2
+fi
+
+attention_arg=""
+if [[ "${comfy_use_sage_attention}" == "true" ]]; then
+  attention_arg="--use-sage-attention"
+elif [[ "${comfy_use_kitchen_attention}" == "true" ]]; then
+  attention_arg="--use-ck-attention"
+fi
+
+dynamic_vram_arg=""
+if [[ "${COMFY_DISABLE_DYNAMIC_VRAM:-false}" == "true" ]]; then
+  dynamic_vram_arg="--disable-dynamic-vram"
+fi
+
+comfy_runtime_args="${attention_arg} ${dynamic_vram_arg}"
+comfy_runtime_args="${comfy_runtime_args# }"
+comfy_runtime_args="${comfy_runtime_args% }"
 
 gpus="$(python -c 'import torch; print(torch.cuda.device_count() if torch.cuda.is_available() else 0)')"
 printf "INFO: Available GPUs: %s\n" "${gpus}"
 printf "INFO: Global Sage attention: %s\n" "${comfy_use_sage_attention}"
+printf "INFO: Global Kitchen attention: %s\n" "${comfy_use_kitchen_attention}"
+printf "INFO: DynamicVRAM disabled: %s\n" "${COMFY_DISABLE_DYNAMIC_VRAM:-false}"
 
 # ---- RunPod proxy / CORS compatibility ----
 #
@@ -228,7 +263,7 @@ wait_http() {
 
 health_log() {
   local name="$1" port="$2" gvar="$3" out="$4" cache="$5"
-  echo "🚀 ${name} is UP on :${port} (Runtime Options: ${sage_attention} CUDA_VISIBLE_DEVICES=${gvar})"
+  echo "🚀 ${name} is UP on :${port} (Runtime Options: ${comfy_runtime_args:-default} CUDA_VISIBLE_DEVICES=${gvar})"
   echo "       Output: ${out}"
   echo "   Temp/Cache: ${cache}"
   echo "          Log: ${LOGS}/comfyui-${port}.log"
@@ -288,7 +323,7 @@ start_one() {
   tmux new-session -d -s "${sess}" \
     "cd \"${APP}\" && CUDA_VISIBLE_DEVICES=${gvar} PYTHONUNBUFFERED=1 \
      python \"${APP}/main.py\" --listen --port ${port} ${cors_args} \
-       ${sage_attention} \
+       ${comfy_runtime_args} \
        --output-directory \"${out}\" --temp-directory \"${cache}\" --preview-method latent2rgb \
        >> \"${LOGS}/comfyui-${port}.log\" 2>&1"
 }
@@ -310,7 +345,7 @@ start_8188() {
   log_cors_mode_for_port 8188
   tmux new-session -d -s comfy-8188 \
     "cd \"${APP}\" && PYTHONUNBUFFERED=1 \
-     python \"${APP}/main.py\" --listen --port 8188 ${cors_args} ${sage_attention} \
+     python \"${APP}/main.py\" --listen --port 8188 ${cors_args} ${comfy_runtime_args} \
        --output-directory \"${STATE}/output\" --temp-directory \"${STATE}/cache\" --preview-method latent2rgb \
        >> \"${LOGS}/comfyui-8188.log\" 2>&1"
 }
