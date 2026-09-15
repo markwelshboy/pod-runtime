@@ -7,15 +7,15 @@ PROFILE_DIR=/opt/comfyui-minimax
 source "${PROFILE_DIR}/src/.env.minimax"
 source "${POD_RUNTIME_DIR}/helpers.sh"
 
-# MiniMax uses the model catalog from the checked-out pod-runtime revision.
-# The image-local manifest is retained only for older images and is not used by
-# this launcher. MINIMAX_MODEL_MANIFEST_URL remains an escape hatch for testing.
+# MiniMax uses the shared pod-runtime model catalog. The profile intentionally
+# contains no model-size, task, or quantization knowledge; HF_BASE_DOWNLOADS
+# and HF_LORA_DOWNLOADS select ordinary manifest families.
 export MODEL_MANIFEST_URL="${MINIMAX_MODEL_MANIFEST_URL:-${POD_RUNTIME_DIR}/model_manifest.json}"
 
 STARTUP_LOG="${COMFY_LOGS}/startup-minimax.log"
 exec > >(tee -a "${STARTUP_LOG}") 2>&1
 
-echo "=== MiniMax-H3 bootstrap: $(date -Is) ==="
+echo "=== MiniMax bootstrap: $(date -Is) ==="
 echo "Application: ${COMFY_APP}"
 echo "State: ${COMFY_STATE}"
 
@@ -24,108 +24,18 @@ echo "State: ${COMFY_STATE}"
 echo "[bootstrap] Bringing up SSH recovery access before network qualification..."
 setup_ssh || true
 
-# Qualify network performance before hf-tools, custom nodes, or model weights.
+# Qualify network performance before hf-tools, custom nodes, Sage, or models.
 # The guarded helper has a hard outer wall-clock ceiling and never aborts startup.
 network_probe_startup_guarded || true
-
-case "${MINIMAX_QUANT}" in
-  fp8|int8|nvfp4) ;;
-  *) echo "ERROR: MINIMAX_QUANT must be fp8, int8, or nvfp4; got '${MINIMAX_QUANT}'." >&2; exit 2 ;;
-esac
-
-minimax_tasks_normalized=""
-IFS=',' read -r -a minimax_task_items <<<"${MINIMAX_TASKS}"
-for minimax_task_item in "${minimax_task_items[@]}"; do
-  minimax_task="${minimax_task_item,,}"
-  minimax_task="${minimax_task//[[:space:]]/}"
-  if [[ -z "${minimax_task}" ]]; then
-    echo "ERROR: MINIMAX_TASKS contains an empty task entry: '${MINIMAX_TASKS}'." >&2
-    exit 2
-  fi
-  case "${minimax_task}" in
-    fl2va|ref2va) ;;
-    *) echo "ERROR: MINIMAX_TASKS accepts fl2va and ref2va; got '${minimax_task_item}'." >&2; exit 2 ;;
-  esac
-  case ",${minimax_tasks_normalized}," in
-    *",${minimax_task},"*) ;;
-    *)
-      if [[ -n "${minimax_tasks_normalized}" ]]; then
-        minimax_tasks_normalized+=","
-      fi
-      minimax_tasks_normalized+="${minimax_task}"
-      ;;
-  esac
-done
-if [[ -z "${minimax_tasks_normalized}" ]]; then
-  echo "ERROR: MINIMAX_TASKS must select fl2va, ref2va, or both." >&2
-  exit 2
-fi
-export MINIMAX_TASKS="${minimax_tasks_normalized}"
 
 gpu_name="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1 || true)"
 compute_cap="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n1 || true)"
 echo "GPU: ${gpu_name:-unknown}; compute capability: ${compute_cap:-unknown}"
-echo "MiniMax quant: ${MINIMAX_QUANT}"
-echo "MiniMax tasks: ${MINIMAX_TASKS}"
-if [[ "${MINIMAX_QUANT}" == nvfp4 && ! "${compute_cap}" =~ ^12\. ]]; then
-  echo "WARNING: nvfp4 is intended for Blackwell; FP8 is safer on compute capability '${compute_cap:-unknown}'."
-fi
-
-# HF_BASE_DOWNLOADS normally contains concrete model families whose manifest
-# sections are <family>_base. MiniMax additionally accepts the deliberately
-# non-manifest meta-family "minimax_h3_meta" and expands it here according to
-# MINIMAX_QUANT and MINIMAX_TASKS before handing the result to the generic
-# family resolver.
-minimax_requested_base_families="${HF_BASE_DOWNLOADS:-minimax_h3_meta}"
-minimax_expanded_base_families=""
-
-append_minimax_base_family() {
-  local family="${1:?family}"
-  case ",${minimax_expanded_base_families}," in
-    *",${family},"*) return 0 ;;
-  esac
-  if [[ -n "${minimax_expanded_base_families}" ]]; then
-    minimax_expanded_base_families+=","
-  fi
-  minimax_expanded_base_families+="${family}"
-}
-
-minimax_transformer_quant="${MINIMAX_QUANT}"
-case "${MINIMAX_QUANT}" in
-  fp8|int8)
-    minimax_text_encoder_family="minimax_h3_text_encoder_int8"
-    ;;
-  nvfp4)
-    # Current NVFP4 profile uses the NVFP4 text encoder with FP8 transformers.
-    minimax_text_encoder_family="minimax_h3_text_encoder_nvfp4"
-    minimax_transformer_quant=fp8
-    ;;
-esac
-
-for minimax_family in ${minimax_requested_base_families//,/ }; do
-  minimax_family="${minimax_family,,}"
-  minimax_family="${minimax_family//[[:space:]]/}"
-  [[ -n "${minimax_family}" ]] || continue
-
-  if [[ "${minimax_family}" != "minimax_h3_meta" ]]; then
-    append_minimax_base_family "${minimax_family}"
-    continue
-  fi
-
-  append_minimax_base_family minimax_h3_common
-  append_minimax_base_family "${minimax_text_encoder_family}"
-
-  IFS=',' read -r -a minimax_task_items <<<"${MINIMAX_TASKS}"
-  for minimax_task in "${minimax_task_items[@]}"; do
-    append_minimax_base_family "minimax_h3_${minimax_task}_${minimax_transformer_quant}"
-  done
-done
-
-export HF_BASE_DOWNLOADS="${minimax_expanded_base_families}"
-echo "HF base request   : ${minimax_requested_base_families:-<none>}"
-echo "HF base expanded  : ${HF_BASE_DOWNLOADS:-<none>}"
+echo "HF base families  : ${HF_BASE_DOWNLOADS:-<none>}"
 echo "HF LoRA families  : ${HF_LORA_DOWNLOADS:-<none>}"
 echo "Model manifest    : ${MODEL_MANIFEST_URL}"
+echo "Sage available    : ${ENABLE_SAGE:-false}"
+echo "Global Sage launch: ${COMFY_USE_SAGE_ATTENTION:-false}"
 
 mkdir -p /root/.secrets
 chmod 700 /root/.secrets
@@ -134,9 +44,10 @@ chmod 700 /root/.secrets
   printf 'export COMFY_APP=%q\n' "${COMFY_APP}"
   printf 'export COMFY_STATE=%q\n' "${COMFY_STATE}"
   printf 'export COMFY_HOME=%q\n' "${COMFY_HOME}"
-  printf 'export MINIMAX_QUANT=%q\n' "${MINIMAX_QUANT}"
-  printf 'export MINIMAX_TASKS=%q\n' "${MINIMAX_TASKS}"
-  printf 'export HF_BASE_DOWNLOADS=%q\n' "${HF_BASE_DOWNLOADS}"
+  printf 'export HF_BASE_DOWNLOADS=%q\n' "${HF_BASE_DOWNLOADS:-}"
+  printf 'export HF_LORA_DOWNLOADS=%q\n' "${HF_LORA_DOWNLOADS:-}"
+  printf 'export ENABLE_SAGE=%q\n' "${ENABLE_SAGE:-false}"
+  printf 'export COMFY_USE_SAGE_ATTENTION=%q\n' "${COMFY_USE_SAGE_ATTENTION:-false}"
   env | awk -F= '/^(HF_TOKEN|HUGGINGFACE_HUB_TOKEN|GIT_DEPLOY_KEY_|SSH_|TELEGRAM_)/ {print}' \
     | while IFS='=' read -r key value; do printf 'export %s=%q\n' "${key}" "${value}"; done
 } > /root/.secrets/env.current
@@ -162,15 +73,17 @@ hf_transfer_tune
 hf_transfer_install
 hf_transfer_verify
 
-# Install custom nodes before starting the bulk HF model downloader. With shallow
-# clones and hardened installs this phase is now short enough that allowing Xet
-# to saturate storage concurrently is more likely to hurt than help.
+# Install custom nodes before bulk model transfers. The generic resolver always
+# includes the shared default set and then adds CUSTOM_NODE_SETS=minimax.
 if [[ "${INSTALL_CUSTOM_NODES}" == true ]]; then
   node_manifest="${CUSTOM_NODES_MANIFEST_URL_OVERRIDE:-${CUSTOM_NODES_MANIFEST_URL}}"
   echo "[nodes] Installing set '${CUSTOM_NODE_SETS}' from ${node_manifest}"
   install_custom_nodes "${node_manifest}"
   snapshot_custom_nodes_state "after-minimax-install" || true
 
+  # A custom-node requirement can install CPU onnxruntime after the image's GPU
+  # package. Reassert the GPU package only when provider enumeration proves it
+  # was displaced.
   if python - <<'PY'
 try:
     import onnxruntime as ort
@@ -188,6 +101,30 @@ PY
     pip uninstall -y onnxruntime onnxruntime-gpu >/dev/null 2>&1 || true
     pip install --constraint /opt/constraints.txt --force-reinstall onnxruntime-gpu
   fi
+fi
+
+# SageAttention is an optional runtime capability, not an image dependency.
+# Reuse the normal pod-runtime architecture/Torch keyed bundle cache; build and
+# optionally publish a bundle only when no compatible artifact already exists.
+sage_ready=false
+if [[ "${ENABLE_SAGE:-true}" == "true" ]]; then
+  echo "[sage] Ensuring SageAttention bundle or source build..."
+  if ensure_sage_from_bundle_or_build; then
+    sage_ready=true
+    push_sage_bundle_if_requested || true
+  else
+    echo "WARNING: SageAttention setup failed; continuing with Comfy Kitchen/default attention." >&2
+  fi
+else
+  echo "[sage] ENABLE_SAGE=false — SageAttention availability setup skipped."
+fi
+
+# Never request the global ComfyUI Sage backend if availability setup failed.
+# KJ's Patch Sage Attention node remains usable whenever sage_ready=true while
+# COMFY_USE_SAGE_ATTENTION=false.
+if [[ "${COMFY_USE_SAGE_ATTENTION:-false}" == "true" && "${sage_ready}" != "true" ]]; then
+  echo "WARNING: COMFY_USE_SAGE_ATTENTION=true but SageAttention is unavailable; disabling global Sage for this launch." >&2
+  export COMFY_USE_SAGE_ATTENTION=false
 fi
 
 base_download_started=false
@@ -213,19 +150,6 @@ else
   echo "[models] Model provisioning disabled."
 fi
 
-# Light setup can overlap the base model transfer now that pip/custom-node work
-# is finished.
-if [[ "${ENABLE_MY_WORKFLOWS_DOWNLOAD}" == true ]]; then
-  echo "[workflows] Syncing ${GIT_MYWORKFLOWS_REPO_ID}"
-  init_repo --git "${GIT_MYWORKFLOWS_REPO_ID}" "${GIT_MYWORKFLOWS_REPO_LOCAL}"
-  mkdir -p "${WORKFLOW_DIR}/MyWorkflows"
-  find "${WORKFLOW_DIR}/MyWorkflows" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-  find "${GIT_MYWORKFLOWS_REPO_LOCAL}" -mindepth 1 -maxdepth 1 ! -name .git \
-    -exec ln -sfn {} "${WORKFLOW_DIR}/MyWorkflows/" \;
-fi
-
-source "${PROFILE_DIR}/src/prepare_sage.sh"
-
 if [[ "${base_download_started}" == true ]]; then
   echo "[models] Waiting for selected base weights..."
   if hf_download_wait "$MINIMAX_HF_STATE"; then
@@ -237,10 +161,12 @@ if [[ "${base_download_started}" == true ]]; then
 fi
 
 python - <<'PY'
+import os
 import onnxruntime as ort
 import torch
 import comfy_aimdo
 import comfy_kitchen
+
 assert torch.version.cuda and torch.version.cuda.startswith("13"), torch.version.cuda
 assert torch.cuda.is_available(), "CUDA unavailable"
 print("torch:", torch.__version__, "CUDA:", torch.version.cuda)
@@ -249,6 +175,12 @@ print("onnxruntime providers:", ort.get_available_providers())
 assert "CUDAExecutionProvider" in ort.get_available_providers()
 print("comfy_aimdo:", getattr(comfy_aimdo, "__version__", "installed"))
 print("comfy_kitchen:", getattr(comfy_kitchen, "__version__", "installed"))
+try:
+    import sageattention
+    print("sageattention:", getattr(sageattention, "__version__", "installed"))
+except Exception as exc:
+    print("sageattention: unavailable", repr(exc))
+print("COMFY_USE_SAGE_ATTENTION:", os.environ.get("COMFY_USE_SAGE_ATTENTION", "false"))
 PY
 
 snapshot_custom_nodes_state --summary "before-minimax-launch" || true
@@ -260,7 +192,7 @@ fi
 
 cd "${COMFY_APP}"
 if "${POD_RUNTIME_DIR}/run_comfy_mux.sh" start; then
-  echo "MiniMax-H3 ComfyUI is available on port 8188."
+  echo "MiniMax ComfyUI is available on port 8188."
 else
   echo "ERROR: ComfyUI failed to become healthy; see ${COMFY_LOGS}/comfyui-8188.log" >&2
   exit 1
@@ -291,5 +223,5 @@ fi
 disk_watch_start --path / --log "${COMFY_LOGS}/disk_watch.log" || true
 pod_nag --interval 3600 || true
 
-echo "=== MiniMax-H3 bootstrap complete: $(date -Is) ==="
+echo "=== MiniMax bootstrap complete: $(date -Is) ==="
 sleep infinity
