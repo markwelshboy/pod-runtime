@@ -525,6 +525,9 @@
       "comfyui-starnodes",
       "minimax-h3-hybrid-conditioning",
       "comfyui-minimax-h3-hybrid-loader",
+      "comfyui-ultimatesdupscale",
+      "comfyui-rmbg",
+      "comfyui-segment-anything-2",
       "comfyui-openrouter-node",
       "comfyui-spectrum-minimax-h3",
       "comfyui-minimax-refpack"
