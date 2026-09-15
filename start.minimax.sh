@@ -74,11 +74,18 @@ hf_transfer_install
 hf_transfer_verify
 
 # Install custom nodes before bulk model transfers. The generic resolver always
-# includes the shared default set and then adds CUSTOM_NODE_SETS=minimax.
+# includes the shared default set and then adds CUSTOM_NODE_SETS=minimax. A
+# failed clone/install is recorded by the installer and telemetry, but it must
+# not terminate PID 1 and send the whole container into a restart loop.
 if [[ "${INSTALL_CUSTOM_NODES}" == true ]]; then
   node_manifest="${CUSTOM_NODES_MANIFEST_URL_OVERRIDE:-${CUSTOM_NODES_MANIFEST_URL}}"
   echo "[nodes] Installing set '${CUSTOM_NODE_SETS}' from ${node_manifest}"
-  install_custom_nodes "${node_manifest}"
+  if install_custom_nodes "${node_manifest}"; then
+    echo "[nodes] Custom-node install completed successfully."
+  else
+    echo "WARNING: One or more custom nodes failed to install; continuing bootstrap for diagnosis." >&2
+    echo "WARNING: See ${COMFY_LOGS}/custom_nodes/install_status.json and per-node logs under ${COMFY_LOGS}/custom_nodes/." >&2
+  fi
   snapshot_custom_nodes_state "after-minimax-install" || true
 
   # A custom-node requirement can install CPU onnxruntime after the image's GPU
