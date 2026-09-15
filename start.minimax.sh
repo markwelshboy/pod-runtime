@@ -7,10 +7,10 @@ PROFILE_DIR=/opt/comfyui-minimax
 source "${PROFILE_DIR}/src/.env.minimax"
 source "${POD_RUNTIME_DIR}/helpers.sh"
 
-# MiniMax uses the shared pod-runtime model catalog. The profile intentionally
-# contains no model-size, task, or quantization knowledge; HF_BASE_DOWNLOADS
-# and HF_LORA_DOWNLOADS select ordinary manifest families.
-export MODEL_MANIFEST_URL="${MINIMAX_MODEL_MANIFEST_URL:-${POD_RUNTIME_DIR}/model_manifest.json}"
+# MiniMax uses its pod-runtime model catalog. The profile intentionally contains
+# no model-size, task, or quantization knowledge; HF_BASE_DOWNLOADS and
+# HF_LORA_DOWNLOADS select ordinary manifest families from that catalog.
+export MODEL_MANIFEST_URL="${MINIMAX_MODEL_MANIFEST_URL:-${POD_RUNTIME_DIR}/model_manifest.minimax.json}"
 
 STARTUP_LOG="${COMFY_LOGS}/startup-minimax.log"
 exec > >(tee -a "${STARTUP_LOG}") 2>&1
