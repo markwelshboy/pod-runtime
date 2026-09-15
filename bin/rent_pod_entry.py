@@ -40,13 +40,15 @@ except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
 
-# Post-provision startup is rent-pod control-plane metadata, not a RunPod Pod
-# field. Register the template key before *any* template registry load so both
-# --list-templates and normal rentals accept startup = "...".
+# Post-provision startup and CUDA admission are rent-pod control-plane metadata,
+# not RunPod REST Pod fields. Register both template keys before *any* template
+# registry load so --list-templates and normal rentals accept them.
 import rent_pod_startup as startup_handoff  # noqa: E402
+import rent_pod_cuda_profile as cuda_profile_handoff  # noqa: E402
 import rent_pod_templates as template_profiles  # noqa: E402
 
 startup_handoff.register_template_option(template_profiles)
+cuda_profile_handoff.register_template_option(template_profiles)
 
 # Local template-profile discovery is intentionally first: it needs neither a
 # RunPod API key nor HF_TOKEN and should never be polluted by rental defaults.
@@ -134,6 +136,12 @@ from rent_pod_templates import (  # noqa: E402
 
 try:
     effective_argv, template_context = apply_template_profile(effective_argv, os.environ)
+    effective_argv = cuda_profile_handoff.apply_template_cuda(
+        public_argv,
+        effective_argv,
+        template_context,
+        os.environ,
+    )
     startup_command, startup_source = startup_handoff.resolve_startup_command(
         cli_startup_command,
         template_context,
@@ -217,7 +225,7 @@ def _print_startup_selection() -> None:
     if not startup_command:
         return
     source = startup_source or "configured"
-    suffix = "; skipped by --no-provision" if "--no-provision" in effective_argv else ""
+    suffix = f"; skipped by --no-provision" if "--no-provision" in effective_argv else ""
     print(f"[rent-pod] Post-provision startup: {startup_command}")
     print(f"           source: {source}{suffix}")
 

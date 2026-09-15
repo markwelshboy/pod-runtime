@@ -173,7 +173,7 @@
     },
     "comfyui-enricos-nodes": {
       "remote": "https://github.com/erosDiffusion/ComfyUI-enricos-nodes",
-      "local": "ComfyUI-enricos-nodes"
+      "local": "comfyui-enricos-nodes"
     },
     "comfyui-tinyterranodes": {
       "remote": "https://github.com/TinyTerra/ComfyUI_tinyterraNodes",
@@ -391,8 +391,8 @@
       "local": "ComfyUI-LinkSpotlight"
     },
     "minimax-h3-hybrid-conditioning": {
-      "remote": "https://github.com/kitsune123150/Minimax-H3-Hybrid-Conditioning",
-      "local": "Minimax-H3-Hybrid-Conditioning"
+      "remote": "https://github.com/kitsune123150/minimax-h3-hybrid-cond",
+      "local": "minimax-h3-hybrid-cond"
     },
     "krea2-multi-character-lora-node-with-bounding-box-scene-and-outfit-edit": {
       "remote": "https://github.com/CliffNodes/Krea2-Multi-Character-Lora-Node-with-bounding-box-Scene-and-Outfit-Edit",
@@ -401,6 +401,30 @@
     "comfyui-minimax-h3-hybrid-loader": {
       "remote": "https://github.com/scottmudge/ComfyUI_MinimaxH3HybridLoader",
       "local": "ComfyUI_MinimaxH3HybridLoader"
+    },
+    "comfyui-openrouter-node": {
+      "remote": "https://github.com/gabe-init/ComfyUI-Openrouter_node.git",
+      "local": "ComfyUI-Openrouter_node"
+    },
+    "comfyui-spectrum-minimax-h3": {
+      "remote": "https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git",
+      "local": "ComfyUI-Spectrum-MiniMax-H3"
+    },
+    "comfyui-minimax-refpack": {
+      "remote": "https://github.com/Hearmeman24/ComfyUI-MiniMaxRefPack.git",
+      "local": "ComfyUI-MiniMaxRefPack"
+    },
+    "comfyui-minimax-h3-latent-upscaler": {
+      "remote": "https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler.git",
+      "local": "Comfyui_Minimax_h3_latent_Upscaler"
+    },
+    "comfyui-minimax-h3-mod": {
+      "remote": "https://github.com/Luisacaotica/ComfyUI-MiniMaxH3Mod.git",
+      "local": "ComfyUI-MiniMaxH3Mod"
+    },
+    "comfyui-viggle-animate-h3": {
+      "remote": "https://github.com/Saganaki22/ComfyUI-Viggle-Animate-H3.git",
+      "local": "ComfyUI-Viggle-Animate-H3"
     }
   },
   "sets": {
@@ -512,7 +536,16 @@
     "minimax": [
       "comfyui-starnodes",
       "minimax-h3-hybrid-conditioning",
-      "comfyui-minimax-h3-hybrid-loader"
+      "comfyui-minimax-h3-hybrid-loader",
+      "comfyui-ultimatesdupscale",
+      "comfyui-rmbg",
+      "comfyui-segment-anything-2",
+      "comfyui-openrouter-node",
+      "comfyui-spectrum-minimax-h3",
+      "comfyui-minimax-refpack",
+      "comfyui-minimax-h3-latent-upscaler",
+      "comfyui-minimax-h3-mod",
+      "comfyui-viggle-animate-h3"
     ]
   }
 }

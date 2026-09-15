@@ -49,6 +49,10 @@ source "${_helpers_entry_dir}/helpers_shell.sh"
 [[ -f "${_helpers_entry_dir}/helpers_network_guard.sh" ]] && source "${_helpers_entry_dir}/helpers_network_guard.sh"
 # shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/helpers_hff_runtime.sh" ]] && source "${_helpers_entry_dir}/helpers_hff_runtime.sh"
+# Sage runtime overrides intentionally load after HFF so bundle transfers use
+# the isolated HFF tooling venv instead of application-level Hub packages.
+# shellcheck source=/dev/null
+[[ -f "${_helpers_entry_dir}/helpers_sage_runtime.sh" ]] && source "${_helpers_entry_dir}/helpers_sage_runtime.sh"
 # shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/helpers_hf_repo_sync.sh" ]] && source "${_helpers_entry_dir}/helpers_hf_repo_sync.sh"
 # shellcheck source=/dev/null
