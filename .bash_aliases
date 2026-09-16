@@ -59,3 +59,6 @@ if [ -x /opt/venv/bin/python3 ]; then
 fi
 
 alias crestart="/workspace/pod-runtime/run_comfy_mux.sh restart"
+alias cstart="/workspace/pod-runtime/run_comfy_mux.sh start"
+alias cstop="/workspace/pod-runtime/run_comfy_mux.sh stop"
+alias crun="/workspace/pod-runtime/run_comfy_mux.sh start"

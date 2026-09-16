@@ -76,7 +76,48 @@ fi
 install_system_hff() {
   ensure_hf_tools_venv || return 1
   install_hff_py || return 1
-  hf_tools_verify
+
+  local user_bin="${HOME:?HOME is not set}/.local/bin"
+  local hf_cli="${HFF_VENV:?HFF_VENV is not set}/bin/hf"
+  local legacy_cli="${HFF_VENV}/bin/huggingface-cli"
+
+  mkdir -p "$user_bin" || return 1
+
+  # Present one consistent command to the user: `hf`.
+  #
+  # Prefer the modern CLI. Fall back to huggingface-cli for older Hub
+  # releases that don't provide `hf`.
+  if [[ -x "$hf_cli" ]]; then
+    ln -sfn "$hf_cli" "$user_bin/hf" || return 1
+  elif [[ -x "$legacy_cli" ]]; then
+    ln -sfn "$legacy_cli" "$user_bin/hf" || return 1
+  else
+    _hff_err "No Hugging Face CLI found in ${HFF_VENV}/bin"
+    return 1
+  fi
+
+  # Also expose the historical command when the installed Hub provides it.
+  if [[ -x "$legacy_cli" ]]; then
+    ln -sfn "$legacy_cli" "$user_bin/huggingface-cli" || return 1
+  fi
+
+  # Refresh Bash's command lookup for the current interactive shell.
+  hash -r 2>/dev/null || true
+
+  hf_tools_verify || return 1
+
+  # Verify the public command, not just the copy hidden inside the venv.
+  if ! command -v hf >/dev/null 2>&1; then
+    _hff_err "hf was installed but ${user_bin} is not available on PATH"
+    return 1
+  fi
+
+  if ! hf --help >/dev/null 2>&1; then
+    _hff_err "hf is on PATH but failed its startup check"
+    return 1
+  fi
+
+  _hff_info "hf command: $(command -v hf)"
 }
 
 # ---------- .env loader (optional) ----------
@@ -202,7 +243,11 @@ ensure_comfy_dirs() {
     "${CTRLNET_UNION_DIR:?}" \
     "${ULTRALYTICS_DIR:?}" \
     "${SEEDVR2_DIR:?}" \
-    "${UPSCALE_DIR:?}"
+    "${UPSCALE_DIR:?}" \
+    "${LATENT_UPSCALE_DIR:?}" \
+    "${FRAME_INTERPOLATION_DIR:?}" \
+    "${VAE_APPROX_DIR:?}" \
+    "${TEXT_COND_DIR:?}"
 
   #-- Model directories
   mkdir -p \
@@ -262,67 +307,6 @@ link_comfy_state_into_app() {
 
   echo "[comfy-paths] COMFY_APP=$app"
   echo "[comfy-paths] COMFY_STATE=$state"
-}
-
-# ------------------------- #
-#  Workflows / Icons import #
-# ------------------------- #
-copy_hearmeman_assets_if_any() {
-  local repo="${HEARMEMAN_REPO_URL:-}"
-  if [[ -z "$repo" ]]; then
-    return 0
-  fi
-
-  local tmp="${CACHE_DIR}/.hearmeman.$$"
-  rm -rf "$tmp"
-
-  echo "[hearmeman] Syncing assets from: ${repo}"
-  echo "[hearmeman] Temp clone dir:      ${tmp}"
-
-  if ! git clone "$repo" "$tmp" >/dev/null 2>&1; then
-    echo "[hearmeman] ❌ Failed to clone repo; skipping asset sync." >&2
-    rm -rf "$tmp"
-    return 0
-  fi
-
-  # ---- Workflows ----
-  local wf_src=""
-  if [[ -d "$tmp/src/workflows" ]]; then
-    wf_src="$tmp/src/workflows"
-  elif [[ -d "$tmp/workflows" ]]; then
-    wf_src="$tmp/workflows"
-  fi
-
-  if [[ -n "$wf_src" ]]; then
-    local wf_dst="${COMFY_HOME}/workflows"
-    echo "[hearmeman] Workflows source: ${wf_src}"
-    echo "[hearmeman] Workflows dest:   ${wf_dst}"
-    mkdir -p "$wf_dst"
-    cp -rf "${wf_src}/"* "$wf_dst"/ 2>/dev/null || true
-  else
-    echo "[hearmeman] No workflows found under src/workflows or workflows." >&2
-  fi
-
-  # ---- Assets ----
-  local assets_src=""
-  if [[ -d "$tmp/src/assets" ]]; then
-    assets_src="$tmp/src/assets"
-  elif [[ -d "$tmp/assets" ]]; then
-    assets_src="$tmp/assets"
-  fi
-
-  if [[ -n "$assets_src" ]]; then
-    local assets_dst="${COMFY_HOME}/assets"
-    echo "[hearmeman] Assets source: ${assets_src}"
-    echo "[hearmeman] Assets dest:   ${assets_dst}"
-    mkdir -p "$assets_dst"
-    cp -rf "${assets_src}/"* "$assets_dst"/ 2>/dev/null || true
-  else
-    echo "[hearmeman] No assets found under src/assets or assets." >&2
-  fi
-
-  rm -rf "$tmp"
-  echo "[hearmeman] Asset sync complete."
 }
 
 # ======================================================================

@@ -425,6 +425,10 @@
     "comfyui-viggle-animate-h3": {
       "remote": "https://github.com/Saganaki22/ComfyUI-Viggle-Animate-H3.git",
       "local": "ComfyUI-Viggle-Animate-H3"
+    },
+    "comfyui-h3-multishot": {
+      "remote": "https://github.com/jlucasmcrell/ComfyUI-H3-Multishot.git",
+      "local": "ComfyUI-H3-Multishot"
     }
   },
   "sets": {
@@ -483,7 +487,7 @@
       "comfyui-segment-anything-2",
       "comfyui-controlnet-aux"
     ],
-    "upscale": [
+    "pixel_upscale": [
       "comfyui-ultimatesdupscale",
       "comfyui-seedvr2-videoupscaler",
       "comfyui-seedvr2-tilingupscaler"
@@ -537,15 +541,13 @@
       "comfyui-starnodes",
       "minimax-h3-hybrid-conditioning",
       "comfyui-minimax-h3-hybrid-loader",
-      "comfyui-ultimatesdupscale",
-      "comfyui-rmbg",
-      "comfyui-segment-anything-2",
       "comfyui-openrouter-node",
       "comfyui-spectrum-minimax-h3",
       "comfyui-minimax-refpack",
       "comfyui-minimax-h3-latent-upscaler",
       "comfyui-minimax-h3-mod",
-      "comfyui-viggle-animate-h3"
+      "comfyui-viggle-animate-h3",
+      "comfyui-h3-multishot"
     ]
   }
 }

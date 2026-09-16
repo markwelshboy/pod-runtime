@@ -91,20 +91,28 @@ PROFILE_DIR=/opt/comfyui-minimax
 source "${PROFILE_DIR}/src/.env.minimax"
 source "${POD_RUNTIME_DIR}/helpers.sh"
 
+#------------------------------------------------------------------------
+section 0 "Prepare Session Logging"
+#------------------------------------------------------------------------
+
 STARTUP_LOG="${COMFY_LOGS}/startup-minimax.log"
 exec > >(tee -a "${STARTUP_LOG}") 2>&1
 
 echo "[bootstrap] Logging to: ${STARTUP_LOG}"
 
+echo "=== MiniMax bootstrap: $(date -Is) ==="
+echo "Application: ${COMFY_APP}"
+echo "State: ${COMFY_STATE}"
+
 #------------------------------------------------------------------------
-# section 0.1 "Start-up Telegram Message"
+section 0.1 "Start-up Telegram Message"
 #------------------------------------------------------------------------
 
 tg "▶️ Starting bootstrap of ComfyUI Minimax H3 inference session" || true
 
-echo "=== MiniMax bootstrap: $(date -Is) ==="
-echo "Application: ${COMFY_APP}"
-echo "State: ${COMFY_STATE}"
+#------------------------------------------------------------------------
+section 0.5 "Basic Housekeeping"
+#------------------------------------------------------------------------
 
 # SSH is the recovery path. It must be available before any diagnostic or bulk
 # network activity so a broken probe/download cannot make the pod inaccessible.
@@ -129,10 +137,24 @@ echo "Global Sage launch: ${COMFY_USE_SAGE_ATTENTION:-false}"
 # their application dependencies and bootstrap tooling must not mutate them.
 install_system_hff
 hf_transfer_tune
+
 install_root_shell_dotfiles || true
+
 ensure_comfy_dirs
+
 link_comfy_state_into_app
+
+#------------------------------------------------------------------------
+section 3 "Git Auth Bootstrap"
+#------------------------------------------------------------------------
+
 git_auth_bootstrap || true
+
+#------------------------------------------------------------------------
+section 4 "Install Custom Nodes"
+#------------------------------------------------------------------------
+# Keep this phase free of bulk model downloads. Custom-node pip installs are
+# latency and I/O sensitive, while the HF/Xet model phase is throughput-oriented.
 
 # Install custom nodes before bulk model transfers. The generic resolver always
 # includes the shared default set and then adds CUSTOM_NODE_SETS=minimax. A
@@ -147,7 +169,7 @@ if [[ "${INSTALL_CUSTOM_NODES}" == true ]]; then
     echo "WARNING: One or more custom nodes failed to install; continuing bootstrap for diagnosis." >&2
     echo "WARNING: See ${COMFY_LOGS}/custom_nodes/install_status.json and per-node logs under ${COMFY_LOGS}/custom_nodes/." >&2
   fi
-  snapshot_custom_nodes_state "after-minimax-install" || true
+  snapshot_custom_nodes_state "after-custom-node-install" || true
 
   # A custom-node requirement can install CPU onnxruntime after the image's GPU
   # package. Reassert the baked GPU package only when provider enumeration proves
@@ -171,6 +193,10 @@ PY
     "$PIP" install --constraint /opt/constraints.txt --no-deps --force-reinstall onnxruntime-gpu
   fi
 fi
+
+#------------------------------------------------------------------------
+section 5 "SageAttention: Pull (if available) or Build from Source"
+#------------------------------------------------------------------------
 
 # SageAttention is an optional runtime capability, not an image dependency.
 # Reuse the normal pod-runtime architecture/Torch keyed bundle cache; build and
@@ -196,6 +222,14 @@ if [[ "${COMFY_USE_SAGE_ATTENTION:-false}" == "true" && "${sage_ready}" != "true
   export COMFY_USE_SAGE_ATTENTION=false
 fi
 
+#------------------------------------------------------------------------
+section 6 "Hugging Face Base Models"
+#------------------------------------------------------------------------
+# HF_BASE_DOWNLOADS is a comma/space-separated family list. Each family maps
+# directly to <family>_base in model_manifest.json. Base downloads are started
+# only after custom-node/Sage setup, then may overlap the lightweight workflow
+# sync below.
+
 base_download_started=false
 MINIMAX_HF_STATE="${HF_MANIFEST_STATE_DIR}/base"
 if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD}" == true ]]; then
@@ -219,6 +253,49 @@ else
   echo "[models] Model provisioning disabled."
 fi
 
+#------------------------------------------------------------------------
+section 7 "Workflow Repository"
+#------------------------------------------------------------------------
+# This small setup phase is intentionally allowed to overlap the base model
+# downloader once the I/O-sensitive custom-node phase has completed.
+if [[ "${ENABLE_MY_WORKFLOWS_DOWNLOAD:-false}" == "true" ]]; then
+  init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
+  rsync_or_symlink_source_to_destination symlink "$GIT_MYWORKFLOWS_REPO_LOCAL" "/workspace"
+  _sync_info "✅ Linking files from $GIT_MYWORKFLOWS_REPO_LOCAL into ComfyUI directories via symlinks..."
+  mkdir -p "$COMFY_HOME/user/default/workflows/MyWorkflows"
+  ln -sfn $GIT_MYWORKFLOWS_REPO_LOCAL/* "$COMFY_HOME/user/default/workflows/MyWorkflows/"
+
+  _sync_info "Ensuring git auth for MyWorkflows repo for future updates (pull/push)..."
+  git_repo_use_deploy_key \
+    "$GIT_MYWORKFLOWS_REPO_LOCAL" "$GIT_MYWORKFLOWS_REPO_KEY" "$GIT_MYWORKFLOWS_REPO_ID"
+else
+  echo "ENABLE_MY_WORKFLOWS_DOWNLOAD=false → skipping MyWorkflows sync."
+fi
+
+#------------------------------------------------------------------------
+section 8 "Pull my model repo from Hugging Face and symlink into ComfyUI"
+#------------------------------------------------------------------------
+
+if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
+  export HF_EXCLUDE_GLOBS="${HF_MY_REPO_EXCLUDE_GLOBS:-training/** snapshot/** models/loras/** deleteme/** latestimages/**}"
+  export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS:-models/ultralytics/** models/upscale_models/**}"
+
+  if HF_REPO_TYPE="${HF_MY_REPO_TYPE:-model}" \
+      init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL"; then
+    if ! hf_my_repo_sync_assets "$HF_MY_REPO_LOCAL" "$HF_MY_REPO_ID"; then
+      _sync_warn "$HF_MY_REPO_ID downloaded, but asset extraction/linking reported errors."
+    fi
+  else
+    _sync_warn "HF repo download failed for $HF_MY_REPO_ID at '$HF_MY_REPO_LOCAL'."
+  fi
+else
+  echo "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
+fi
+
+# Base models are blocking: do not advertise the pod as ready until this phase
+# has finished. A failed item is reported loudly, but ComfyUI is still launched
+# so the pod remains usable for diagnosis/manual recovery.
+
 if [[ "${base_download_started}" == true ]]; then
   echo "[models] Waiting for selected base weights..."
   if hf_download_wait "$MINIMAX_HF_STATE"; then
@@ -227,6 +304,20 @@ if [[ "${base_download_started}" == true ]]; then
     echo "WARNING: One or more base model downloads failed; continuing for diagnosis." >&2
     hf_download_show_snapshot "$MINIMAX_HF_STATE" || true
   fi
+fi
+
+pod_models_summary || true
+
+#------------------------------------------------------------------------
+section 9 "ComfyUI"
+#------------------------------------------------------------------------
+
+section 9.1 "Pre-ComfyUI Launch: Confirming Stack Health"
+
+confirm_stack_health_or_stop || true
+if [[ -f "${COMFY_LOGS}/stack_broken" ]]; then
+  echo "ERROR: stack health check failed; see ${COMFY_LOGS}/stack_health_report.txt" >&2
+  tail -f /dev/null
 fi
 
 python - <<'PY'
@@ -252,39 +343,15 @@ except Exception as exc:
 print("COMFY_USE_SAGE_ATTENTION:", os.environ.get("COMFY_USE_SAGE_ATTENTION", "false"))
 PY
 
-snapshot_custom_nodes_state --summary "before-minimax-launch" || true
-confirm_stack_health_or_stop || true
-if [[ -f "${COMFY_LOGS}/stack_broken" ]]; then
-  echo "ERROR: stack health check failed; see ${COMFY_LOGS}/stack_health_report.txt" >&2
-  tail -f /dev/null
-fi
+section 9.2 "ComfyUI Launch..."
 
-#------------------------------------------------------------------------
-# section 7 "Workflow Repository"
-#------------------------------------------------------------------------
-# This small setup phase is intentionally allowed to overlap the base model
-# downloader once the I/O-sensitive custom-node phase has completed.
-if [[ "${ENABLE_MY_WORKFLOWS_DOWNLOAD:-false}" == "true" ]]; then
-  init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
-  rsync_or_symlink_source_to_destination symlink "$GIT_MYWORKFLOWS_REPO_LOCAL" "/workspace"
-  _sync_info "✅ Linking files from $GIT_MYWORKFLOWS_REPO_LOCAL into ComfyUI directories via symlinks..."
-  mkdir -p "$COMFY_HOME/user/default/workflows/MyWorkflows"
-  ln -sfn $GIT_MYWORKFLOWS_REPO_LOCAL/* "$COMFY_HOME/user/default/workflows/MyWorkflows/"
-
-  _sync_info "Ensuring git auth for MyWorkflows repo for future updates (pull/push)..."
-  git_repo_use_deploy_key \
-    "$GIT_MYWORKFLOWS_REPO_LOCAL" "$GIT_MYWORKFLOWS_REPO_KEY" "$GIT_MYWORKFLOWS_REPO_ID"
-else
-  echo "ENABLE_MY_WORKFLOWS_DOWNLOAD=false → skipping MyWorkflows sync."
-fi
-
-# section 8.1 "Pre-ComfyUI Launch: Confirming Stack Health"
-
-# section 8.2 "ComfyUI Launch..."
+snapshot_custom_nodes_state --summary "before-comfyui-minimax-launch" || true
 
 echo ""
 echo "▶️  Starting ComfyUI"
 echo ""
+
+show_env || true
 
 cd "${COMFY_APP}"
 if "${POD_RUNTIME_DIR}/run_comfy_mux.sh" start; then
@@ -295,6 +362,10 @@ else
   tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}." || true
   exit 1
 fi
+
+#------------------------------------------------------------------------
+section 10 "LoRA Families (Optional)"
+#------------------------------------------------------------------------
 
 # Optional LoRA families use the same generic family resolver and start only
 # after ComfyUI is healthy, so they never delay time-to-ready.
@@ -318,28 +389,10 @@ else
   echo "[loras] No optional LoRA families requested."
 fi
 
-#------------------------------------------------------------------------
-# section 10 "Pull my model repo from Hugging Face and symlink into ComfyUI"
-#------------------------------------------------------------------------
-
-if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
-  export HF_EXCLUDE_GLOBS="${HF_MY_REPO_EXCLUDE_GLOBS:-training/** snapshot/** models/loras/** deleteme/** latestimages/**}"
-  export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS:-models/ultralytics/** models/upscale_models/**}"
-
-  if HF_REPO_TYPE="${HF_MY_REPO_TYPE:-model}" \
-      init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL"; then
-    if ! hf_my_repo_sync_assets "$HF_MY_REPO_LOCAL" "$HF_MY_REPO_ID"; then
-      _sync_warn "$HF_MY_REPO_ID downloaded, but asset extraction/linking reported errors."
-    fi
-  else
-    _sync_warn "HF repo download failed for $HF_MY_REPO_ID at '$HF_MY_REPO_LOCAL'."
-  fi
-else
-  echo "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
-fi
+pod_models_summary || true
 
 #------------------------------------------------------------------------
-#section 11 "Disk Watcher"
+section 11 "Disk Watcher"
 #------------------------------------------------------------------------
 
 disk_watch_start --path / --log "${COMFY_LOGS}/disk_watch.log" || true
