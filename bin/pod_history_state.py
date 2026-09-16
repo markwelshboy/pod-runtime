@@ -15,12 +15,16 @@ RESTORE_HISTORY_PATH = Path(
     os.environ.get("POD_STATE_RESTORE_BASH_HISTORY", str(Path.home() / ".bash_history"))
 ).expanduser()
 
-SENSITIVE_HISTORY_RE = re.compile(
+SENSITIVE_NAME_RE = re.compile(
+    r"(?:^|_)(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL|ACCESS_KEY)(?:_|$)",
+    re.IGNORECASE,
+)
+ASSIGNMENT_RE = re.compile(
+    r"(?:^|[\s;])(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*="
+)
+SENSITIVE_FLAG_RE = re.compile(
     r"(?:"
-    r"(?:^|[\s;])(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*"
-    r"(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL|ACCESS_KEY)"
-    r"[A-Za-z0-9_]*\s*="
-    r"|--(?:token|password|passwd|api-key|secret|credential|access-key)(?:=|\s)"
+    r"--(?:token|password|passwd|api-key|secret|credential|access-key)(?:=|\s)"
     r"|authorization\s*:"
     r")",
     re.IGNORECASE,
@@ -43,12 +47,18 @@ def history_state_path(template_name: str) -> Path:
     return Path("/workspace/.pod-state") / template_name / "bash_history"
 
 
+def history_line_is_sensitive(line: str) -> bool:
+    if SENSITIVE_FLAG_RE.search(line):
+        return True
+    return any(SENSITIVE_NAME_RE.search(match.group(1)) for match in ASSIGNMENT_RE.finditer(line))
+
+
 def redact_history_text(text: str) -> tuple[str, int]:
     """Return shell history with obvious credential-bearing lines removed."""
     out: list[str] = []
     redacted = 0
     for line in text.splitlines():
-        if SENSITIVE_HISTORY_RE.search(line):
+        if history_line_is_sensitive(line):
             out.append(REDACTED_LINE)
             redacted += 1
         else:
