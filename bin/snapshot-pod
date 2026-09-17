@@ -1,6 +1,44 @@
-#!/usr/bin/env bash
-set -euo pipefail
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-PYTHON="${POD_STATE_PYTHON:-/usr/bin/python3}"
-[[ -x "$PYTHON" ]] || PYTHON="$(command -v python3)"
-exec "$PYTHON" "$SCRIPT_DIR/pod_snapshot_env_cli.py" snapshot "$@"
+#!/usr/bin/python3
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+
+def _reexec_requested_python() -> None:
+    requested = os.environ.get("POD_STATE_PYTHON", "").strip()
+    if not requested:
+        return
+
+    candidate = Path(requested).expanduser()
+    try:
+        candidate = candidate.resolve(strict=True)
+    except OSError:
+        return
+    if not candidate.is_file() or not os.access(candidate, os.X_OK):
+        return
+
+    try:
+        current = Path(sys.executable).resolve()
+    except OSError:
+        current = Path(sys.executable)
+    if candidate == current:
+        return
+
+    os.execv(str(candidate), [str(candidate), __file__, *sys.argv[1:]])
+
+
+def main() -> int:
+    _reexec_requested_python()
+
+    # Importing this module installs the environment/history/display hooks on the
+    # snapshot CLI before we dispatch the snapshot subcommand.
+    import pod_snapshot_env_cli  # noqa: F401
+    import pod_snapshot_cli
+
+    return int(pod_snapshot_cli.main(["snapshot", *sys.argv[1:]]))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
