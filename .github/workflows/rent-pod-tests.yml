@@ -6,6 +6,7 @@ on:
     paths:
       - rent-pod
       - rpods
+      - snapshot-pod
       - bin/provision
       - bin/provision_full
       - bin/provision_qualify
@@ -22,6 +23,7 @@ on:
       - tests/test_pod_env_state.py
       - tests/test_pod_history_state.py
       - tests/test_pod_snapshot_display.py
+      - tests/test_snapshot_entrypoint.py
       - tests/test_rent_pod*.py
       - tests/test_rpods.py
       - .github/workflows/rent-pod-tests.yml
@@ -37,8 +39,8 @@ jobs:
 
       - name: Check syntax
         run: |
-          bash -n rent-pod rpods bin/provision bin/provision_full bin/provision_qualify bin/configure-pod bin/snapshot-pod
-          python -m py_compile bin/pod_env_state.py bin/pod_history_state.py bin/pod_snapshot_display.py bin/pod_snapshot_env_cli.py bin/rent_pod*.py bin/rpods.py
+          bash -n rent-pod rpods bin/provision bin/provision_full bin/provision_qualify bin/configure-pod
+          python -m py_compile snapshot-pod bin/snapshot-pod bin/pod_env_state.py bin/pod_history_state.py bin/pod_snapshot_display.py bin/pod_snapshot_env_cli.py bin/rent_pod*.py bin/rpods.py
 
       - name: Run provision tests
         run: python -m unittest discover -s tests -p 'test_provision*.py'
@@ -48,6 +50,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_pod_env_state.py'
           python -m unittest discover -s tests -p 'test_pod_history_state.py'
           python -m unittest discover -s tests -p 'test_pod_snapshot_display.py'
+          python -m unittest discover -s tests -p 'test_snapshot_entrypoint.py'
 
       - name: Run rent-pod tests
         run: python -m unittest discover -s tests -p 'test_rent_pod*.py'
