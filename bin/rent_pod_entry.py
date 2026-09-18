@@ -175,7 +175,12 @@ except ValueError as exc:
 def _requires_provision_hf(argv: list[str]) -> bool:
     if "--dry-run" in argv or "--no-provision" in argv:
         return False
-    if any(arg == "--list" or arg.startswith("--list=") for arg in argv):
+    if any(
+        arg in {"--list", "--list-all"}
+        or arg.startswith("--list=")
+        or arg.startswith("--list-all=")
+        for arg in argv
+    ):
         return False
     return True
 
