@@ -150,7 +150,10 @@ try:
     )
 
     list_action = any(
-        arg == "--list" or arg.startswith("--list=") for arg in effective_argv
+        arg in {"--list", "--list-all"}
+        or arg.startswith("--list=")
+        or arg.startswith("--list-all=")
+        for arg in effective_argv
     )
     naming_selection = None
     if not list_action:
