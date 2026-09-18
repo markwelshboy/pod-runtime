@@ -40,15 +40,18 @@ except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
 
-# Post-provision startup and CUDA admission are rent-pod control-plane metadata,
-# not RunPod REST Pod fields. Register both template keys before *any* template
-# registry load so --list-templates and normal rentals accept them.
+# Post-provision startup, CUDA admission, and Pod naming are rent-pod
+# control-plane metadata, not RunPod REST Pod fields. Register their template
+# keys before *any* template registry load so --list-templates and normal
+# rentals accept them.
 import rent_pod_startup as startup_handoff  # noqa: E402
 import rent_pod_cuda_profile as cuda_profile_handoff  # noqa: E402
+import rent_pod_naming as naming_handoff  # noqa: E402
 import rent_pod_templates as template_profiles  # noqa: E402
 
 startup_handoff.register_template_option(template_profiles)
 cuda_profile_handoff.register_template_option(template_profiles)
+naming_handoff.register_template_option(template_profiles)
 
 # Local template-profile discovery is intentionally first: it needs neither a
 # RunPod API key nor HF_TOKEN and should never be polluted by rental defaults.
@@ -118,7 +121,6 @@ try:
         effective_argv, os.environ
     )
     effective_argv, vcp_enabled = vcp_handoff.consume_vcp_args(effective_argv)
-    rent_name = vcp_handoff.requested_name(effective_argv)
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -146,6 +148,22 @@ try:
         cli_startup_command,
         template_context,
     )
+
+    list_action = any(
+        arg == "--list" or arg.startswith("--list=") for arg in effective_argv
+    )
+    naming_selection = None
+    if not list_action:
+        effective_argv, naming_selection = naming_handoff.apply_template_naming(
+            effective_argv,
+            template_context,
+            os.environ,
+            resolve_collision="--dry-run" not in effective_argv,
+        )
+
+    # VCP should inherit the final Pod name, including a template-derived name
+    # and any incremented collision suffix.
+    rent_name = vcp_handoff.requested_name(effective_argv)
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -230,6 +248,31 @@ def _print_startup_selection() -> None:
     print(f"           source: {source}{suffix}")
 
 
+def _print_naming_selection() -> None:
+    if not naming_selection:
+        return
+    name = naming_selection["name"]
+    source = naming_selection.get("source", "configured")
+    if source == "CLI":
+        print(f"[rent-pod] Pod name:               {name} (CLI)")
+        return
+
+    collision = naming_selection.get("collision", "increment")
+    deferred = naming_selection.get("deferred") == "true"
+    if deferred:
+        print(f"[rent-pod] Pod name preview:       {name}")
+        print(
+            f"           template naming; collision={collision} "
+            "(resolved against existing Pods at launch)"
+        )
+        return
+
+    base = naming_selection.get("base", name)
+    suffix = f" from {base}" if name != base else ""
+    print(f"[rent-pod] Pod name:               {name}")
+    print(f"           template naming; collision={collision}{suffix}")
+
+
 # Preserve the useful profile details that the old frontend hook appended to a
 # dry run while letting the frontend itself render the actual transport payload
 # (REST normally, GraphQL when --min-cuda is supplied).
@@ -239,6 +282,7 @@ _base_dry_run = frontend.dry_run
 def _dry_run_with_profile(forwarded: list[str], cuda_min: str | None) -> int:
     rc = _base_dry_run(forwarded, cuda_min)
     print_selected_profile(template_context)
+    _print_naming_selection()
     _print_startup_selection()
     return rc
 
@@ -247,6 +291,7 @@ frontend.dry_run = _dry_run_with_profile
 
 if "--dry-run" not in effective_argv:
     print_selected_profile(template_context)
+    _print_naming_selection()
     _print_startup_selection()
 if vcp_enabled:
     suffix = f" as target {rent_name}" if rent_name else " as a named target"
