@@ -16,6 +16,10 @@ from pathlib import Path
 from typing import Any
 
 API_BASE = os.environ.get("RUNPOD_API_BASE", "https://rest.runpod.io/v1").rstrip("/")
+DEFAULT_API_TIMEOUT = 30.0
+CLEANUP_API_TIMEOUT = 8.0
+CLEANUP_DELETE_ATTEMPTS = 3
+CLEANUP_RETRY_DELAY = 1.0
 DEFAULT_TEMPLATE_ID = os.environ.get("RUNPOD_TEMPLATE_ID", "86n5dpgf7h")
 DEFAULT_SSH_KEY = os.environ.get("RUNPOD_SSH_KEY", "~/.ssh/id_ed25519_runpod")
 DEFAULT_CLOUD = os.environ.get("RUNPOD_CLOUD_TYPE", "COMMUNITY").upper()
@@ -37,7 +41,9 @@ GPU_ALIASES = {
 
 
 class RunPodError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def now_utc() -> datetime:
@@ -60,6 +66,8 @@ def api_request(
     method: str,
     path: str,
     payload: dict[str, Any] | None = None,
+    *,
+    timeout: float = DEFAULT_API_TIMEOUT,
 ) -> Any:
     url = f"{API_BASE}{path}"
     data = None
@@ -70,7 +78,7 @@ def api_request(
 
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
             raw = response.read()
             return json.loads(raw.decode("utf-8")) if raw else None
     except urllib.error.HTTPError as exc:
@@ -80,7 +88,8 @@ def api_request(
         except Exception:
             detail = body.strip() or str(exc.reason)
         raise RunPodError(
-            f"RunPod API {method} {path} failed: HTTP {exc.code}: {detail}"
+            f"RunPod API {method} {path} failed: HTTP {exc.code}: {detail}",
+            status_code=exc.code,
         ) from exc
     except urllib.error.URLError as exc:
         raise RunPodError(
@@ -109,19 +118,125 @@ def create_pod(api_key: str, args: argparse.Namespace, attempt: int) -> dict[str
     return result
 
 
-def get_pod(api_key: str, pod_id: str) -> dict[str, Any]:
+def get_pod(
+    api_key: str,
+    pod_id: str,
+    *,
+    timeout: float = DEFAULT_API_TIMEOUT,
+) -> dict[str, Any]:
     result = api_request(
         api_key,
         "GET",
         f"/pods/{urllib.parse.quote(pod_id)}?includeMachine=true",
+        timeout=timeout,
     )
     if not isinstance(result, dict):
         raise RunPodError(f"unexpected pod response: {result!r}")
     return result
 
 
-def delete_pod(api_key: str, pod_id: str) -> None:
-    api_request(api_key, "DELETE", f"/pods/{urllib.parse.quote(pod_id)}")
+def delete_pod(
+    api_key: str,
+    pod_id: str,
+    *,
+    timeout: float = DEFAULT_API_TIMEOUT,
+) -> None:
+    api_request(
+        api_key,
+        "DELETE",
+        f"/pods/{urllib.parse.quote(pod_id)}",
+        timeout=timeout,
+    )
+
+
+def delete_pod_confirmed(
+    api_key: str,
+    pod_id: str,
+    *,
+    attempts: int = CLEANUP_DELETE_ATTEMPTS,
+    retry_delay: float = CLEANUP_RETRY_DELAY,
+    timeout: float = CLEANUP_API_TIMEOUT,
+) -> None:
+    """Delete a Pod and confirm that RunPod no longer returns its ID.
+
+    A transport timeout does not prove that DELETE failed: the request may have
+    reached RunPod before the local TLS/socket operation timed out.  Therefore
+    every failed or successful DELETE is followed by a GET probe.  A 404 from
+    either operation is definitive success; otherwise cleanup is retried.
+    """
+    attempts = max(1, int(attempts))
+    last_delete_error: Exception | None = None
+    last_verify_error: Exception | None = None
+
+    for attempt in range(1, attempts + 1):
+        last_delete_error = None
+        last_verify_error = None
+
+        try:
+            delete_pod(api_key, pod_id, timeout=timeout)
+        except RunPodError as exc:
+            if exc.status_code == 404:
+                return
+            last_delete_error = exc
+        except Exception as exc:
+            last_delete_error = exc
+
+        try:
+            get_pod(api_key, pod_id, timeout=timeout)
+            last_verify_error = RunPodError(
+                f"pod {pod_id} is still present after DELETE attempt {attempt}"
+            )
+        except RunPodError as exc:
+            if exc.status_code == 404:
+                return
+            last_verify_error = exc
+        except Exception as exc:
+            last_verify_error = exc
+
+        if attempt < attempts:
+            time.sleep(retry_delay * attempt)
+
+    details: list[str] = []
+    if last_delete_error is not None:
+        details.append(f"DELETE: {last_delete_error}")
+    if last_verify_error is not None:
+        details.append(f"verify: {last_verify_error}")
+    suffix = "; ".join(details) or "pod remained present"
+    raise RunPodError(
+        f"could not confirm deletion of pod {pod_id} after {attempts} attempt(s): {suffix}"
+    )
+
+
+def cleanup_inflight_pod(
+    api_key: str,
+    pod_id: str,
+    pod_name: str | None = None,
+) -> bool:
+    """Best-effort emergency cleanup with an unmistakable failure message."""
+    display = (
+        f"{pod_name} ({pod_id})"
+        if pod_name and pod_name != pod_id
+        else pod_id
+    )
+    print(f"[rent-pod] Destroying in-flight pod {display}...", file=sys.stderr)
+    try:
+        delete_pod_confirmed(api_key, pod_id)
+    except Exception as exc:
+        print("[rent-pod] WARNING: POD DELETION NOT CONFIRMED", file=sys.stderr)
+        print(f"           pod: {display}", file=sys.stderr)
+        print(f"           error: {exc}", file=sys.stderr)
+        print(
+            f"           verify immediately: rent-pod --status {pod_id}",
+            file=sys.stderr,
+        )
+        print(
+            f"           retry deletion:     rent-pod --kill {pod_id}",
+            file=sys.stderr,
+        )
+        return False
+
+    print(f"[rent-pod] Pod deletion confirmed: {display}.", file=sys.stderr)
+    return True
 
 
 def pod_identity(pod: dict[str, Any]) -> dict[str, Any]:
@@ -500,20 +615,12 @@ def main() -> int:
         except KeyboardInterrupt:
             print("\n[rent-pod] Interrupted.", file=sys.stderr)
             if pod_id and not args.keep_failed:
-                print(f"[rent-pod] Destroying in-flight pod {pod_id}...", file=sys.stderr)
-                try:
-                    delete_pod(api_key, pod_id)
-                except Exception as exc:
-                    print(f"[rent-pod] WARNING: cleanup failed: {exc}", file=sys.stderr)
+                cleanup_inflight_pod(api_key, pod_id, args.name)
             return 130
         except RunPodError as exc:
             print(f"[rent-pod] ERROR: {exc}", file=sys.stderr)
             if pod_id and not args.keep_failed:
-                print(f"[rent-pod] Destroying in-flight pod {pod_id}...", file=sys.stderr)
-                try:
-                    delete_pod(api_key, pod_id)
-                except Exception as cleanup_exc:
-                    print(f"[rent-pod] WARNING: cleanup failed: {cleanup_exc}", file=sys.stderr)
+                cleanup_inflight_pod(api_key, pod_id, args.name)
             if attempt == args.attempts:
                 return 1
             time.sleep(args.retry_delay)
