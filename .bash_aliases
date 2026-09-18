@@ -62,3 +62,6 @@ alias crestart="/workspace/pod-runtime/run_comfy_mux.sh restart"
 alias cstart="/workspace/pod-runtime/run_comfy_mux.sh start"
 alias cstop="/workspace/pod-runtime/run_comfy_mux.sh stop"
 alias crun="/workspace/pod-runtime/run_comfy_mux.sh start"
+
+alias capture='mkdir -p /workspace/captures ; wrap /workspace/captures/output.txt'
+alias send-cap='capture ; send-phone /workspace/captures/output.txt'

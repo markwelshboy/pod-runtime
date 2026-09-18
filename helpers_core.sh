@@ -313,6 +313,44 @@ link_comfy_state_into_app() {
 # Generic utilities
 # ======================================================================
 
+wrap() {
+  local outfile="${1:-output.txt}"
+  
+  echo "Paste your commands, then press Ctrl-D on an empty line:" >&2
+  
+  # 1. Capture text
+  # 2. Strip Windows carriage returns
+  # 3. Convert invisible non-breaking spaces (U+00A0) to normal spaces
+  # 4. Delete ALL blank lines (this fixes the \ continuation break)
+  local pasted_text
+  pasted_text=$(cat | tr -d '\r' | sed $'s/\xc2\xa0/ /g' | sed '/^[[:space:]]*$/d')
+  
+  local wrapped_command="{
+$pasted_text
+} > \"$outfile\" 2>&1"
+
+  echo -e "\n--- Wrapped Command ---" >&2
+  echo "$wrapped_command"
+  echo -e "-----------------------\n" >&2
+
+  local b64
+  b64=$(printf "%s" "$wrapped_command" | base64 -w 0)
+  printf "\033]52;c;%s\a" "$b64" >&2
+  
+  echo -en "✅ Copied via WezTerm OSC 52.\n\n🚀 Run this command immediately? (y/n) " >&2
+  
+  read -r -n 1 answer
+  echo >&2
+  
+  if [[ "$answer" =~ ^[Yy]$ ]]; then
+    echo "Running..." >&2
+    eval "$wrapped_command"
+    echo "Done! Output captured in: $outfile" >&2
+  else
+    echo "Canceled. It is still in your clipboard if you need it." >&2
+  fi
+}
+
 # tg: Telegram notify (best-effort)
 tg() {
   if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then

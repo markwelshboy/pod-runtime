@@ -429,6 +429,10 @@
     "comfyui-h3-multishot": {
       "remote": "https://github.com/jlucasmcrell/ComfyUI-H3-Multishot.git",
       "local": "ComfyUI-H3-Multishot"
+    },
+    "comfyui-minimax-h3-latent-continuation": {
+      "remote": "https://github.com/SatoDive/Minimax-H3-Latent-Continuation.git",
+      "local": "ComfyUI-MiniMaxH3-Latent-Continuation"
     }
   },
   "sets": {
@@ -547,7 +551,8 @@
       "comfyui-minimax-h3-latent-upscaler",
       "comfyui-minimax-h3-mod",
       "comfyui-viggle-animate-h3",
-      "comfyui-h3-multishot"
+      "comfyui-h3-multishot",
+      "comfyui-minimax-h3-latent-continuation"
     ]
   }
 }
