@@ -318,14 +318,10 @@ wrap() {
   
   echo "Paste your commands, then press Ctrl-D on an empty line:" >&2
   
-  # 1. Capture text
-  # 2. Strip Windows carriage returns
-  # 3. Convert invisible non-breaking spaces (U+00A0) to normal spaces
-  # 4. Delete ALL blank lines
+  # Combined the two sed commands using -e to avoid the pipe entirely!
   local pasted_text
-  pasted_text=$(cat | tr -d '\r' | sed $'s/\xc2\xa0/ /g' \vert{} sed '/^[[:space:]]*$/d')
+  pasted_text=$(cat | tr -d '\r' | sed -e $'s/\xc2\xa0/ /g' -e '/^[[:space:]]*$/d')
   
-  # Use `tee` to send output to BOTH the screen and the file simultaneously
   local wrapped_command="{
 $pasted_text
 } 2>&1 | tee \"$outfile\""
@@ -335,7 +331,7 @@ $pasted_text
   echo -e "-----------------------\n" >&2
 
   local b64
-  b64=$(printf "\%s" "$wrapped_command" | base64 -w 0)
+  b64=$(printf "%s" "$wrapped_command" | base64 -w 0)
   printf "\033]52;c;%s\a" "$b64" >&2
   
   echo -en "✅ Copied via WezTerm OSC 52.\n\n🚀 Run this command immediately? (y/n) " >&2
