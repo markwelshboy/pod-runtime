@@ -148,7 +148,11 @@ try:
         template_context,
     )
     list_requested = any(
-        arg == "--list" or arg.startswith("--list=") for arg in effective_argv
+        arg == "--list"
+        or arg.startswith("--list=")
+        or arg == "--list-all"
+        or arg.startswith("--list-all=")
+        for arg in effective_argv
     )
     if list_requested:
         resolved_pod_name = None
@@ -171,7 +175,13 @@ except ValueError as exc:
 def _requires_provision_hf(argv: list[str]) -> bool:
     if "--dry-run" in argv or "--no-provision" in argv:
         return False
-    if any(arg == "--list" or arg.startswith("--list=") for arg in argv):
+    if any(
+        arg == "--list"
+        or arg.startswith("--list=")
+        or arg == "--list-all"
+        or arg.startswith("--list-all=")
+        for arg in argv
+    ):
         return False
     return True
 
