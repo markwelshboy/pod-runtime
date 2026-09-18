@@ -609,6 +609,8 @@ def install_core_api_hook(context: TemplateContext) -> None:
     ) -> Any:
         if method.upper() == "POST" and path == "/pods" and isinstance(payload, dict):
             payload = apply_context_to_payload(payload, context)
+        if timeout == core.DEFAULT_API_TIMEOUT:
+            return original(api_key, method, path, payload)
         return original(api_key, method, path, payload, timeout=timeout)
 
     core.api_request = api_request
