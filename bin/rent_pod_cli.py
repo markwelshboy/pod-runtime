@@ -76,7 +76,7 @@ Template / Pod configuration:
   --template NAME|ID       Friendly remote/local profile, or raw RunPod template ID.
                            Registry/defaults: ~/.config/rent-pod/templates.toml
                            Local profiles:    ~/.config/rent-pod/templates/*.toml
-  --name NAME              Name assigned to the rented Pod.
+  --name NAME              Name assigned to the rented Pod. Overrides template naming.
   --env KEY=VALUE          Per-run environment override. Repeatable; a quoted
                            ';'-separated list is also accepted. CLI values win.
   --startup COMMAND        Run COMMAND remotely after successful provisioning.
@@ -93,6 +93,10 @@ Local template files use their filename as the profile name. Example:
   ports = ["22/tcp", "8000/http"]
   docker_start_cmd = ["sleep", "infinity"]
   startup = "configure-pod --template qwen3-captioning --snapshot latest"
+
+  [naming]
+  pattern = "q3c"
+  collision = "increment"
 
   [env]
   PROJECT = "qwen3"
