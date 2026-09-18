@@ -46,7 +46,7 @@ class RentPodCliTests(unittest.TestCase):
         stream = io.StringIO()
         cli.print_help(stream)
         text = stream.getvalue()
-        self.assertIn("--all", text)
+        self.assertIn("--list-all", text)
         self.assertIn("currently in stock", text)
         self.assertIn('[naming]', text)
         self.assertIn('pattern = "q3c"', text)
