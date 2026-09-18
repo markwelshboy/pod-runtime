@@ -109,10 +109,6 @@ def split_frontend_args(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
             options["community"] = True
             i += 1
             continue
-        if arg == "--all":
-            options["show_all"] = True
-            i += 1
-            continue
         if arg == "--cuda-min":
             if i + 1 >= len(argv):
                 raise ValueError("--cuda-min requires a version, e.g. --cuda-min 13.3")
@@ -123,8 +119,9 @@ def split_frontend_args(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
             options["cuda_min"] = arg.split("=", 1)[1]
             i += 1
             continue
-        if arg == "--list":
+        if arg in {"--list", "--list-all"}:
             options["list_requested"] = True
+            options["show_all"] = arg == "--list-all"
             if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
                 options["list_spec"] = argv[i + 1]
                 i += 2
@@ -132,8 +129,9 @@ def split_frontend_args(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
                 options["list_spec"] = ""
                 i += 1
             continue
-        if arg.startswith("--list="):
+        if arg.startswith("--list=") or arg.startswith("--list-all="):
             options["list_requested"] = True
+            options["show_all"] = arg.startswith("--list-all=")
             options["list_spec"] = arg.split("=", 1)[1]
             i += 1
             continue
@@ -518,8 +516,6 @@ def main() -> int:
         forwarded, options = split_frontend_args(sys.argv[1:])
         cloud, forwarded = cloud_from_args(forwarded, bool(options["community"]))
         cuda_min = validate_cuda_version(options["cuda_min"])
-        if options["show_all"] and not options["list_requested"]:
-            raise ValueError("--all is only valid with --list")
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
