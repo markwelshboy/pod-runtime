@@ -34,6 +34,9 @@ volume_gb = 100
 volume_mount_path = "/workspace"
 ports = ["22/tcp"]
 
+[defaults.naming]
+collision = "increment"
+
 [defaults.env]
 HF_XET_HIGH_PERFORMANCE = "1"
 
@@ -80,6 +83,9 @@ ports = ["22/tcp", "8000/http", "8888/http"]
 
 docker_start_cmd = ["sleep", "infinity"]
 
+[naming]
+pattern = "q3c"
+
 [env]
 PROJECT = "qwen3-captioning"
 HF_HOME = "/workspace/.cache/huggingface"
@@ -90,6 +96,48 @@ OPENAI_API_KEY = "openai_key"
 ```
 
 A local profile must define `image`. A remote profile defines `id`. Defining both is rejected.
+
+### Pod naming
+
+A template can define a human-readable Pod name independently of its RunPod
+template ID or container image:
+
+```toml
+[naming]
+pattern = "q3c"
+collision = "increment"
+```
+
+With no existing collision, the Pod is named `q3c`. If `q3c` already
+exists, rent-pod checks the account inventory before creation and selects the
+first free suffix: `q3c-1`, `q3c-2`, and so on. RunPod itself permits
+duplicate names; this uniqueness policy is intentionally enforced by rent-pod.
+
+Directory-backed templates may inherit naming defaults from `templates.toml`:
+
+```toml
+[defaults.naming]
+collision = "increment"
+```
+
+The per-template `[naming]` table overrides individual default keys.
+`collision` supports `increment` (default), `allow`, and `error`.
+
+Patterns may use `{template}`, `{uid}`, and `{date}`:
+
+```toml
+[naming]
+pattern = "{template}-{uid}"
+```
+
+`{uid}` is a locally generated six-hex-character identifier. `{date}` uses
+local `YYYYMMDD`. `{pod-id}` is deliberately unsupported because the RunPod
+Pod ID does not exist until after the create request has already supplied the
+name.
+
+An explicit `--name NAME` always wins over template naming. During
+`--dry-run`, rent-pod renders the base name without querying account Pods; the
+collision check is performed only for a real launch.
 
 ### CUDA admission floor
 
