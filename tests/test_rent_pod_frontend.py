@@ -145,11 +145,17 @@ class RentPodFrontendTests(unittest.TestCase):
         self.assertIn("Unavailable GPU", text)
         self.assertIn("all GPU types", text)
 
-    def test_all_flag_is_frontend_only(self):
-        forwarded, options = frontend.split_frontend_args(["--list", "--all"])
+    def test_list_all_is_frontend_only(self):
+        forwarded, options = frontend.split_frontend_args(["--list-all"])
         self.assertEqual(forwarded, [])
         self.assertTrue(options["list_requested"])
         self.assertTrue(options["show_all"])
+
+    def test_list_remains_available_only(self):
+        forwarded, options = frontend.split_frontend_args(["--list"])
+        self.assertEqual(forwarded, [])
+        self.assertTrue(options["list_requested"])
+        self.assertFalse(options["show_all"])
 
     def test_list_table_omits_route_floor(self):
         response = {
