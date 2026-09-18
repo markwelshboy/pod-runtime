@@ -40,15 +40,17 @@ except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
 
-# Post-provision startup and CUDA admission are rent-pod control-plane metadata,
-# not RunPod REST Pod fields. Register both template keys before *any* template
-# registry load so --list-templates and normal rentals accept them.
+# Post-provision startup, CUDA admission, and Pod naming are rent-pod
+# control-plane metadata, not direct RunPod template fields. Register their keys
+# before *any* template registry load so --list-templates and rentals accept them.
 import rent_pod_startup as startup_handoff  # noqa: E402
 import rent_pod_cuda_profile as cuda_profile_handoff  # noqa: E402
+import rent_pod_naming as naming_handoff  # noqa: E402
 import rent_pod_templates as template_profiles  # noqa: E402
 
 startup_handoff.register_template_option(template_profiles)
 cuda_profile_handoff.register_template_option(template_profiles)
+naming_handoff.register_template_option(template_profiles)
 
 # Local template-profile discovery is intentionally first: it needs neither a
 # RunPod API key nor HF_TOKEN and should never be polluted by rental defaults.
@@ -118,7 +120,6 @@ try:
         effective_argv, os.environ
     )
     effective_argv, vcp_enabled = vcp_handoff.consume_vcp_args(effective_argv)
-    rent_name = vcp_handoff.requested_name(effective_argv)
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -146,6 +147,26 @@ try:
         cli_startup_command,
         template_context,
     )
+    list_requested = any(
+        arg == "--list"
+        or arg.startswith("--list=")
+        or arg == "--list-all"
+        or arg.startswith("--list-all=")
+        for arg in effective_argv
+    )
+    if list_requested:
+        resolved_pod_name = None
+        naming_source = None
+    else:
+        effective_argv, resolved_pod_name, naming_source = (
+            naming_handoff.apply_template_naming(
+                effective_argv,
+                template_context,
+                os.environ.get("RUNPOD_API_KEY", "").strip(),
+                resolve_collisions="--dry-run" not in effective_argv,
+            )
+        )
+    rent_name = vcp_handoff.requested_name(effective_argv)
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -154,7 +175,13 @@ except ValueError as exc:
 def _requires_provision_hf(argv: list[str]) -> bool:
     if "--dry-run" in argv or "--no-provision" in argv:
         return False
-    if any(arg == "--list" or arg.startswith("--list=") for arg in argv):
+    if any(
+        arg == "--list"
+        or arg.startswith("--list=")
+        or arg == "--list-all"
+        or arg.startswith("--list-all=")
+        for arg in argv
+    ):
         return False
     return True
 
@@ -221,6 +248,17 @@ frontend.set_create_context_hook(
 )
 
 
+def _print_naming_selection() -> None:
+    if naming_source != "template" or not resolved_pod_name:
+        return
+    suffix = (
+        " (base name; live collision check occurs when renting)"
+        if "--dry-run" in effective_argv
+        else ""
+    )
+    print(f"[rent-pod] Pod name:               {resolved_pod_name}{suffix}")
+
+
 def _print_startup_selection() -> None:
     if not startup_command:
         return
@@ -239,6 +277,7 @@ _base_dry_run = frontend.dry_run
 def _dry_run_with_profile(forwarded: list[str], cuda_min: str | None) -> int:
     rc = _base_dry_run(forwarded, cuda_min)
     print_selected_profile(template_context)
+    _print_naming_selection()
     _print_startup_selection()
     return rc
 
@@ -247,6 +286,7 @@ frontend.dry_run = _dry_run_with_profile
 
 if "--dry-run" not in effective_argv:
     print_selected_profile(template_context)
+    _print_naming_selection()
     _print_startup_selection()
 if vcp_enabled:
     suffix = f" as target {rent_name}" if rent_name else " as a named target"

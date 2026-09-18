@@ -50,6 +50,7 @@ class RentPodFrontendTests(unittest.TestCase):
         self.assertTrue(options["list_requested"])
         self.assertEqual(options["list_spec"], "4090 5090 l40s")
         self.assertEqual(options["cuda_min"], "13.3")
+        self.assertFalse(options["list_all"])
         self.assertEqual(
             frontend.parse_gpu_list(options["list_spec"]),
             [
@@ -58,6 +59,15 @@ class RentPodFrontendTests(unittest.TestCase):
                 "NVIDIA L40S",
             ],
         )
+
+    def test_list_all_is_distinct_inventory_mode(self):
+        forwarded, options = frontend.split_frontend_args(
+            ["--list-all", "4090 5090", "--cuda-min", "13.3"]
+        )
+        self.assertEqual(forwarded, [])
+        self.assertTrue(options["list_requested"])
+        self.assertTrue(options["list_all"])
+        self.assertEqual(options["list_spec"], "4090 5090")
 
     def test_list_table_omits_route_floor(self):
         response = {
@@ -86,6 +96,74 @@ class RentPodFrontendTests(unittest.TestCase):
         self.assertIn("RTX PRO 6000", text)
         self.assertNotIn("Route floor", text)
         self.assertNotIn("None↓", text)
+
+    def test_list_hides_no_stock_by_default(self):
+        response = {
+            "gpuTypes": [
+                {
+                    "id": "available",
+                    "displayName": "Available GPU",
+                    "memoryInGb": 48,
+                    "secureCloud": True,
+                    "communityCloud": False,
+                    "securePrice": 1.0,
+                    "lowestPrice": {
+                        "stockStatus": "Low",
+                        "uninterruptablePrice": 1.0,
+                        "availableGpuCounts": [1],
+                    },
+                },
+                {
+                    "id": "empty",
+                    "displayName": "Empty GPU",
+                    "memoryInGb": 48,
+                    "secureCloud": True,
+                    "communityCloud": False,
+                    "securePrice": 1.0,
+                    "lowestPrice": {
+                        "stockStatus": "None",
+                        "uninterruptablePrice": None,
+                        "availableGpuCounts": [],
+                    },
+                },
+            ]
+        }
+        out = io.StringIO()
+        with mock.patch.object(frontend, "graphql_request", return_value=response), redirect_stdout(out):
+            rc = frontend.list_gpus("token", None, "SECURE", None, 500, 100)
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn("Available GPU", text)
+        self.assertNotIn("Empty GPU", text)
+        self.assertIn("in stock only", text)
+
+    def test_list_all_includes_no_stock(self):
+        response = {
+            "gpuTypes": [
+                {
+                    "id": "empty",
+                    "displayName": "Empty GPU",
+                    "memoryInGb": 48,
+                    "secureCloud": True,
+                    "communityCloud": False,
+                    "securePrice": 1.0,
+                    "lowestPrice": {
+                        "stockStatus": "None",
+                        "uninterruptablePrice": None,
+                        "availableGpuCounts": [],
+                    },
+                }
+            ]
+        }
+        out = io.StringIO()
+        with mock.patch.object(frontend, "graphql_request", return_value=response), redirect_stdout(out):
+            rc = frontend.list_gpus(
+                "token", None, "SECURE", None, 500, 100, include_unavailable=True
+            )
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn("Empty GPU", text)
+        self.assertIn("all stock states", text)
 
     def test_community_conflicts_with_explicit_secure(self):
         with self.assertRaises(ValueError):

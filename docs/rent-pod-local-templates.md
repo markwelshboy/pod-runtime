@@ -80,6 +80,10 @@ ports = ["22/tcp", "8000/http", "8888/http"]
 
 docker_start_cmd = ["sleep", "infinity"]
 
+[naming]
+pattern = "q3c"
+collision = "increment"
+
 [env]
 PROJECT = "qwen3-captioning"
 HF_HOME = "/workspace/.cache/huggingface"
@@ -90,6 +94,38 @@ OPENAI_API_KEY = "openai_key"
 ```
 
 A local profile must define `image`. A remote profile defines `id`. Defining both is rejected.
+
+### Pod naming
+
+Templates can provide a short human-readable Pod-name pattern:
+
+```toml
+[naming]
+pattern = "q3c"
+collision = "increment"
+```
+
+With no existing matching Pod, the name is `q3c`. If that name is already in use,
+`rent-pod` checks the current account Pod inventory and selects the first free
+suffix: `q3c-1`, `q3c-2`, and so on. RunPod itself permits duplicate names, so
+this is a best-effort controller-side uniqueness policy rather than an atomic
+server-side constraint.
+
+An explicit `--name NAME` always overrides template naming. The pattern may also
+contain `{template}`, `{date}` (YYYYMMDD), or `{uid}` (a locally generated
+six-character identifier). Directory-backed templates may inherit a
+`[defaults.naming]` table from `templates.toml`.
+
+For example:
+
+```toml
+[defaults.naming]
+pattern = "{template}"
+collision = "increment"
+```
+
+A dry run renders the base pattern without querying live Pod inventory; the actual
+collision check happens immediately before a paid rental.
 
 ### CUDA admission floor
 
@@ -160,6 +196,22 @@ List local and remote profiles:
 ```bash
 rent-pod --list-templates
 ```
+
+Live GPU inventory is filtered to types with stock by default:
+
+```bash
+rent-pod --list
+```
+
+To include no-stock/unavailable GPU types as well:
+
+```bash
+rent-pod --list-all
+```
+
+Both forms accept the same optional quoted GPU filter, for example
+`rent-pod --list "4090 5090 l40s"` or
+`rent-pod --list-all "4090 5090 l40s"`.
 
 Inspect the complete Pod-create request without spending money:
 

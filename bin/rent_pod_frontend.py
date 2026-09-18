@@ -100,6 +100,7 @@ def split_frontend_args(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
         "cuda_min": None,
         "list_spec": None,
         "list_requested": False,
+        "list_all": False,
     }
     i = 0
     while i < len(argv):
@@ -116,6 +117,22 @@ def split_frontend_args(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
             continue
         if arg.startswith("--cuda-min="):
             options["cuda_min"] = arg.split("=", 1)[1]
+            i += 1
+            continue
+        if arg == "--list-all":
+            options["list_requested"] = True
+            options["list_all"] = True
+            if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
+                options["list_spec"] = argv[i + 1]
+                i += 2
+            else:
+                options["list_spec"] = ""
+                i += 1
+            continue
+        if arg.startswith("--list-all="):
+            options["list_requested"] = True
+            options["list_all"] = True
+            options["list_spec"] = arg.split("=", 1)[1]
             i += 1
             continue
         if arg == "--list":
@@ -218,6 +235,16 @@ def parse_gpu_list(spec: str | None) -> list[str]:
     return [core.resolve_gpu(token) for token in tokens]
 
 
+def gpu_has_stock(row: dict[str, Any], cloud: str) -> bool:
+    if not bool(row.get("secureCloud" if cloud == "SECURE" else "communityCloud")):
+        return False
+    lowest = row.get("lowestPrice") or {}
+    if not isinstance(lowest, dict):
+        return False
+    status = str(lowest.get("stockStatus") or "").strip().casefold()
+    return status not in {"", "none", "n/a", "unavailable", "out of stock", "unknown"}
+
+
 def list_gpus(
     api_key: str,
     spec: str | None,
@@ -225,6 +252,7 @@ def list_gpus(
     cuda_min: str | None,
     min_download: float,
     min_upload: float,
+    include_unavailable: bool = False,
 ) -> int:
     secure = "true" if cloud == "SECURE" else "false"
     price_args = [
@@ -274,13 +302,27 @@ query {{
             key=lambda row: str(row.get("displayName") or row.get("id") or ""),
         )
 
+    if not include_unavailable:
+        selected = [
+            row
+            for row in selected
+            if isinstance(row, dict)
+            and not row.get("missing")
+            and gpu_has_stock(row, cloud)
+        ]
+
     filter_text = f"{cloud} | >= {int(min_download)} Mbps down | >= {int(min_upload)} Mbps up"
     if cuda_min:
         filter_text += f" | CUDA >= {cuda_min}"
+    filter_text += " | all stock states" if include_unavailable else " | in stock only"
     print(f"[rent-pod] Live RunPod availability: {filter_text}")
     print()
     print(f"{'GPU':<22} {'VRAM':>5} {'Pool':<7} {'Stock':<8} {'$/hr':>8} {'GPU counts':<18}")
     print("-" * 72)
+
+    if not selected and not include_unavailable:
+        print("(no matching GPUs currently in stock; use --list-all to include unavailable types)")
+        return 0
 
     for row in selected:
         if row.get("missing"):
@@ -503,6 +545,7 @@ def main() -> int:
                 cuda_min,
                 option_value(forwarded, "--min-download", 500),
                 option_value(forwarded, "--min-upload", 100),
+                include_unavailable=bool(options["list_all"]),
             )
         except (ValueError, core.RunPodError) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
