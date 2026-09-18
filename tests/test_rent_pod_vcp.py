@@ -21,11 +21,13 @@ class RentPodVcpTests(unittest.TestCase):
     def setUp(self):
         self.original_wait = vcp_handoff.core.wait_for_ssh
         self.original_run_provision = vcp_handoff.core.run_provision
+        self.original_delete_confirmed = vcp_handoff.core.delete_pod_confirmed
         vcp_handoff._installed = False
 
     def tearDown(self):
         vcp_handoff.core.wait_for_ssh = self.original_wait
         vcp_handoff.core.run_provision = self.original_run_provision
+        vcp_handoff.core.delete_pod_confirmed = self.original_delete_confirmed
         vcp_handoff._installed = False
 
     def test_consume_vcp_arg(self):
@@ -135,6 +137,36 @@ class RentPodVcpTests(unittest.TestCase):
             rc = vcp_handoff.core.run_provision(identity, "/tmp/key")
         self.assertEqual(rc, 78)
         configure.assert_not_called()
+
+
+    def test_confirmed_delete_hook_reaps_vcp_by_pod_id(self):
+        vcp_handoff.core.wait_for_ssh = lambda *args, **kwargs: ({}, None)
+        vcp_handoff.core.run_provision = lambda identity, key: 0
+        vcp_handoff.core.delete_pod_confirmed = lambda *args, **kwargs: None
+        with mock.patch.object(
+            vcp_handoff.vcp_targets,
+            "remove_matching_targets",
+            return_value={"targets": ["q3c"], "legacy": False},
+        ) as reap:
+            vcp_handoff.install_core_hooks(True, "q3c")
+            vcp_handoff.core.delete_pod_confirmed("token", "pod123")
+        reap.assert_called_once_with(pod_id="pod123", endpoints=set())
+
+    def test_confirmed_delete_hook_does_not_reap_on_delete_failure(self):
+        vcp_handoff.core.wait_for_ssh = lambda *args, **kwargs: ({}, None)
+        vcp_handoff.core.run_provision = lambda identity, key: 0
+
+        def fail_delete(*args, **kwargs):
+            raise vcp_handoff.core.RunPodError("delete failed")
+
+        vcp_handoff.core.delete_pod_confirmed = fail_delete
+        with mock.patch.object(
+            vcp_handoff.vcp_targets, "remove_matching_targets"
+        ) as reap:
+            vcp_handoff.install_core_hooks(True, "q3c")
+            with self.assertRaises(vcp_handoff.core.RunPodError):
+                vcp_handoff.core.delete_pod_confirmed("token", "pod123")
+        reap.assert_not_called()
 
 
 if __name__ == "__main__":
