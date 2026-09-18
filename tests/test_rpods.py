@@ -29,7 +29,7 @@ class RPodsTests(unittest.TestCase):
             public_ip="1.2.3.4",
             ssh_port=22022,
             uptime_seconds=3723,
-            created_at=None,
+            started_at=None,
         )
         data.update(overrides)
         return rpods.PodChoice(**data)
@@ -44,7 +44,7 @@ class RPodsTests(unittest.TestCase):
         rest = {
             "id": "p1",
             "name": "qwen3-captioning",
-            "createdAt": "2026-09-11T20:00:00Z",
+            "lastStartedAt": "2026-09-11T20:00:00Z",
             "desiredStatus": "RUNNING",
             "gpuTypeId": "NVIDIA L40S",
             "publicIp": "9.9.9.9",
@@ -75,6 +75,8 @@ class RPodsTests(unittest.TestCase):
         self.assertEqual(choice.uptime_seconds, 1234)
         self.assertEqual(choice.machine, "machine-1")
         self.assertEqual(choice.stage, "NETWORK")
+        self.assertIsNotNone(choice.started_at)
+        self.assertEqual(choice.started_at.isoformat(), "2026-09-11T20:00:00+00:00")
 
     def test_print_choices_numbers_only_connectable_pods(self):
         ready = self.choice()
