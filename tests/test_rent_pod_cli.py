@@ -42,6 +42,23 @@ class RentPodCliTests(unittest.TestCase):
         self.assertIn("RENT_POD_CUDA_MIN", text)
         self.assertIn("Legacy alias for --min-cuda", text)
 
+    def test_help_documents_available_list_default_and_all_override(self):
+        stream = io.StringIO()
+        cli.print_help(stream)
+        text = stream.getvalue()
+        self.assertIn("Show currently available GPUs", text)
+        self.assertIn("--all", text)
+        self.assertIn("include unavailable GPU types", text)
+
+    def test_help_documents_template_naming(self):
+        stream = io.StringIO()
+        cli.print_help(stream)
+        text = stream.getvalue()
+        self.assertIn("[naming]", text)
+        self.assertIn('pattern = "q3c"', text)
+        self.assertIn('collision = "increment"', text)
+        self.assertIn("Overrides template naming", text)
+
     def test_help_documents_local_templates_and_secrets(self):
         stream = io.StringIO()
         cli.print_help(stream)
