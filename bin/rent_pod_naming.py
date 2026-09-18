@@ -78,7 +78,7 @@ def _normalize_naming(raw: Mapping[str, Any], where: str) -> dict[str, str] | No
         if field_name == "pod-id":
             raise ValueError(
                 f"{where}.pattern cannot use {{pod-id}} because the Pod ID does not "
-                "exist until after creation; use {uid} instead"
+                "exist until after creation; use {{uid}} instead"
             )
         if field_name not in SUPPORTED_TOKENS:
             choices = ", ".join(f"{{{name}}}" for name in sorted(SUPPORTED_TOKENS))
