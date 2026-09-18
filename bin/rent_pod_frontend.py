@@ -119,8 +119,20 @@ def split_frontend_args(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
             options["cuda_min"] = arg.split("=", 1)[1]
             i += 1
             continue
-        if arg == "--all":
+        if arg == "--list-all":
+            options["list_requested"] = True
             options["list_all"] = True
+            if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
+                options["list_spec"] = argv[i + 1]
+                i += 2
+            else:
+                options["list_spec"] = ""
+                i += 1
+            continue
+        if arg.startswith("--list-all="):
+            options["list_requested"] = True
+            options["list_all"] = True
+            options["list_spec"] = arg.split("=", 1)[1]
             i += 1
             continue
         if arg == "--list":
@@ -309,7 +321,7 @@ query {{
     print("-" * 72)
 
     if not selected and not include_unavailable:
-        print("(no matching GPUs currently in stock; use --all to include unavailable types)")
+        print("(no matching GPUs currently in stock; use --list-all to include unavailable types)")
         return 0
 
     for row in selected:
@@ -520,10 +532,6 @@ def main() -> int:
         return 2
 
     api_key = os.environ.get("RUNPOD_API_KEY", "").strip()
-
-    if options["list_all"] and not options["list_requested"]:
-        print("ERROR: --all is only valid with --list.", file=sys.stderr)
-        return 2
 
     if options["list_requested"]:
         if not api_key:
