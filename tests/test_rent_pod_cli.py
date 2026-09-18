@@ -42,6 +42,16 @@ class RentPodCliTests(unittest.TestCase):
         self.assertIn("RENT_POD_CUDA_MIN", text)
         self.assertIn("Legacy alias for --min-cuda", text)
 
+    def test_help_documents_list_stock_filter_and_naming(self):
+        stream = io.StringIO()
+        cli.print_help(stream)
+        text = stream.getvalue()
+        self.assertIn("--all", text)
+        self.assertIn("currently in stock", text)
+        self.assertIn('[naming]', text)
+        self.assertIn('pattern = "q3c"', text)
+        self.assertIn('collision = "increment"', text)
+
     def test_help_documents_local_templates_and_secrets(self):
         stream = io.StringIO()
         cli.print_help(stream)
