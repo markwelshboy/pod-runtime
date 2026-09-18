@@ -59,6 +59,98 @@ class RentPodFrontendTests(unittest.TestCase):
             ],
         )
 
+    def test_list_defaults_to_available_only(self):
+        response = {
+            "gpuTypes": [
+                {
+                    "id": "available",
+                    "displayName": "Available GPU",
+                    "memoryInGb": 48,
+                    "secureCloud": True,
+                    "communityCloud": True,
+                    "securePrice": 1.0,
+                    "communityPrice": 0.8,
+                    "lowestPrice": {
+                        "stockStatus": "High",
+                        "uninterruptablePrice": 1.0,
+                        "availableGpuCounts": [1],
+                    },
+                },
+                {
+                    "id": "unavailable",
+                    "displayName": "Unavailable GPU",
+                    "memoryInGb": 96,
+                    "secureCloud": True,
+                    "communityCloud": True,
+                    "securePrice": 2.0,
+                    "communityPrice": 1.8,
+                    "lowestPrice": {
+                        "stockStatus": "None",
+                        "uninterruptablePrice": None,
+                        "availableGpuCounts": [],
+                    },
+                },
+            ]
+        }
+        out = io.StringIO()
+        with mock.patch.object(frontend, "graphql_request", return_value=response), redirect_stdout(out):
+            rc = frontend.list_gpus("token", None, "SECURE", None, 500, 100)
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn("Available GPU", text)
+        self.assertNotIn("Unavailable GPU", text)
+        self.assertIn("available GPU types", text)
+
+    def test_list_all_includes_unavailable(self):
+        response = {
+            "gpuTypes": [
+                {
+                    "id": "available",
+                    "displayName": "Available GPU",
+                    "memoryInGb": 48,
+                    "secureCloud": True,
+                    "communityCloud": True,
+                    "securePrice": 1.0,
+                    "communityPrice": 0.8,
+                    "lowestPrice": {
+                        "stockStatus": "High",
+                        "uninterruptablePrice": 1.0,
+                        "availableGpuCounts": [1],
+                    },
+                },
+                {
+                    "id": "unavailable",
+                    "displayName": "Unavailable GPU",
+                    "memoryInGb": 96,
+                    "secureCloud": True,
+                    "communityCloud": True,
+                    "securePrice": 2.0,
+                    "communityPrice": 1.8,
+                    "lowestPrice": {
+                        "stockStatus": "None",
+                        "uninterruptablePrice": None,
+                        "availableGpuCounts": [],
+                    },
+                },
+            ]
+        }
+        out = io.StringIO()
+        with mock.patch.object(frontend, "graphql_request", return_value=response), redirect_stdout(out):
+            rc = frontend.list_gpus(
+                "token", None, "SECURE", None, 500, 100, show_all=True
+            )
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn("Available GPU", text)
+        self.assertIn("Unavailable GPU", text)
+        self.assertIn("all GPU types", text)
+
+    def test_all_flag_is_frontend_only(self):
+        forwarded, options = frontend.split_frontend_args(["--list", "--all"])
+        self.assertEqual(forwarded, [])
+        self.assertTrue(options["list_requested"])
+        self.assertTrue(options["show_all"])
+
     def test_list_table_omits_route_floor(self):
         response = {
             "gpuTypes": [
