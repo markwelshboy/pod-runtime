@@ -227,11 +227,25 @@ def _parse_created_at(value: Any) -> datetime | None:
     return None
 
 
+def pod_started_at(rest_pod: dict[str, Any]) -> datetime | None:
+    """Return the Pod's last start timestamp from the RunPod REST surface.
+
+    RunPod's current Pod schema exposes lastStartedAt. Keep createdAt as a
+    compatibility fallback for older/alternate payloads that may still carry it.
+    """
+    return _parse_created_at(
+        _first(
+            rest_pod.get("lastStartedAt"),
+            rest_pod.get("createdAt"),
+        )
+    )
+
+
 def pod_age_seconds(rest_pod: dict[str, Any]) -> float | None:
-    created = _parse_created_at(rest_pod.get("createdAt"))
-    if created is None:
+    started = pod_started_at(rest_pod)
+    if started is None:
         return None
-    return max(0.0, (datetime.now(timezone.utc) - created).total_seconds())
+    return max(0.0, (datetime.now(timezone.utc) - started).total_seconds())
 
 
 def format_elapsed(seconds: float | int | None) -> str:

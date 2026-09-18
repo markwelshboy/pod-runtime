@@ -101,6 +101,29 @@ class RentPodLifecycleTests(unittest.TestCase):
         )
         self.assertEqual(snapshot["stage"], "STOPPED")
 
+
+    def test_pod_started_at_uses_runpod_last_started_at(self):
+        started = lifecycle.pod_started_at(
+            {
+                "lastStartedAt": "2026-09-18T06:07:05.144Z",
+                "createdAt": "2026-09-17T00:00:00Z",
+            }
+        )
+        self.assertIsNotNone(started)
+        self.assertEqual(started.isoformat(), "2026-09-18T06:07:05.144000+00:00")
+
+    def test_pod_started_at_keeps_legacy_created_at_fallback(self):
+        started = lifecycle.pod_started_at(
+            {"createdAt": "2026-09-17T20:00:00Z"}
+        )
+        self.assertIsNotNone(started)
+        self.assertEqual(started.isoformat(), "2026-09-17T20:00:00+00:00")
+
+    def test_pod_started_at_accepts_millisecond_epoch(self):
+        started = lifecycle.pod_started_at({"lastStartedAt": 1789711625144})
+        self.assertIsNotNone(started)
+        self.assertEqual(started.tzinfo, lifecycle.timezone.utc)
+
     def test_elapsed_format(self):
         self.assertEqual(lifecycle.format_elapsed(18), "00:18")
         self.assertEqual(lifecycle.format_elapsed(167), "02:47")

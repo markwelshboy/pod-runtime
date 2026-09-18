@@ -7,7 +7,7 @@ import shlex
 import sys
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,41 +38,13 @@ class PodChoice:
     public_ip: str | None
     ssh_port: int | None
     uptime_seconds: float | None
-    created_at: datetime | None
+    started_at: datetime | None
 
     @property
     def connectable(self) -> bool:
         if not self.public_ip or not self.ssh_port:
             return False
         return self.stage.upper() not in {"EXITED", "STOPPED", "TERMINATED"}
-
-
-def parse_datetime(value: Any) -> datetime | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, (int, float)):
-        number = float(value)
-        if number > 10_000_000_000:
-            number /= 1000.0
-        try:
-            return datetime.fromtimestamp(number, tz=timezone.utc)
-        except (OSError, OverflowError, ValueError):
-            return None
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        try:
-            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        except ValueError:
-            try:
-                return parse_datetime(float(text))
-            except ValueError:
-                return None
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed
-    return None
 
 
 def format_age(seconds: float | int | None) -> str:
@@ -138,7 +110,7 @@ def choice_from_pod(
         public_ip=(str(snapshot["public_ip"]) if snapshot.get("public_ip") else None),
         ssh_port=ssh_port,
         uptime_seconds=uptime,
-        created_at=parse_datetime(pod.get("createdAt")),
+        started_at=lifecycle.pod_started_at(pod),
     )
 
 
@@ -204,7 +176,7 @@ def print_choices(choices: list[PodChoice], *, show_all: bool = False) -> list[P
 
         print(f"{marker} {choice.name}")
         detail = (
-            f"     started {format_started(choice.created_at)} | "
+            f"     started {format_started(choice.started_at)} | "
             f"up {format_age(choice.uptime_seconds)} | {choice.stage}"
         )
         print(detail)
