@@ -149,7 +149,7 @@ class RentPodManageTests(unittest.TestCase):
                  manage, "resolve_pod_selector", return_value=("pod123", summary)
              ) as resolve, \
              mock.patch.object(manage.core, "get_pod", return_value=pod), \
-             mock.patch.object(manage.core, "delete_pod") as delete, \
+             mock.patch.object(manage.core, "delete_pod_confirmed") as delete, \
              mock.patch.object(
                  manage.vcp_targets,
                  "remove_matching_targets",
@@ -173,7 +173,7 @@ class RentPodManageTests(unittest.TestCase):
              mock.patch.object(manage.core, "get_pod", return_value=pod), \
              mock.patch.object(
                  manage.core,
-                 "delete_pod",
+                 "delete_pod_confirmed",
                  side_effect=manage.core.RunPodError("delete failed"),
              ), \
              mock.patch.object(manage.vcp_targets, "remove_matching_targets") as reap:
@@ -200,7 +200,7 @@ class RentPodManageTests(unittest.TestCase):
             {"id": "p2", "name": "two"},
         ]
         with mock.patch.object(manage, "list_pods", return_value=pods), \
-             mock.patch.object(manage.core, "delete_pod") as delete, \
+             mock.patch.object(manage.core, "delete_pod_confirmed") as delete, \
              mock.patch.object(
                  manage.vcp_targets,
                  "remove_matching_targets",

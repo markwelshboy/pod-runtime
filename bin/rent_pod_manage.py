@@ -300,7 +300,7 @@ def kill_pod(api_key: str, selector: str) -> int:
     # available metadata and a typo/race cannot produce a misleading success.
     pod = core.get_pod(api_key, pod_id)
     name = str(pod.get("name") or summary.get("name") or "")
-    core.delete_pod(api_key, pod_id)
+    core.delete_pod_confirmed(api_key, pod_id)
     suffix = f" ({name})" if name else ""
     print(f"[rent-pod] Deleted pod {pod_id}{suffix}.")
     _reap_vcp_for_deleted_pod(pod_id, pod)
@@ -340,7 +340,7 @@ def kill_all(api_key: str, assume_yes: bool = False) -> int:
             continue
         name = str(pod.get("name") or "")
         try:
-            core.delete_pod(api_key, pod_id)
+            core.delete_pod_confirmed(api_key, pod_id)
             deleted += 1
             suffix = f" ({name})" if name else ""
             print(f"[rent-pod] Deleted {pod_id}{suffix}")
