@@ -100,12 +100,17 @@ def split_frontend_args(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
         "cuda_min": None,
         "list_spec": None,
         "list_requested": False,
+        "show_all": False,
     }
     i = 0
     while i < len(argv):
         arg = argv[i]
         if arg == "--community":
             options["community"] = True
+            i += 1
+            continue
+        if arg == "--all":
+            options["show_all"] = True
             i += 1
             continue
         if arg == "--cuda-min":
@@ -225,6 +230,8 @@ def list_gpus(
     cuda_min: str | None,
     min_download: float,
     min_upload: float,
+    *,
+    show_all: bool = False,
 ) -> int:
     secure = "true" if cloud == "SECURE" else "false"
     price_args = [
@@ -274,10 +281,36 @@ query {{
             key=lambda row: str(row.get("displayName") or row.get("id") or ""),
         )
 
+    if not show_all:
+        def available(row: dict[str, Any]) -> bool:
+            if row.get("missing"):
+                return False
+            pool_supported = bool(
+                row.get("secureCloud" if cloud == "SECURE" else "communityCloud")
+            )
+            if not pool_supported:
+                return False
+            lowest = row.get("lowestPrice")
+            if not isinstance(lowest, dict):
+                return False
+            stock = str(lowest.get("stockStatus") or "").strip().lower()
+            return stock not in {
+                "",
+                "none",
+                "n/a",
+                "unavailable",
+                "out of stock",
+                "out_of_stock",
+                "outofstock",
+            }
+
+        selected = [row for row in selected if available(row)]
+
     filter_text = f"{cloud} | >= {int(min_download)} Mbps down | >= {int(min_upload)} Mbps up"
     if cuda_min:
         filter_text += f" | CUDA >= {cuda_min}"
-    print(f"[rent-pod] Live RunPod availability: {filter_text}")
+    scope = "all GPU types" if show_all else "available GPU types"
+    print(f"[rent-pod] Live RunPod availability ({scope}): {filter_text}")
     print()
     print(f"{'GPU':<22} {'VRAM':>5} {'Pool':<7} {'Stock':<8} {'$/hr':>8} {'GPU counts':<18}")
     print("-" * 72)
@@ -485,6 +518,8 @@ def main() -> int:
         forwarded, options = split_frontend_args(sys.argv[1:])
         cloud, forwarded = cloud_from_args(forwarded, bool(options["community"]))
         cuda_min = validate_cuda_version(options["cuda_min"])
+        if options["show_all"] and not options["list_requested"]:
+            raise ValueError("--all is only valid with --list")
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -503,6 +538,7 @@ def main() -> int:
                 cuda_min,
                 option_value(forwarded, "--min-download", 500),
                 option_value(forwarded, "--min-upload", 100),
+                show_all=bool(options["show_all"]),
             )
         except (ValueError, core.RunPodError) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
