@@ -60,13 +60,14 @@ class RentPodFrontendTests(unittest.TestCase):
             ],
         )
 
-    def test_list_all_flag_is_frontend_only(self):
+    def test_list_all_is_distinct_inventory_mode(self):
         forwarded, options = frontend.split_frontend_args(
-            ["--list", "--all", "--cuda-min", "13.3"]
+            ["--list-all", "4090 5090", "--cuda-min", "13.3"]
         )
         self.assertEqual(forwarded, [])
         self.assertTrue(options["list_requested"])
         self.assertTrue(options["list_all"])
+        self.assertEqual(options["list_spec"], "4090 5090")
 
     def test_list_table_omits_route_floor(self):
         response = {
