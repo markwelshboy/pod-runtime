@@ -125,6 +125,7 @@ def install_core_hooks(auto_configure: bool, rent_name: str | None = None) -> No
 
     original_wait = core.wait_for_ssh
     original_run_provision = core.run_provision
+    original_delete_confirmed = core.delete_pod_confirmed
 
     def wait_for_ssh(*args: Any, **kwargs: Any) -> tuple[dict[str, Any], str | None]:
         identity, reason = original_wait(*args, **kwargs)
@@ -146,6 +147,33 @@ def install_core_hooks(auto_configure: bool, rent_name: str | None = None) -> No
             configure_vcp(identity, key, rent_name)
         return rc
 
+    def delete_pod_confirmed(*args: Any, **kwargs: Any) -> None:
+        original_delete_confirmed(*args, **kwargs)
+        pod_id = None
+        if len(args) >= 2:
+            pod_id = args[1]
+        elif "pod_id" in kwargs:
+            pod_id = kwargs["pod_id"]
+        if not pod_id:
+            return
+        try:
+            cleanup = vcp_targets.remove_matching_targets(
+                pod_id=str(pod_id),
+                endpoints=set(),
+            )
+        except Exception as exc:
+            print(
+                f"[rent-pod] WARNING: VCP cleanup failed after pod deletion: {exc}",
+                file=sys.stderr,
+            )
+            return
+        removed = cleanup.get("targets") or []
+        if removed:
+            print(f"[rent-pod] Reaped VCP target(s): {', '.join(removed)}")
+        if cleanup.get("legacy"):
+            print("[rent-pod] Removed obsolete legacy/default VCP SSH mapping.")
+
     core.wait_for_ssh = wait_for_ssh
     core.run_provision = run_provision
+    core.delete_pod_confirmed = delete_pod_confirmed
     _installed = True
