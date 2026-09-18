@@ -40,7 +40,7 @@ def print_help(stream: TextIO = sys.stdout) -> None:
 
 Usage:
   rent-pod [GPU] [options]
-  rent-pod --list [\"GPU GPU ...\"] [selection options]
+  rent-pod --list [\"GPU GPU ...\"] [--all] [selection options]
   rent-pod --list-templates
   rent-pod --balance
   rent-pod --show
@@ -127,7 +127,7 @@ Rental / admission:
   --dry-run                Show the Pod-create payload without renting anything.
 
 Inventory / account / management:
-  --list [\"GPU ...\"]     Show live availability/pricing for selected or all GPUs.
+  --list [\"GPU ...\"]     Show currently available GPUs (optionally selected names).\n  --all                   With --list, include unavailable GPU types too.
   --balance                Show account balance, current $/hr spend, spend limit,
                            and estimated runway at the current burn rate.
   --show                   List Pods on the account.
