@@ -206,8 +206,12 @@ rent-pod --list
 To include no-stock/unavailable GPU types as well:
 
 ```bash
-rent-pod --list --all
+rent-pod --list-all
 ```
+
+Both forms accept the same optional quoted GPU filter, for example
+`rent-pod --list "4090 5090 l40s"` or
+`rent-pod --list-all "4090 5090 l40s"`.
 
 Inspect the complete Pod-create request without spending money:
 
