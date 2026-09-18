@@ -321,20 +321,21 @@ wrap() {
   # 1. Capture text
   # 2. Strip Windows carriage returns
   # 3. Convert invisible non-breaking spaces (U+00A0) to normal spaces
-  # 4. Delete ALL blank lines (this fixes the \ continuation break)
+  # 4. Delete ALL blank lines
   local pasted_text
-  pasted_text=$(cat | tr -d '\r' | sed $'s/\xc2\xa0/ /g' | sed '/^[[:space:]]*$/d')
+  pasted_text=$(cat | tr -d '\r' | sed $'s/\xc2\xa0/ /g' \vert{} sed '/^[[:space:]]*$/d')
   
+  # Use `tee` to send output to BOTH the screen and the file simultaneously
   local wrapped_command="{
 $pasted_text
-} > \"$outfile\" 2>&1"
+} 2>&1 | tee \"$outfile\""
 
   echo -e "\n--- Wrapped Command ---" >&2
   echo "$wrapped_command"
   echo -e "-----------------------\n" >&2
 
   local b64
-  b64=$(printf "%s" "$wrapped_command" | base64 -w 0)
+  b64=$(printf "\%s" "$wrapped_command" | base64 -w 0)
   printf "\033]52;c;%s\a" "$b64" >&2
   
   echo -en "✅ Copied via WezTerm OSC 52.\n\n🚀 Run this command immediately? (y/n) " >&2
@@ -345,7 +346,7 @@ $pasted_text
   if [[ "$answer" =~ ^[Yy]$ ]]; then
     echo "Running..." >&2
     eval "$wrapped_command"
-    echo "Done! Output captured in: $outfile" >&2
+    echo -e "\n✅ Done! Output shown above and captured in: $outfile" >&2
   else
     echo "Canceled. It is still in your clipboard if you need it." >&2
   fi
