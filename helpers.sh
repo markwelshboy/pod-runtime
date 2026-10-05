@@ -55,6 +55,10 @@ source "${_helpers_entry_dir}/helpers_shell.sh"
 [[ -f "${_helpers_entry_dir}/helpers_sage_runtime.sh" ]] && source "${_helpers_entry_dir}/helpers_sage_runtime.sh"
 # shellcheck source=/dev/null
 [[ -f "${_helpers_entry_dir}/helpers_hf_repo_sync.sh" ]] && source "${_helpers_entry_dir}/helpers_hf_repo_sync.sh"
+# Git repository override intentionally loads after the legacy core so it can
+# preserve the HF init_repo path while modernizing git clone/sparse behavior.
+# shellcheck source=/dev/null
+[[ -f "${_helpers_entry_dir}/helpers_git_repo.sh" ]] && source "${_helpers_entry_dir}/helpers_git_repo.sh"
 # shellcheck source=/dev/null
 source "${_helpers_entry_dir}/helpers_hf_manifest.sh"
 # shellcheck source=/dev/null
