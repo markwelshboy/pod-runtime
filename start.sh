@@ -248,7 +248,7 @@ section 7 "Workflow Repository"
 # downloader once the I/O-sensitive custom-node phase has completed.
 
 if [[ "${ENABLE_MY_WORKFLOWS_DOWNLOAD:-false}" == "true" ]]; then
-  init_repo --git "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
+  init_repo --git --exclude-media "$GIT_MYWORKFLOWS_REPO_ID" "$GIT_MYWORKFLOWS_REPO_LOCAL" || true
   rsync_or_symlink_source_to_destination symlink "$GIT_MYWORKFLOWS_REPO_LOCAL" "/workspace"
   _sync_info "✅ Linking files from $GIT_MYWORKFLOWS_REPO_LOCAL into ComfyUI directories via symlinks..."
   mkdir -p "$COMFY_HOME/user/default/workflows/MyWorkflows"
