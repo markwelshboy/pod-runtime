@@ -433,6 +433,10 @@
     "comfyui-minimax-h3-latent-continuation": {
       "remote": "https://github.com/SatoDive/Minimax-H3-Latent-Continuation.git",
       "local": "ComfyUI-MiniMaxH3-Latent-Continuation"
+    },
+    "comfyui-loraplotnode": {
+      "remote": "https://github.com/Hearmeman24/ComfyUI-LoRAPlotNode.git",
+      "local": "ComfyUI-LoRAPlotNode"
     }
   },
   "sets": {
@@ -468,19 +472,22 @@
       "comfyui-tinyterranodes",
       "sd-perturbed-attention",
       "controlaltai-nodes",
-      "comfyui-vrgamedevgirl",
       "comfyui-vintageeffect",
       "comfyui-crosshairguidelines",
       "comfyui-various",
       "comfyui-y7nodes",
       "comfyui-fbcnn",
       "comfyui-nag",
-      "comfyui-pixaroma",
       "comfyui-resolution-master",
       "comfyui-editutils",
-      "comfyui-huggingface",
       "comfyui-basic_data_handling",
-      "comfyui-linkspotlight"
+      "comfyui-linkspotlight",
+      "comfyui-loraplotnode"
+    ],
+    "default-extras": [
+      "comfyui-vrgamedevgirl",
+      "comfyui-pixaroma",
+      "comfyui-huggingface"
     ],
     "imagedit": [
       "comfyui-inpaint-cropandstitch",
