@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bootstrap rent-pod HTTP identity, management, templates, env defaults, and lifecycle probes.
+"""Bootstrap rent-pod HTTP identity, management, templates, queueing, and lifecycle probes.
 
 RunPod's API is fronted by Cloudflare. Python urllib's implicit
 ``Python-urllib/x.y`` User-Agent can be rejected by Cloudflare Browser Integrity
@@ -21,28 +21,29 @@ opener = urllib.request.build_opener()
 opener.addheaders = [("User-Agent", USER_AGENT)]
 urllib.request.install_opener(opener)
 
-# Public help is handled before any credentials, environment defaults, template
-# loading, or paid-operation preflight.  Keep the public CLI vocabulary here,
-# including frontend-only options such as --min-cuda and --community.
 from rent_pod_cli import handle_help_command, normalize_cuda_option  # noqa: E402
 
 help_rc = handle_help_command(sys.argv[1:])
 if help_rc is not None:
     raise SystemExit(help_rc)
 
-# Normalize the public --min-cuda spelling before environment defaults are
-# applied.  That ensures an explicit CLI value correctly overrides
-# RENT_POD_CUDA_MIN, while the frontend can retain its legacy internal
-# --cuda-min contract for backward compatibility.
 try:
     public_argv = normalize_cuda_option(sys.argv[1:])
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
 
-# Post-provision startup, CUDA admission, and Pod naming are rent-pod
-# control-plane metadata, not direct RunPod template fields. Register their keys
-# before *any* template registry load so --list-templates and rentals accept them.
+import rent_pod_queue as queue_handoff  # noqa: E402
+
+try:
+    queue_meta_rc = queue_handoff.handle_queue_meta_command(public_argv, os.environ)
+    if queue_meta_rc is not None:
+        raise SystemExit(queue_meta_rc)
+    public_argv, queue_request = queue_handoff.consume_queue_args(public_argv, os.environ)
+except ValueError as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+
 import rent_pod_startup as startup_handoff  # noqa: E402
 import rent_pod_cuda_profile as cuda_profile_handoff  # noqa: E402
 import rent_pod_naming as naming_handoff  # noqa: E402
@@ -52,8 +53,10 @@ startup_handoff.register_template_option(template_profiles)
 cuda_profile_handoff.register_template_option(template_profiles)
 naming_handoff.register_template_option(template_profiles)
 
-# Local template-profile discovery is intentionally first: it needs neither a
-# RunPod API key nor HF_TOKEN and should never be polluted by rental defaults.
+import rent_pod_api_v2 as api_v2_handoff  # noqa: E402
+
+api_v2_handoff.install_core_hooks()
+
 from rent_pod_templates import handle_template_meta_command  # noqa: E402
 
 try:
@@ -64,8 +67,6 @@ except ValueError as exc:
 if template_meta_rc is not None:
     raise SystemExit(template_meta_rc)
 
-# Account balance is also a meta/management command: it must not inherit rental
-# defaults and needs only RUNPOD_API_KEY, never HF_TOKEN.
 from rent_pod_account import handle_balance_command  # noqa: E402
 
 try:
@@ -79,15 +80,10 @@ except Exception as exc:
 if balance_rc is not None:
     raise SystemExit(balance_rc)
 
-# Upgrade --status/--watch before management dispatch so they use the same TCP,
-# SSH-banner and authenticated-SSH phases as the live rental path.
 import rent_pod_ssh_phases as ssh_phases  # noqa: E402
 
 ssh_phases.install_management_hooks()
 
-# Management commands are parsed before persistent rental defaults are injected:
-# RENT_POD_CUDA_MIN, cloud, bandwidth floors, template profiles, etc. are
-# irrelevant to --show, --status/--watch and --kill.
 from rent_pod_manage import parse_management_args, run_management  # noqa: E402
 
 try:
@@ -104,7 +100,6 @@ if management is not None:
     try:
         raise SystemExit(run_management(api_key, management))
     except Exception as exc:
-        # Preserve the concise CLI error style used by the rental frontend.
         print(f"ERROR: {exc}", file=sys.stderr)
         raise SystemExit(1)
 
@@ -113,6 +108,7 @@ import rent_pod_vcp as vcp_handoff  # noqa: E402
 
 try:
     effective_argv = apply_env_defaults(public_argv, os.environ)
+    queued_launch_argv = list(effective_argv) if queue_request is not None else None
     effective_argv, cli_startup_command = startup_handoff.consume_startup_args(
         effective_argv
     )
@@ -124,16 +120,26 @@ except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
 
-# Resolve a friendly --template name and merge profile env + per-run --env.
-# The friendly name remains in argv for readable CLI output; the real RunPod ID
-# is substituted at the create boundary. Local profiles replace templateId with
-# direct image/storage/port settings for either REST or GraphQL Pod creation.
 from rent_pod_templates import (  # noqa: E402
     apply_context_to_payload,
     apply_template_profile,
     install_core_api_hook,
     print_selected_profile,
 )
+
+
+def _has_option(argv: list[str], name: str) -> bool:
+    return any(arg == name or arg.startswith(name + "=") for arg in argv)
+
+
+def _option_value(argv: list[str], name: str) -> str | None:
+    for index, arg in enumerate(argv):
+        if arg == name and index + 1 < len(argv):
+            return argv[index + 1]
+        if arg.startswith(name + "="):
+            return arg.split("=", 1)[1]
+    return None
+
 
 try:
     effective_argv, template_context = apply_template_profile(effective_argv, os.environ)
@@ -154,7 +160,7 @@ try:
         or arg.startswith("--list-all=")
         for arg in effective_argv
     )
-    if list_requested:
+    if list_requested or queue_request is not None:
         resolved_pod_name = None
         naming_source = None
     else:
@@ -167,6 +173,15 @@ try:
             )
         )
     rent_name = vcp_handoff.requested_name(effective_argv)
+
+    if queued_launch_argv is not None:
+        if not _has_option(queued_launch_argv, "--template"):
+            queued_launch_argv.extend(["--template", template_context.requested])
+        cuda_value = _option_value(effective_argv, "--cuda-min")
+        if cuda_value and not _has_option(queued_launch_argv, "--cuda-min"):
+            queued_launch_argv.extend(["--cuda-min", cuda_value])
+        if startup_command and not _has_option(queued_launch_argv, "--startup"):
+            queued_launch_argv.extend(["--startup", startup_command])
 except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
@@ -186,10 +201,6 @@ def _requires_provision_hf(argv: list[str]) -> bool:
     return True
 
 
-# Keep the paid-pod safety gate, but evaluate it only after template expansion.
-# A RunPod account secret mapped to HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) is a
-# valid provisioning credential and avoids keeping/sending a duplicate value
-# from the local machine.
 if _requires_provision_hf(effective_argv):
     local_hf = (os.environ.get("HF_TOKEN") or "").strip()
     remote_hf = (
@@ -210,12 +221,6 @@ if _requires_provision_hf(effective_argv):
 sys.argv = [sys.argv[0], *effective_argv]
 install_core_api_hook(template_context)
 
-# Install the lifecycle display first, then replace only its readiness wait with
-# the more detailed direct-SSH phase probe. Provision/identity display hooks stay
-# owned by rent_pod_lifecycle. VCP wraps those final hooks so its handoff always
-# receives the endpoint that actually passed authenticated SSH. Startup wraps
-# the resulting provision pipeline last, so it runs only after provision (and
-# optional VCP registration) succeeds and before core reports ACCEPTED.
 from rent_pod_lifecycle import install_core_hooks  # noqa: E402
 
 install_core_hooks()
@@ -226,10 +231,6 @@ startup_handoff.install_core_hook(startup_command)
 import rent_pod_frontend as frontend  # noqa: E402
 from rent_pod_gpu_aliases import install_core_gpu_resolver  # noqa: E402
 
-# GPU names are intentionally separate from template profiles. Local aliases
-# live in ~/.config/rentpod/gpu-aliases.toml (with legacy rent-pod fallback).
-# With an API key available, exact display names shown by `rent-pod --list` are
-# resolved live to RunPod GPU IDs.
 try:
     install_core_gpu_resolver(
         os.environ.get("RUNPOD_API_KEY", "").strip(),
@@ -239,13 +240,10 @@ except ValueError as exc:
     print(f"ERROR: {exc}", file=sys.stderr)
     raise SystemExit(2)
 
-# The normal REST create path receives template/profile expansion through the
-# core api_request hook above.  CUDA-constrained Pods now use GraphQL, so give
-# that path the same transformation explicitly instead of duplicating template
-# semantics inside the frontend.
 frontend.set_create_context_hook(
     lambda payload: apply_context_to_payload(payload, template_context)
 )
+api_v2_handoff.install_frontend_hooks(frontend)
 
 
 def _print_naming_selection() -> None:
@@ -263,14 +261,28 @@ def _print_startup_selection() -> None:
     if not startup_command:
         return
     source = startup_source or "configured"
-    suffix = f"; skipped by --no-provision" if "--no-provision" in effective_argv else ""
+    suffix = "; skipped by --no-provision" if "--no-provision" in effective_argv else ""
     print(f"[rent-pod] Post-provision startup: {startup_command}")
     print(f"           source: {source}{suffix}")
 
 
-# Preserve the useful profile details that the old frontend hook appended to a
-# dry run while letting the frontend itself render the actual transport payload
-# (REST normally, GraphQL when --min-cuda is supplied).
+def _queue_probe() -> dict[str, object]:
+    forwarded, options = frontend.split_frontend_args(effective_argv)
+    cloud, forwarded = frontend.cloud_from_args(forwarded, bool(options["community"]))
+    cuda_min = frontend.validate_cuda_version(options["cuda_min"])
+    args = frontend.core.build_parser().parse_args(forwarded)
+    gpu_id = frontend.core.resolve_gpu(args.gpu_alias)
+    return {
+        "gpu_id": gpu_id,
+        "gpu_label": args.gpu_alias,
+        "cloud": cloud,
+        "cuda_min": cuda_min,
+        "min_download": args.min_download,
+        "min_upload": args.min_upload,
+        "min_disk": args.min_disk,
+    }
+
+
 _base_dry_run = frontend.dry_run
 
 
@@ -291,6 +303,21 @@ if "--dry-run" not in effective_argv:
 if vcp_enabled:
     suffix = f" as target {rent_name}" if rent_name else " as a named target"
     print(f"[rent-pod] VCP auto-config:       enabled after successful provision{suffix}")
+
+if queue_request is not None:
+    assert queued_launch_argv is not None
+    try:
+        raise SystemExit(
+            queue_handoff.enqueue_request(
+                queued_launch_argv,
+                queue_request,
+                _queue_probe(),
+                os.environ,
+            )
+        )
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":
