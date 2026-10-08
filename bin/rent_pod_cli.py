@@ -6,12 +6,7 @@ from typing import TextIO
 
 
 def normalize_cuda_option(argv: list[str]) -> list[str]:
-    """Translate the public --min-cuda spelling to the legacy internal flag.
-
-    rent_pod_frontend historically consumed --cuda-min before delegating to the
-    low-level rental parser.  Keep that internal contract for compatibility, but
-    expose --min-cuda alongside the other --min-* selection floors.
-    """
+    """Translate the public --min-cuda spelling to the legacy internal flag."""
     result: list[str] = []
     i = 0
     while i < len(argv):
@@ -40,6 +35,9 @@ def print_help(stream: TextIO = sys.stdout) -> None:
 
 Usage:
   rent-pod [GPU] [options]
+  rent-pod [GPU] --when-available [queue options] [rental options]
+  rent-pod --queued
+  rent-pod --cancel-queued REQUEST_ID
   rent-pod --list [\"GPU GPU ...\"] [selection options]
   rent-pod --list-all [\"GPU GPU ...\"] [selection options]
   rent-pod --list-templates
@@ -58,20 +56,39 @@ ID. The default GPU is 4090 and the default cloud is SECURE.
 Examples:
   rent-pod 4090
   rent-pod l40s
-  rent-pod "RTX PRO 6000"
+  rent-pod \"RTX PRO 6000\"
   rent-pod pro6000             # if defined in gpu-aliases.toml
+  rent-pod 5090 --when-available --for 24h --window 08:00-23:00
   rent-pod --template qwen3-captioning \\
     --startup 'configure-pod --template qwen3-captioning --snapshot latest' l40s
 
 Selection floors:
-  --min-cuda VERSION       Require CUDA VERSION or newer. Pod creation and
-                           --list both use RunPod GraphQL minCudaVersion, so
-                           newer RunPod CUDA versions do not require a client update.
+  --min-cuda VERSION       Require CUDA VERSION or newer. Availability and Pod
+                           creation use RunPod scheduler minCudaVersion directly.
   --min-download MBPS      Minimum advertised download bandwidth (default: 500).
   --min-upload MBPS        Minimum advertised upload bandwidth (default: 100).
   --min-disk MB_PER_SEC    Minimum advertised disk throughput, when specified.
   --community              Use Community Cloud for this request.
   --cloud SECURE|COMMUNITY Explicit cloud pool (default: SECURE).
+
+Deploy when available:
+  --when-available         Persist the request locally and watch RunPod inventory.
+                           When matching capacity appears, launch through the normal
+                           rent-pod qualification/provision/startup pipeline.
+  --for DURATION           Subscription lifetime (default: 24h). Examples: 30m,
+                           12h, 2d.
+  --window HH:MM-HH:MM     Optional daily local-time launch window. Overnight
+                           windows such as 20:00-02:00 are supported.
+  --check-every SEC        Availability polling interval (default: 60; minimum: 15).
+  --queued                 Show current and recent availability requests. If active
+                           requests exist, also restart a missing detached worker.
+  --cancel-queued ID       Cancel one pending availability request.
+
+Queue state is stored in ~/.cache/pod-runtime/rent-pod-queue.json and worker
+output in ~/.cache/pod-runtime/rent-pod-queue.log. Override with
+RENT_POD_QUEUE_FILE / RENT_POD_QUEUE_LOG. The current approval policy is automatic;
+the queue record contains an approval hook intended for future Telegram/manual
+accept/defer handling without changing the rental pipeline.
 
 Template / Pod configuration:
   --template NAME|ID       Friendly remote/local profile, or raw RunPod template ID.
@@ -86,29 +103,30 @@ Template / Pod configuration:
 
 Pod naming in a template:
   [naming]
-  pattern = "q3c"
-  collision = "increment"
+  pattern = \"q3c\"
+  collision = \"increment\"
 
 The first Pod is named q3c. If that name already exists, rent-pod chooses q3c-1,
-then q3c-2, and so on. Explicit --name always wins. Patterns may also use
-{template}, {date}, and {uid}.
+then q3c-2, and so on. Explicit --name always wins. Queued requests resolve the
+collision only when capacity appears. Patterns may also use {template}, {date},
+and {uid}.
 
 Local template files use their filename as the profile name. Example:
   ~/.config/rent-pod/templates/qwen3-captioning.toml
 
-  image = "runpod/pytorch:latest"
+  image = \"runpod/pytorch:latest\"
   container_disk_gb = 40
   volume_gb = 100
-  volume_mount_path = "/workspace"
-  ports = ["22/tcp", "8000/http"]
-  docker_start_cmd = ["sleep", "infinity"]
-  startup = "configure-pod --template qwen3-captioning --snapshot latest"
+  volume_mount_path = \"/workspace\"
+  ports = [\"22/tcp\", \"8000/http\"]
+  docker_start_cmd = [\"sleep\", \"infinity\"]
+  startup = \"configure-pod --template qwen3-captioning --snapshot latest\"
 
   [env]
-  PROJECT = "qwen3"
+  PROJECT = \"qwen3\"
 
   [secrets]
-  HF_TOKEN = "huggingface_token"
+  HF_TOKEN = \"huggingface_token\"
 
 `docker_start_cmd` controls the container process at Pod boot. `startup` is a
 rent-pod action executed over the proven SSH connection only after provision and
@@ -148,9 +166,9 @@ GPU aliases:
   ~/.config/rent-pod/gpu-aliases.toml
 
   [aliases]
-  pro6000 = "RTX PRO 6000"
-  a100 = "A100 PCIe"
-  h100 = "H100 SXM"
+  pro6000 = \"RTX PRO 6000\"
+  a100 = \"A100 PCIe\"
+  h100 = \"H100 SXM\"
 
 Alias targets may be display names from --list or exact RunPod GPU IDs. Set
 RENT_POD_GPU_ALIASES_FILE to use a different alias file.
@@ -161,6 +179,8 @@ Config root:
 
 Persistent defaults use RENT_POD_* environment variables. In particular,
 RENT_POD_CUDA_MIN supplies the default for --min-cuda. Command-line values win.
+Queue defaults may use RENT_POD_QUEUE_FOR, RENT_POD_QUEUE_WINDOW, and
+RENT_POD_QUEUE_CHECK_SECONDS.
 
 Compatibility:
   --cuda-min VERSION       Legacy alias for --min-cuda; accepted but deprecated.
