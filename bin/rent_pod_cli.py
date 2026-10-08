@@ -64,7 +64,7 @@ Examples:
 
 Selection floors:
   --min-cuda VERSION       Require CUDA VERSION or newer. Availability and Pod
-                           creation use RunPod scheduler minCudaVersion directly.
+                           creation use RunPod GraphQL minCudaVersion directly.
   --min-download MBPS      Minimum advertised download bandwidth (default: 500).
   --min-upload MBPS        Minimum advertised upload bandwidth (default: 100).
   --min-disk MB_PER_SEC    Minimum advertised disk throughput, when specified.
