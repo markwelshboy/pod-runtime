@@ -251,12 +251,20 @@ ensure_comfy_dirs() {
     "${RMBG_DIR:?}" \
     "${BIREFNET_DIR:?}" \
     "${SDMATTE_DIR:?}"
-    
-  #-- Model directories
+
+  #-- Ultralytics sub-directories
   mkdir -p \
     "${ULTRALYTICS_DIR}/bbox" \
     "${ULTRALYTICS_DIR}/segs" \
     "${ULTRALYTICS_DIR}/extras"
+
+  #-- RMBG / SDMatte component directories
+  mkdir -p \
+    "${SDMATTE_DIR:?}/scheduler" \
+    "${SDMATTE_DIR:?}/text_encoder" \
+    "${SDMATTE_DIR:?}/tokenizer" \
+    "${SDMATTE_DIR:?}/unet" \
+    "${SDMATTE_DIR:?}/vae"
 
   #-- Extras
   mkdir -p \
