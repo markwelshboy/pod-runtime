@@ -247,8 +247,11 @@ ensure_comfy_dirs() {
     "${LATENT_UPSCALE_DIR:?}" \
     "${FRAME_INTERPOLATION_DIR:?}" \
     "${VAE_APPROX_DIR:?}" \
-    "${TEXT_COND_DIR:?}"
-
+    "${TEXT_COND_DIR:?}" \
+    "${RMBG_DIR:?}" \
+    "${BIREFNET_DIR:?}" \
+    "${SDMATTE_DIR:?}"
+    
   #-- Model directories
   mkdir -p \
     "${ULTRALYTICS_DIR}/bbox" \

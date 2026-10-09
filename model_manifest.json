@@ -18,9 +18,78 @@
     "LATENT_UPSCALE_DIR": "{MODELS_DIR}/latent_upscale_models",
     "FRAME_INTERPOLATION_DIR": "{MODELS_DIR}/frame_interpolation",
     "VAE_APPROX_DIR": "{MODELS_DIR}/vae_approx",
-    "TEXT_COND_DIR": "{MODELS_DIR}/text_cond"
+    "TEXT_COND_DIR": "{MODELS_DIR}/text_cond",
+    "RMBG_DIR": "{MODELS_DIR}/RMBG",
+    "BIREFNET_DIR": "{MODELS_DIR}/RMBG/BiRefNet",
+    "SDMATTE_DIR": "{MODELS_DIR}/RMBG/SDMatte"
   },
   "sections": {
+    "rmbg_base": [
+      {
+        "url": "https://huggingface.co/1038lab/BiRefNet/resolve/main/BiRefNet-HR-matting.safetensors",
+        "path": "{BIREFNET_DIR}/BiRefNet-HR-matting.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/BiRefNet/resolve/main/BiRefNet-matting.safetensors",
+        "path": "{BIREFNET_DIR}/BiRefNet-matting.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/BiRefNet/resolve/main/BiRefNet-portrait.safetensors",
+        "path": "{BIREFNET_DIR}/BiRefNet-portrait.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/BiRefNet/resolve/main/Lucida.safetensors",
+        "path": "{BIREFNET_DIR}/Lucida.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/BiRefNet/resolve/main/birefnet.py",
+        "path": "{BIREFNET_DIR}/birefnet.py"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/BiRefNet/resolve/main/BiRefNet_config.py",
+        "path": "{BIREFNET_DIR}/BiRefNet_config.py"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/BiRefNet/resolve/main/config.json",
+        "path": "{BIREFNET_DIR}/config.json"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/SDMatte/resolve/main/SDMatte_plus.safetensors",
+        "path": "{SDMATTE_DIR}/SDMatte_plus.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/SDMatte/resolve/main/scheduler/scheduler_config.json",
+        "path": "{SDMATTE_DIR}/scheduler/scheduler_config.json"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/SDMatte/resolve/main/text_encoder/config.json",
+        "path": "{SDMATTE_DIR}/text_encoder/config.json"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/SDMatte/resolve/main/tokenizer/merges.txt",
+        "path": "{SDMATTE_DIR}/tokenizer/merges.txt"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/SDMatte/resolve/main/tokenizer/special_tokens_map.json",
+        "path": "{SDMATTE_DIR}/tokenizer/special_tokens_map.json"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/SDMatte/resolve/main/tokenizer/tokenizer_config.json",
+        "path": "{SDMATTE_DIR}/tokenizer/tokenizer_config.json"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/SDMatte/resolve/main/tokenizer/vocab.json",
+        "path": "{SDMATTE_DIR}/tokenizer/vocab.json"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/SDMatte/resolve/main/unet/config.json",
+        "path": "{SDMATTE_DIR}/unet/config.json"
+      },
+      {
+        "url": "https://huggingface.co/1038lab/SDMatte/resolve/main/vae/config.json",
+        "path": "{SDMATTE_DIR}/vae/config.json"
+      }
+    ],
     "wan22_base": [
       {
         "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp16.safetensors",

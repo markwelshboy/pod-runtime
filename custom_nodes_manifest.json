@@ -437,6 +437,18 @@
     "comfyui-loraplotnode": {
       "remote": "https://github.com/Hearmeman24/ComfyUI-LoRAPlotNode.git",
       "local": "ComfyUI-LoRAPlotNode"
+    },
+    "comfyui-lc123-nodes": {
+      "remote": "https://github.com/lonecatone23/ComfyUI_LC123_nodes.git",
+      "local": "ComfyUI_LC123_nodes"
+    },
+    "comfyui-mira": {
+      "remote": "https://github.com/mirabarukaso/ComfyUI_Mira.git",
+      "local": "ComfyUI_Mira"
+    },
+    "comfyui-efficiency-nodes": {
+      "remote": "https://github.com/jags111/efficiency-nodes-comfyui.git",
+      "local": "ComfyUI-Efficiency-Nodes"
     }
   },
   "sets": {
@@ -449,6 +461,7 @@
       "comfyui-videohelpersuite",
       "mikey-nodes",
       "comfyui-impact-pack",
+      "comfyui-impact-subpack",
       "comfyui-easy-use",
       "comfyui-latentsyncwrapper",
       "was-node-suite-comfyui",
@@ -526,17 +539,20 @@
       "custom-nodes-krea2-bbox-pose-gesture-v1",
       "krea2-multi-character-lora-node-w-bounding-box",
       "comfyui-starnodes",
-      "krea2-multi-character-lora-node-with-bounding-box-scene-and-outfit-edit"
+      "krea2-multi-character-lora-node-with-bounding-box-scene-and-outfit-edit",
+      "comfyui-lc123-nodes",
+      "comfyui-image-saver",
+      "comfyui-mira",
+      "comfyui-rmbg",
+      "comfyui-efficiency-nodes"
     ],
     "krea2-lonecat": [
       "comfyui-florence2",
       "comfyui-fill-nodes",
       "derfuu-comfyui-moddednodes",
       "comfyui-eulerdiscretescheduler",
-      "comfyui-impact-subpack",
       "comfy-image-saver",
       "comfyui-post-processing-nodes",
-      "gguf",
       "comfyui-propost",
       "comfyui-image-saver",
       "comfyui-logicutils",
@@ -546,7 +562,11 @@
       "demonalone-nodes-comfyui",
       "sam3-smartinpainter",
       "comfyui-krea2-style-refrence",
-      "comfyui-qwenvl-mod"
+      "comfyui-qwenvl-mod",
+      "comfyui-lc123-nodes",
+      "comfyui-rmbg",
+      "comfyui-mira",
+      "comfyui-efficiency-nodes"
     ],
     "minimax": [
       "comfyui-starnodes",
