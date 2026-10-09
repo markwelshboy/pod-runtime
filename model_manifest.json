@@ -672,6 +672,10 @@
         "path": "{DIFFUSION_MODELS_DIR}/Krea-2/krea2_turbo_fp8_scaled.safetensors"
       },
       {
+        "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_bf16.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/Krea-2/krea2_turbo_bf16.safetensors"
+      },
+      {
         "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_raw_bf16.safetensors",
         "path": "{DIFFUSION_MODELS_DIR}/Krea-2/krea2_raw_bf16.safetensors"
       },
