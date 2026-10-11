@@ -49,7 +49,22 @@
     },
     "comfyui-controlnet-aux": {
       "remote": "https://github.com/Fannovel16/comfyui_controlnet_aux.git",
-      "local": "comfyui_controlnet_aux"
+      "local": "comfyui_controlnet_aux",
+      "pip": {
+        "options": [
+          "--upgrade-strategy",
+          "only-if-needed"
+        ],
+        "constraint_mode": "inherit",
+        "requirements": {
+          "remove": [
+            "albumentationsx"
+          ],
+          "add": [
+            "albumentations==2.0.8"
+          ]
+        }
+      }
     },
     "comfyui-easy-use": {
       "remote": "https://github.com/yolain/ComfyUI-Easy-Use.git",
