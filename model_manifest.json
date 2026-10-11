@@ -740,6 +740,10 @@
       { 
         "url": "https://huggingface.co/NO8D/HighResolution/resolve/main/high%20quality%20for%20Krea2.safetensors",
         "path": "{LORAS_DIR}/Krea-2/high_quality_for_Krea2.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/gokaygokay/Krea-2-Realism-LoRA/resolve/main/krea2_realism_lora.safetensors",
+        "path": "{LORAS_DIR}/Krea-2/krea2_realism_lora.safetensors"
       }
     ],
     "krea2_character_loras": [
