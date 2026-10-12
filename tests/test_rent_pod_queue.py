@@ -85,6 +85,7 @@ class RentPodQueueTests(unittest.TestCase):
             self.assertEqual(request["status"], "pending")
             self.assertEqual(request["approval"], {"mode": "auto", "state": "not_required"})
             self.assertEqual(request["argv"][0], "5090")
+            self.assertIsNone(request["launch_pid"])
 
     def test_interrupted_launch_recovers_to_attention_not_duplicate_retry(self):
         request = {
@@ -163,6 +164,74 @@ class RentPodQueueTests(unittest.TestCase):
             "xyz789",
         )
 
+    def test_legacy_rented_word_record_is_migrated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = Path(tmp) / "queue.json"
+            state_file.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "requests": [
+                            {
+                                "id": "old",
+                                "status": "launched",
+                                "pod_id": "rented.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            request = queue.load_state(state_file)["requests"][0]
+            self.assertEqual(request["status"], "legacy")
+            self.assertIsNone(request["pod_id"])
+            self.assertIn("Pod ID was not captured", request["last_error"])
+
+    def test_cancel_launching_request_signals_recorded_process_group(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = Path(tmp) / "queue.json"
+            queue.save_state(
+                {
+                    "requests": [
+                        {
+                            "id": "rpa-test",
+                            "status": "launching",
+                            "launch_pid": 12345,
+                        }
+                    ]
+                },
+                state_file,
+            )
+            with mock.patch.object(queue, "_signal_launch_pid", return_value=True) as signal_pid:
+                rc = queue.cancel_request("rpa-test", state_file)
+            self.assertEqual(rc, 0)
+            signal_pid.assert_called_once_with(12345)
+            stored = queue.load_state(state_file)["requests"][0]
+            self.assertEqual(stored["status"], "cancelled")
+
+    def test_cancel_all_active_requests_signals_launches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = Path(tmp) / "queue.json"
+            queue.save_state(
+                {
+                    "requests": [
+                        {"id": "pending", "status": "pending", "launch_pid": None},
+                        {"id": "launching", "status": "launching", "launch_pid": 321},
+                        {"id": "done", "status": "cancelled", "launch_pid": None},
+                    ]
+                },
+                state_file,
+            )
+            with mock.patch.object(queue, "_signal_launch_pid", side_effect=lambda pid: pid == 321):
+                cancelled, signalled = queue.cancel_all_active_requests(
+                    "cancelled by --kill-all", state_file
+                )
+            self.assertEqual(cancelled, 2)
+            self.assertEqual(signalled, 1)
+            stored = {r["id"]: r for r in queue.load_state(state_file)["requests"]}
+            self.assertEqual(stored["pending"]["status"], "cancelled")
+            self.assertEqual(stored["launching"]["status"], "cancelled")
+
     def test_post_create_failure_moves_to_attention(self):
         with tempfile.TemporaryDirectory() as tmp:
             state_file = Path(tmp) / "queue.json"
@@ -180,7 +249,7 @@ class RentPodQueueTests(unittest.TestCase):
                 "probe": {"gpu_id": "gpu-test"},
                 "argv": ["l40s"],
             }
-            queue.save_state({"schema_version": 1, "requests": [request]}, state_file)
+            queue.save_state({"requests": [request]}, state_file)
             with mock.patch.dict(os.environ, {"RUNPOD_API_KEY": "token"}), mock.patch.object(
                 queue, "_graphql_availability", return_value=(True, "LOW")
             ), mock.patch.object(
@@ -211,9 +280,9 @@ class RentPodQueueTests(unittest.TestCase):
                 "probe": {"gpu_id": "gpu-test"},
                 "argv": ["l40s"],
             }
-            queue.save_state({"schema_version": 1, "requests": [request]}, state_file)
+            queue.save_state({"requests": [request]}, state_file)
 
-            def cancelled_launch(_request, _log):
+            def cancelled_launch(_request, _state, _log):
                 queue.cancel_request("rpa-test", state_file)
                 return 1, None, "[rent-pod] ERROR: no capacity\n"
 
@@ -224,6 +293,43 @@ class RentPodQueueTests(unittest.TestCase):
             stored = queue.load_state(state_file)["requests"][0]
             self.assertEqual(stored["status"], "cancelled")
             self.assertEqual(stored["last_error"], "cancelled by user")
+
+    def test_cancel_during_launch_with_confirmed_cleanup_stays_cancelled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = Path(tmp) / "queue.json"
+            log_file = Path(tmp) / "queue.log"
+            now = queue.now_utc()
+            request = {
+                "id": "rpa-test",
+                "status": "pending",
+                "created_at": queue.iso(now),
+                "expires_at": queue.iso(now + timedelta(hours=1)),
+                "window": None,
+                "check_every": 60,
+                "next_attempt_at": queue.iso(now),
+                "attempt_count": 0,
+                "probe": {"gpu_id": "gpu-test"},
+                "argv": ["l40s"],
+            }
+            queue.save_state({"requests": [request]}, state_file)
+
+            def cancelled_launch(_request, _state, _log):
+                queue.cancel_request("rpa-test", state_file)
+                return (
+                    130,
+                    "pod123",
+                    "[rent-pod] Pod                    pod123\n"
+                    "[rent-pod] Pod deletion confirmed: pod123.\n",
+                )
+
+            with mock.patch.dict(os.environ, {"RUNPOD_API_KEY": "token"}), mock.patch.object(
+                queue, "_graphql_availability", return_value=(True, "LOW")
+            ), mock.patch.object(queue, "_run_launch", side_effect=cancelled_launch):
+                queue._process_request(request, state_file, log_file)
+            stored = queue.load_state(state_file)["requests"][0]
+            self.assertEqual(stored["status"], "cancelled")
+            self.assertEqual(stored["pod_id"], "pod123")
+            self.assertIn("deletion", stored["last_error"])
 
 
 if __name__ == "__main__":
