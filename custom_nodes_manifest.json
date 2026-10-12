@@ -274,9 +274,9 @@
       "remote": "https://github.com/facok/comfyui-krea2-controlnet",
       "local": "comfyui-krea2-controlnet"
     },
-    "comfyui-conditioning-rebalance": {
-      "remote": "https://github.com/nova452/ComfyUI-Conditioning-Rebalance",
-      "local": "ComfyUI-Conditioning-Rebalance"
+    "rebalance-pack": {
+      "remote": "https://github.com/nova452/Rebalance-Pack",
+      "local": "Rebalance-Pack"
     },
     "crt-nodes": {
       "remote": "https://github.com/PGCRT/CRT-Nodes.git",
@@ -565,7 +565,7 @@
       "krea-2-two-stage-sampler",
       "comfyui-krea2edit",
       "comfyui-krea2-controlnet",
-      "comfyui-conditioning-rebalance",
+      "rebalance-pack",
       "crt-nodes",
       "krea2-bbox-prompter",
       "custom-nodes-krea2-bbox-pose-gesture-v1",
