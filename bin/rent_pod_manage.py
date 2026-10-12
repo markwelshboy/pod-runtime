@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from typing import Any
 
 import rent_pod as core
 import rent_pod_lifecycle as lifecycle
+import rent_pod_queue as queue
 import vcp_targets
 
 
@@ -304,17 +306,19 @@ def kill_pod(api_key: str, selector: str) -> int:
     suffix = f" ({name})" if name else ""
     print(f"[rent-pod] Deleted pod {pod_id}{suffix}.")
     _reap_vcp_for_deleted_pod(pod_id, pod)
+    queue.mark_pod_terminated(pod_id, "Pod deletion confirmed by --kill")
     return 0
 
 
-def confirm_kill_all(count: int) -> bool:
+def confirm_kill_all(pod_count: int, queue_count: int = 0) -> bool:
     if not sys.stdin.isatty():
         print(
             "ERROR: --kill-all requires an interactive terminal or --yes/-y.",
             file=sys.stderr,
         )
         return False
-    print(f"[rent-pod] About to permanently delete {count} pod(s).")
+    queue_suffix = f" and cancel {queue_count} queued request(s)" if queue_count else ""
+    print(f"[rent-pod] About to permanently delete {pod_count} pod(s){queue_suffix}.")
     try:
         answer = input("Type DELETE ALL to continue: ")
     except EOFError:
@@ -322,17 +326,11 @@ def confirm_kill_all(count: int) -> bool:
     return answer.strip() == "DELETE ALL"
 
 
-def kill_all(api_key: str, assume_yes: bool = False) -> int:
-    pods = list_pods(api_key)
-    if not pods:
-        print("[rent-pod] No pods to delete.")
-        return 0
-
-    if not assume_yes and not confirm_kill_all(len(pods)):
-        print("[rent-pod] No pods deleted.")
-        return 1
-
-    failures: list[tuple[str, str]] = []
+def _delete_pod_set(
+    api_key: str,
+    pods: list[dict[str, Any]],
+    failures: list[tuple[str, str]],
+) -> int:
     deleted = 0
     for pod in pods:
         pod_id = str(pod.get("id") or "")
@@ -345,18 +343,80 @@ def kill_all(api_key: str, assume_yes: bool = False) -> int:
             suffix = f" ({name})" if name else ""
             print(f"[rent-pod] Deleted {pod_id}{suffix}")
             _reap_vcp_for_deleted_pod(pod_id, pod)
+            queue.mark_pod_terminated(pod_id, "Pod deletion confirmed by --kill-all")
         except core.RunPodError as exc:
             failures.append((pod_id, str(exc)))
             print(f"[rent-pod] ERROR deleting {pod_id}: {exc}", file=sys.stderr)
+    return deleted
 
-    if failures:
+
+def kill_all(api_key: str, assume_yes: bool = False) -> int:
+    initial_pods = list_pods(api_key)
+    queued_count = queue.active_request_count()
+
+    if not initial_pods and not queued_count:
+        retired = queue.retire_known_missing_pods(set())
+        print("[rent-pod] No pods to delete.")
+        if retired:
+            print(f"[rent-pod] Reconciled {retired} stale queued launch record(s).")
+        return 0
+
+    if not assume_yes and not confirm_kill_all(len(initial_pods), queued_count):
+        print("[rent-pod] No pods deleted and no queued requests cancelled.")
+        return 1
+
+    cancelled, signalled = queue.cancel_all_active_requests("cancelled by --kill-all")
+    if cancelled:
+        suffix = f"; interrupted {signalled} in-flight launch(es)" if signalled else ""
+        print(f"[rent-pod] Cancelled {cancelled} queued availability request(s){suffix}.")
+
+    # Usually one pass is sufficient. If a queued launch was already executing,
+    # give its SIGINT cleanup a brief chance to finish and sweep again so a Pod
+    # that became visible during cancellation cannot survive --kill-all.
+    sweep_count = 3 if signalled else 1
+    failures: list[tuple[str, str]] = []
+    deleted = 0
+    pods = initial_pods
+    for sweep in range(sweep_count):
+        if sweep > 0:
+            time.sleep(1)
+            pods = list_pods(api_key)
+        if pods:
+            deleted += _delete_pod_set(api_key, pods, failures)
+        if not signalled:
+            break
+
+    live_pods = list_pods(api_key) if signalled else []
+    live_ids = {
+        str(pod.get("id") or "").strip()
+        for pod in live_pods
+        if str(pod.get("id") or "").strip()
+    }
+    retired = queue.retire_known_missing_pods(live_ids)
+    if retired:
+        print(f"[rent-pod] Reconciled {retired} queued launch record(s) with deleted Pods.")
+
+    if live_pods:
+        ids = ", ".join(sorted(live_ids)) or "unknown"
         print(
-            f"[rent-pod] Deleted {deleted}/{len(pods)} pods; {len(failures)} failed.",
+            f"[rent-pod] ERROR: Pod(s) still present after kill-all sweep: {ids}",
             file=sys.stderr,
         )
         return 1
 
-    print(f"[rent-pod] Deleted all {deleted} pods.")
+    if failures:
+        print(
+            f"[rent-pod] Deleted {deleted} pod(s); {len(failures)} deletion attempt(s) failed.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if deleted:
+        print(f"[rent-pod] Deleted all {deleted} pods.")
+    elif cancelled:
+        print("[rent-pod] No running pods remained after queued launches were cancelled.")
+    else:
+        print("[rent-pod] No pods to delete.")
     return 0
 
 
