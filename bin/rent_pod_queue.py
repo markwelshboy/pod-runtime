@@ -44,7 +44,17 @@ USER_AGENT = os.environ.get(
 )
 ACTIVE_STATES = {"pending", "launching"}
 FINAL_STATES = {"launched", "expired", "cancelled", "failed", "attention"}
-POD_ID_RE = re.compile(r"^\[rent-pod\]\s+Pod\s+(\S+)\s*$", re.MULTILINE)
+# These patterns intentionally match only the explicit failure diagnostic and
+# the aligned identity row.  In particular they must never interpret the human
+# sentence "[rent-pod] Pod rented." as a Pod ID.
+POD_ID_EXPLICIT_RE = re.compile(
+    r"^\[rent-pod\]\s+Pod ID:\s*(\S+)\s*$",
+    re.MULTILINE,
+)
+POD_IDENTITY_RE = re.compile(
+    r"^\[rent-pod\]\s+Pod\s{2,}(\S+)\s*$",
+    re.MULTILINE,
+)
 
 
 @dataclass(frozen=True)
@@ -475,6 +485,37 @@ def availability_decision(request: dict[str, Any]) -> str:
     return "launch" if approval.get("mode", "auto") == "auto" else "defer"
 
 
+def _extract_pod_id(output: str) -> str | None:
+    """Extract a real Pod ID without treating human status text as identity."""
+    explicit = POD_ID_EXPLICIT_RE.findall(output)
+    if explicit:
+        return explicit[-1]
+    identity = POD_IDENTITY_RE.findall(output)
+    if identity:
+        return identity[-1]
+    return None
+
+
+def _launch_error_summary(output: str, rc: int) -> str:
+    """Return the most useful one-line reason from a captured rent-pod launch."""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    preferred = (
+        "[rent-pod] ERROR:",
+        "ERROR:",
+        "[rent-pod] Provision failed",
+        "[rent-pod] Startup command failed",
+        "[rent-pod] No acceptable pod found",
+        "[rent-pod] SSH EXPOSURE TIMEOUT",
+    )
+    for prefix in preferred:
+        for line in reversed(lines):
+            if line.startswith(prefix):
+                return line[:240]
+    if lines:
+        return lines[-1][:240]
+    return f"rent-pod exited rc={rc} without output"
+
+
 def _run_launch(request: dict[str, Any], log_file: Path) -> tuple[int, str | None, str]:
     entry = Path(__file__).resolve().with_name("rent_pod_entry.py")
     command = [sys.executable, str(entry), *[str(v) for v in request.get("argv", [])]]
@@ -492,8 +533,7 @@ def _run_launch(request: dict[str, Any], log_file: Path) -> tuple[int, str | Non
         handle.write(output)
         if output and not output.endswith("\n"):
             handle.write("\n")
-    match = POD_ID_RE.search(output)
-    return result.returncode, match.group(1) if match else None, output
+    return result.returncode, _extract_pod_id(output), output
 
 
 def _update_request(state_file: Path, request_id: str, **updates: Any) -> dict[str, Any] | None:
@@ -503,6 +543,14 @@ def _update_request(state_file: Path, request_id: str, **updates: Any) -> dict[s
             if request.get("id") == request_id:
                 request.update(updates)
                 save_state(state, state_file)
+                return dict(request)
+    return None
+
+
+def _get_request(state_file: Path, request_id: str) -> dict[str, Any] | None:
+    with state_lock(state_file):
+        for request in load_state(state_file).get("requests", []):
+            if request.get("id") == request_id:
                 return dict(request)
     return None
 
@@ -581,9 +629,42 @@ def _process_request(request: dict[str, Any], state_file: Path, log_file: Path) 
         return
 
     _append_log(f"{request_id}: capacity available ({stock}); launching", log_file)
-    rc, pod_id, _output = _run_launch(current, log_file)
+    rc, pod_id, output = _run_launch(current, log_file)
     finished = now_utc()
+    summary = _launch_error_summary(output, rc)
+
+    # Cancellation must be sticky.  If the user cancelled while the normal
+    # rent-pod subprocess was in flight, never reactivate the request.  A Pod ID
+    # positively observed after cancellation is promoted to attention so a paid
+    # resource cannot disappear behind a benign-looking cancelled state.
+    latest = _get_request(state_file, request_id)
+    if latest and latest.get("status") == "cancelled":
+        if pod_id:
+            _update_request(
+                state_file,
+                request_id,
+                status="attention",
+                pod_id=pod_id,
+                last_error=f"cancelled while launch was in flight; Pod {pod_id} was created; inspect before deleting",
+            )
+            _append_log(
+                f"{request_id}: cancelled during launch but pod={pod_id} exists; manual attention",
+                log_file,
+            )
+        else:
+            _append_log(f"{request_id}: launch finished after cancellation; no Pod ID observed", log_file)
+        return
+
     if rc == 0:
+        if not pod_id:
+            _update_request(
+                state_file,
+                request_id,
+                status="attention",
+                last_error="rent-pod exited successfully but queue could not confirm the Pod ID; refusing automatic retry",
+            )
+            _append_log(f"{request_id}: launch rc=0 but Pod ID was not confirmed", log_file)
+            return
         _update_request(
             state_file,
             request_id,
@@ -592,7 +673,7 @@ def _process_request(request: dict[str, Any], state_file: Path, log_file: Path) 
             pod_id=pod_id,
             last_error=None,
         )
-        _append_log(f"{request_id}: launch succeeded pod={pod_id or 'unknown'}", log_file)
+        _append_log(f"{request_id}: launch succeeded pod={pod_id}", log_file)
         return
 
     if pod_id:
@@ -601,9 +682,9 @@ def _process_request(request: dict[str, Any], state_file: Path, log_file: Path) 
             request_id,
             status="attention",
             pod_id=pod_id,
-            last_error=f"rent-pod exited rc={rc} after Pod creation; not retrying automatically",
+            last_error=f"rent-pod exited rc={rc} after Pod {pod_id} was created; {summary}; not retrying automatically",
         )
-        _append_log(f"{request_id}: launch rc={rc} with pod={pod_id}; manual attention", log_file)
+        _append_log(f"{request_id}: launch rc={rc} with pod={pod_id}; manual attention: {summary}", log_file)
         return
 
     if rc == 2:
@@ -611,9 +692,9 @@ def _process_request(request: dict[str, Any], state_file: Path, log_file: Path) 
             state_file,
             request_id,
             status="failed",
-            last_error="rent-pod rejected queued command (rc=2); see queue log",
+            last_error=f"queued command rejected: {summary}",
         )
-        _append_log(f"{request_id}: launch command invalid rc=2", log_file)
+        _append_log(f"{request_id}: launch command invalid rc=2: {summary}", log_file)
         return
 
     delay = max(int(request.get("check_every") or 60), 60)
@@ -621,10 +702,10 @@ def _process_request(request: dict[str, Any], state_file: Path, log_file: Path) 
         state_file,
         request_id,
         status="pending",
-        last_error=f"launch race/failure rc={rc}; retrying while subscription remains active",
+        last_error=f"launch rc={rc} before Pod creation: {summary}; retrying while subscription remains active",
         next_attempt_at=iso(finished + timedelta(seconds=delay)),
     )
-    _append_log(f"{request_id}: launch rc={rc} before Pod creation; returned to pending", log_file)
+    _append_log(f"{request_id}: launch rc={rc} before Pod creation; pending: {summary}", log_file)
 
 
 def worker_main(state_file: Path = DEFAULT_STATE_FILE, log_file: Path = DEFAULT_LOG_FILE) -> int:
