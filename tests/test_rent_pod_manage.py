@@ -154,7 +154,8 @@ class RentPodManageTests(unittest.TestCase):
                  manage.vcp_targets,
                  "remove_matching_targets",
                  return_value={"targets": ["seedvr2"], "legacy": True},
-             ) as reap:
+             ) as reap, \
+             mock.patch.object(manage.queue, "mark_pod_terminated") as mark:
             rc = manage.kill_pod("token", "seedvr2")
 
         self.assertEqual(rc, 0)
@@ -164,6 +165,7 @@ class RentPodManageTests(unittest.TestCase):
             pod_id="pod123",
             endpoints={("64.247.206.212", 14463)},
         )
+        mark.assert_called_once_with("pod123", "Pod deletion confirmed by --kill")
 
     def test_kill_does_not_reap_if_delete_fails(self):
         pod = {"id": "pod123", "name": "qwen"}
@@ -176,10 +178,12 @@ class RentPodManageTests(unittest.TestCase):
                  "delete_pod_confirmed",
                  side_effect=manage.core.RunPodError("delete failed"),
              ), \
-             mock.patch.object(manage.vcp_targets, "remove_matching_targets") as reap:
+             mock.patch.object(manage.vcp_targets, "remove_matching_targets") as reap, \
+             mock.patch.object(manage.queue, "mark_pod_terminated") as mark:
             with self.assertRaises(manage.core.RunPodError):
                 manage.kill_pod("token", "qwen")
         reap.assert_not_called()
+        mark.assert_not_called()
 
     def test_status_and_watch_accept_name(self):
         with mock.patch.object(
@@ -205,7 +209,11 @@ class RentPodManageTests(unittest.TestCase):
                  manage.vcp_targets,
                  "remove_matching_targets",
                  return_value={"targets": [], "legacy": False},
-             ) as reap:
+             ) as reap, \
+             mock.patch.object(manage.queue, "active_request_count", return_value=0), \
+             mock.patch.object(manage.queue, "cancel_all_active_requests", return_value=(0, 0)), \
+             mock.patch.object(manage.queue, "mark_pod_terminated") as mark, \
+             mock.patch.object(manage.queue, "retire_known_missing_pods", return_value=0):
             rc = manage.kill_all("token", assume_yes=True)
         self.assertEqual(rc, 0)
         self.assertEqual(delete.call_count, 2)
@@ -214,6 +222,42 @@ class RentPodManageTests(unittest.TestCase):
         self.assertEqual(reap.call_count, 2)
         reap.assert_any_call(pod_id="p1", endpoints=set())
         reap.assert_any_call(pod_id="p2", endpoints=set())
+        self.assertEqual(mark.call_count, 2)
+
+    def test_kill_all_cancels_queue_and_sweeps_late_inflight_pod(self):
+        late_pod = {"id": "late1", "name": "late-l40s"}
+        with mock.patch.object(
+                 manage,
+                 "list_pods",
+                 side_effect=[[], [late_pod], [], []],
+             ), \
+             mock.patch.object(manage.queue, "active_request_count", return_value=1), \
+             mock.patch.object(
+                 manage.queue,
+                 "cancel_all_active_requests",
+                 return_value=(1, 1),
+             ) as cancel, \
+             mock.patch.object(manage.core, "delete_pod_confirmed") as delete, \
+             mock.patch.object(
+                 manage.vcp_targets,
+                 "remove_matching_targets",
+                 return_value={"targets": [], "legacy": False},
+             ), \
+             mock.patch.object(manage.queue, "mark_pod_terminated"), \
+             mock.patch.object(manage.queue, "retire_known_missing_pods", return_value=1), \
+             mock.patch.object(manage.time, "sleep"):
+            rc = manage.kill_all("token", assume_yes=True)
+        self.assertEqual(rc, 0)
+        cancel.assert_called_once_with("cancelled by --kill-all")
+        delete.assert_called_once_with("token", "late1")
+
+    def test_kill_all_with_no_pods_reconciles_stale_queue_history(self):
+        with mock.patch.object(manage, "list_pods", return_value=[]), \
+             mock.patch.object(manage.queue, "active_request_count", return_value=0), \
+             mock.patch.object(manage.queue, "retire_known_missing_pods", return_value=1) as retire:
+            rc = manage.kill_all("token", assume_yes=True)
+        self.assertEqual(rc, 0)
+        retire.assert_called_once_with(set())
 
 
 if __name__ == "__main__":
