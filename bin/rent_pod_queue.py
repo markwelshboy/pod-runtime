@@ -12,6 +12,7 @@ import fcntl
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -24,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
-STATE_VERSION = 1
+STATE_VERSION = 2
 DEFAULT_STATE_FILE = Path(
     os.environ.get(
         "RENT_POD_QUEUE_FILE",
@@ -43,9 +44,17 @@ USER_AGENT = os.environ.get(
     "pod-runtime-rent-pod/1.0 (Linux; Python)",
 )
 ACTIVE_STATES = {"pending", "launching"}
-FINAL_STATES = {"launched", "expired", "cancelled", "failed", "attention"}
+FINAL_STATES = {
+    "launched",
+    "expired",
+    "cancelled",
+    "failed",
+    "attention",
+    "terminated",
+    "legacy",
+}
 # These patterns intentionally match only the explicit failure diagnostic and
-# the aligned identity row.  In particular they must never interpret the human
+# the aligned identity row. In particular they must never interpret the human
 # sentence "[rent-pod] Pod rented." as a Pod ID.
 POD_ID_EXPLICIT_RE = re.compile(
     r"^\[rent-pod\]\s+Pod ID:\s*(\S+)\s*$",
@@ -221,6 +230,23 @@ def state_lock(state_file: Path = DEFAULT_STATE_FILE) -> Iterator[None]:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+def _migrate_state(obj: dict[str, Any]) -> dict[str, Any]:
+    """Apply in-memory compatibility fixes for queue records from older builds."""
+    for request in obj.get("requests", []):
+        if not isinstance(request, dict):
+            continue
+        request.setdefault("launch_pid", None)
+        # The first queue implementation could scrape the word "rented." from
+        # "[rent-pod] Pod rented." and persist it as the Pod ID. Do not keep
+        # presenting those records as if a live Pod identity were known.
+        if request.get("status") == "launched" and request.get("pod_id") == "rented.":
+            request["status"] = "legacy"
+            request["pod_id"] = None
+            request["last_error"] = "legacy launch record; Pod ID was not captured"
+    obj["schema_version"] = STATE_VERSION
+    return obj
+
+
 def load_state(state_file: Path = DEFAULT_STATE_FILE) -> dict[str, Any]:
     try:
         obj = json.loads(state_file.read_text(encoding="utf-8"))
@@ -230,11 +256,12 @@ def load_state(state_file: Path = DEFAULT_STATE_FILE) -> dict[str, Any]:
         raise RuntimeError(f"cannot read queue state {state_file}: {exc}") from exc
     if not isinstance(obj, dict) or not isinstance(obj.get("requests"), list):
         raise RuntimeError(f"invalid queue state in {state_file}")
-    return obj
+    return _migrate_state(obj)
 
 
 def save_state(state: dict[str, Any], state_file: Path = DEFAULT_STATE_FILE) -> None:
     state_file.parent.mkdir(parents=True, exist_ok=True)
+    state["schema_version"] = STATE_VERSION
     tmp = state_file.with_suffix(state_file.suffix + ".tmp")
     tmp.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     tmp.replace(state_file)
@@ -297,6 +324,7 @@ def enqueue_request(
         "last_error": None,
         "available_at": None,
         "launched_at": None,
+        "launch_pid": None,
         "pod_id": None,
         "argv": list(argv),
         "probe": dict(probe),
@@ -304,7 +332,6 @@ def enqueue_request(
     }
     with state_lock(state_file):
         state = load_state(state_file)
-        state["schema_version"] = STATE_VERSION
         state["requests"].append(request)
         save_state(state, state_file)
 
@@ -332,7 +359,10 @@ def _format_remaining(expires_at: str) -> str:
 
 def show_queue(state_file: Path = DEFAULT_STATE_FILE) -> int:
     with state_lock(state_file):
-        requests = list(load_state(state_file).get("requests", []))
+        state = load_state(state_file)
+        # Persist any state migration while we already hold the lock.
+        save_state(state, state_file)
+        requests = list(state.get("requests", []))
     if not requests:
         print("[rent-pod] No queued availability requests.")
         return 0
@@ -352,7 +382,102 @@ def show_queue(state_file: Path = DEFAULT_STATE_FILE) -> int:
     return 0
 
 
+def _signal_launch_pid(pid: Any, sig: signal.Signals = signal.SIGINT) -> bool:
+    try:
+        value = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if value <= 0:
+        return False
+    try:
+        os.killpg(value, sig)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return False
+
+
+def active_request_count(state_file: Path = DEFAULT_STATE_FILE) -> int:
+    with state_lock(state_file):
+        return sum(
+            1
+            for request in load_state(state_file).get("requests", [])
+            if request.get("status") in ACTIVE_STATES
+        )
+
+
+def cancel_all_active_requests(
+    reason: str = "cancelled by user",
+    state_file: Path = DEFAULT_STATE_FILE,
+) -> tuple[int, int]:
+    pids: list[Any] = []
+    cancelled = 0
+    with state_lock(state_file):
+        state = load_state(state_file)
+        for request in state.get("requests", []):
+            if request.get("status") not in ACTIVE_STATES:
+                continue
+            request["status"] = "cancelled"
+            request["last_error"] = reason
+            pids.append(request.get("launch_pid"))
+            cancelled += 1
+        if cancelled:
+            save_state(state, state_file)
+    signalled = sum(1 for pid in pids if _signal_launch_pid(pid))
+    return cancelled, signalled
+
+
+def mark_pod_terminated(
+    pod_id: str,
+    reason: str = "Pod deletion confirmed",
+    state_file: Path = DEFAULT_STATE_FILE,
+) -> int:
+    value = pod_id.strip()
+    if not value:
+        return 0
+    changed = 0
+    with state_lock(state_file):
+        state = load_state(state_file)
+        for request in state.get("requests", []):
+            if str(request.get("pod_id") or "") != value:
+                continue
+            request["status"] = "terminated"
+            request["launch_pid"] = None
+            request["last_error"] = reason
+            changed += 1
+        if changed:
+            save_state(state, state_file)
+    return changed
+
+
+def retire_known_missing_pods(
+    live_pod_ids: set[str],
+    reason: str = "Pod no longer present after kill-all",
+    state_file: Path = DEFAULT_STATE_FILE,
+) -> int:
+    """Retire queue records with known Pod IDs after an account-wide sweep."""
+    changed = 0
+    with state_lock(state_file):
+        state = load_state(state_file)
+        for request in state.get("requests", []):
+            pod_id = str(request.get("pod_id") or "").strip()
+            if not pod_id or pod_id in live_pod_ids:
+                continue
+            if request.get("status") not in {"launched", "attention", "cancelled"}:
+                continue
+            request["status"] = "terminated"
+            request["launch_pid"] = None
+            request["last_error"] = reason
+            changed += 1
+        if changed:
+            save_state(state, state_file)
+    return changed
+
+
 def cancel_request(request_id: str, state_file: Path = DEFAULT_STATE_FILE) -> int:
+    launch_pid: Any = None
+    was_launching = False
     with state_lock(state_file):
         state = load_state(state_file)
         matches = [r for r in state.get("requests", []) if r.get("id") == request_id]
@@ -362,10 +487,16 @@ def cancel_request(request_id: str, state_file: Path = DEFAULT_STATE_FILE) -> in
         if request.get("status") in FINAL_STATES:
             print(f"[rent-pod] Request {request_id} is already {request.get('status')}.")
             return 0
+        was_launching = request.get("status") == "launching"
+        launch_pid = request.get("launch_pid")
         request["status"] = "cancelled"
         request["last_error"] = "cancelled by user"
         save_state(state, state_file)
-    print(f"[rent-pod] Cancelled queued request {request_id}.")
+    signalled = _signal_launch_pid(launch_pid)
+    suffix = ""
+    if was_launching:
+        suffix = "; interrupt sent to in-flight launch" if signalled else "; in-flight launch cancellation recorded"
+    print(f"[rent-pod] Cancelled queued request {request_id}{suffix}.")
     return 0
 
 
@@ -516,24 +647,49 @@ def _launch_error_summary(output: str, rc: int) -> str:
     return f"rent-pod exited rc={rc} without output"
 
 
-def _run_launch(request: dict[str, Any], log_file: Path) -> tuple[int, str | None, str]:
+def _register_launch_pid(state_file: Path, request_id: str, pid: int) -> str | None:
+    with state_lock(state_file):
+        state = load_state(state_file)
+        for request in state.get("requests", []):
+            if request.get("id") != request_id:
+                continue
+            status = str(request.get("status") or "")
+            if status == "launching":
+                request["launch_pid"] = pid
+                save_state(state, state_file)
+            return status
+    return None
+
+
+def _run_launch(
+    request: dict[str, Any],
+    state_file: Path,
+    log_file: Path,
+) -> tuple[int, str | None, str]:
     entry = Path(__file__).resolve().with_name("rent_pod_entry.py")
     command = [sys.executable, str(entry), *[str(v) for v in request.get("argv", [])]]
-    result = subprocess.run(
+    process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         env=os.environ.copy(),
+        start_new_session=True,
     )
-    output = result.stdout or ""
+    request_id = str(request.get("id") or "")
+    status = _register_launch_pid(state_file, request_id, process.pid)
+    if status != "launching":
+        _signal_launch_pid(process.pid)
+    output, _unused = process.communicate()
+    output = output or ""
+    _update_request(state_file, request_id, launch_pid=None)
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with log_file.open("a", encoding="utf-8") as handle:
-        handle.write(f"\n===== queue launch {request.get('id')} rc={result.returncode} =====\n")
+        handle.write(f"\n===== queue launch {request_id} rc={process.returncode} =====\n")
         handle.write(output)
         if output and not output.endswith("\n"):
             handle.write("\n")
-    return result.returncode, _extract_pod_id(output), output
+    return int(process.returncode or 0), _extract_pod_id(output), output
 
 
 def _update_request(state_file: Path, request_id: str, **updates: Any) -> dict[str, Any] | None:
@@ -629,17 +785,27 @@ def _process_request(request: dict[str, Any], state_file: Path, log_file: Path) 
         return
 
     _append_log(f"{request_id}: capacity available ({stock}); launching", log_file)
-    rc, pod_id, output = _run_launch(current, log_file)
+    rc, pod_id, output = _run_launch(current, state_file, log_file)
     finished = now_utc()
     summary = _launch_error_summary(output, rc)
 
-    # Cancellation must be sticky.  If the user cancelled while the normal
-    # rent-pod subprocess was in flight, never reactivate the request.  A Pod ID
-    # positively observed after cancellation is promoted to attention so a paid
-    # resource cannot disappear behind a benign-looking cancelled state.
+    # Cancellation must be sticky. If the user cancelled while the normal
+    # rent-pod subprocess was in flight, never reactivate the request.
     latest = _get_request(state_file, request_id)
     if latest and latest.get("status") == "cancelled":
-        if pod_id:
+        cleanup_confirmed = "[rent-pod] Pod deletion confirmed:" in output
+        if pod_id and cleanup_confirmed:
+            _update_request(
+                state_file,
+                request_id,
+                pod_id=pod_id,
+                last_error=f"cancelled during launch; deletion of Pod {pod_id} confirmed",
+            )
+            _append_log(
+                f"{request_id}: cancelled during launch; cleanup confirmed pod={pod_id}",
+                log_file,
+            )
+        elif pod_id:
             _update_request(
                 state_file,
                 request_id,
@@ -648,11 +814,11 @@ def _process_request(request: dict[str, Any], state_file: Path, log_file: Path) 
                 last_error=f"cancelled while launch was in flight; Pod {pod_id} was created; inspect before deleting",
             )
             _append_log(
-                f"{request_id}: cancelled during launch but pod={pod_id} exists; manual attention",
+                f"{request_id}: cancelled during launch but pod={pod_id} may exist; manual attention",
                 log_file,
             )
         else:
-            _append_log(f"{request_id}: launch finished after cancellation; no Pod ID observed", log_file)
+            _append_log(f"{request_id}: launch stopped after cancellation; no Pod ID observed", log_file)
         return
 
     if rc == 0:
