@@ -708,8 +708,16 @@
         "path": "{VAE_DIR}/qwen_image_vae.safetensors"
       },
       {
+        "url": "https://huggingface.co/artsyww/KREA2REALVAE/resolve/main/krea2RealVae_v10.safetensors",
+        "path": "{VAE_DIR}/krea2RealVae_v10.safetensors"
+      },
+      {
         "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/loras/krea2_turbo_lora_rank_64_bf16.safetensors",
         "path": "{LORAS_DIR}/Krea-2/krea2_turbo_lora_rank_64_bf16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors",
+        "path": "{CHECKPOINTS_DIR}/sam3.1_multiplex_fp16.safetensors"
       }
     ],
     "krea2_loras": [
@@ -744,6 +752,10 @@
       {
         "url": "https://huggingface.co/gokaygokay/Krea-2-Realism-LoRA/resolve/main/krea2_realism_lora.safetensors",
         "path": "{LORAS_DIR}/Krea-2/krea2_realism_lora.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Patil/Krea-2-depth-controlnet/resolve/main/depth-control-lora.safetensors",
+        "path": "{LORAS_DIR}/Krea-2/depth-control-lora.safetensors"
       }
     ],
     "krea2_character_loras": [
