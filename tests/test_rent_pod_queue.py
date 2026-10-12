@@ -1,9 +1,10 @@
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -147,6 +148,82 @@ class RentPodQueueTests(unittest.TestCase):
         self.assertIn("minUpload: 200", query_text)
         self.assertIn("minDisk: 400", query_text)
         self.assertIn('minCudaVersion: "13.3"', query_text)
+
+    def test_pod_id_extraction_ignores_human_pod_rented_message(self):
+        output = "\n".join(
+            [
+                "[rent-pod] Pod rented.",
+                "[rent-pod] Pod                    abc123",
+            ]
+        )
+        self.assertEqual(queue._extract_pod_id(output), "abc123")
+        self.assertIsNone(queue._extract_pod_id("[rent-pod] Pod rented.\n"))
+        self.assertEqual(
+            queue._extract_pod_id("[rent-pod] Pod ID: xyz789\n"),
+            "xyz789",
+        )
+
+    def test_post_create_failure_moves_to_attention(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = Path(tmp) / "queue.json"
+            log_file = Path(tmp) / "queue.log"
+            now = queue.now_utc()
+            request = {
+                "id": "rpa-test",
+                "status": "pending",
+                "created_at": queue.iso(now),
+                "expires_at": queue.iso(now + timedelta(hours=1)),
+                "window": None,
+                "check_every": 60,
+                "next_attempt_at": queue.iso(now),
+                "attempt_count": 0,
+                "probe": {"gpu_id": "gpu-test"},
+                "argv": ["l40s"],
+            }
+            queue.save_state({"schema_version": 1, "requests": [request]}, state_file)
+            with mock.patch.dict(os.environ, {"RUNPOD_API_KEY": "token"}), mock.patch.object(
+                queue, "_graphql_availability", return_value=(True, "LOW")
+            ), mock.patch.object(
+                queue,
+                "_run_launch",
+                return_value=(1, "pod123", "[rent-pod] ERROR: startup failed\n"),
+            ):
+                queue._process_request(request, state_file, log_file)
+            stored = queue.load_state(state_file)["requests"][0]
+            self.assertEqual(stored["status"], "attention")
+            self.assertEqual(stored["pod_id"], "pod123")
+            self.assertIn("not retrying automatically", stored["last_error"])
+
+    def test_cancel_during_launch_stays_cancelled_without_pod(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state_file = Path(tmp) / "queue.json"
+            log_file = Path(tmp) / "queue.log"
+            now = queue.now_utc()
+            request = {
+                "id": "rpa-test",
+                "status": "pending",
+                "created_at": queue.iso(now),
+                "expires_at": queue.iso(now + timedelta(hours=1)),
+                "window": None,
+                "check_every": 60,
+                "next_attempt_at": queue.iso(now),
+                "attempt_count": 0,
+                "probe": {"gpu_id": "gpu-test"},
+                "argv": ["l40s"],
+            }
+            queue.save_state({"schema_version": 1, "requests": [request]}, state_file)
+
+            def cancelled_launch(_request, _log):
+                queue.cancel_request("rpa-test", state_file)
+                return 1, None, "[rent-pod] ERROR: no capacity\n"
+
+            with mock.patch.dict(os.environ, {"RUNPOD_API_KEY": "token"}), mock.patch.object(
+                queue, "_graphql_availability", return_value=(True, "LOW")
+            ), mock.patch.object(queue, "_run_launch", side_effect=cancelled_launch):
+                queue._process_request(request, state_file, log_file)
+            stored = queue.load_state(state_file)["requests"][0]
+            self.assertEqual(stored["status"], "cancelled")
+            self.assertEqual(stored["last_error"], "cancelled by user")
 
 
 if __name__ == "__main__":
