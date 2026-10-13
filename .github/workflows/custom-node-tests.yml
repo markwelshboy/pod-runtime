@@ -6,7 +6,12 @@ on:
     paths:
       - bin/custom_nodes.py
       - bin/custom_nodes_profiled.py
+      - bin/custom_nodes_hardened.py
+      - bin/custom_nodes_telemetry.py
+      - bin/custom_nodes_runtime.py
+      - bin/custom_nodes_runtime_context.py
       - bin/custom_nodes_profile_report.py
+      - custom_nodes.env
       - custom_nodes_manifest.json
       - helpers.sh
       - helpers_core.sh
@@ -30,10 +35,14 @@ jobs:
 
       - name: Check syntax
         run: |
-          bash -n helpers.sh helpers_core.sh helpers.d/helpers_custom_node_*.sh helpers.d/helpers_active_workflow.sh
+          bash -n custom_nodes.env helpers.sh helpers_core.sh helpers.d/helpers_custom_node_*.sh helpers.d/helpers_active_workflow.sh
           python -m py_compile \
             bin/custom_nodes.py \
             bin/custom_nodes_profiled.py \
+            bin/custom_nodes_hardened.py \
+            bin/custom_nodes_telemetry.py \
+            bin/custom_nodes_runtime.py \
+            bin/custom_nodes_runtime_context.py \
             bin/custom_nodes_profile_report.py
 
       - name: Validate manifest through profiled wrapper
