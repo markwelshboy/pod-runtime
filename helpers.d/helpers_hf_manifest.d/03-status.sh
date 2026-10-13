@@ -119,46 +119,102 @@ print(json.dumps(result, separators=(",", ":")))
 PY
 }
 
-hf_download_show_snapshot() {
-  local state
-  state="$(_hf_manifest_state_dir "${1:-}")"
-  local status
-  status="$(hf_download_status_json "$state")" || return 1
+_hf_download_show_snapshot_usage() {
+  cat <<'EOF_USAGE'
+Usage:
+  hf_download_show_snapshot [SCOPES] [OPTIONS]
 
-  if [[ "$(jq -r '.exists' <<<"$status")" != "true" ]]; then
-    echo "[hf-manifest] No state available at $state"
-    return 0
-  fi
+Scopes:
+  base              Base model downloads
+  loras             Optional LoRA downloads
+  base,loras        Multiple scopes
 
-  local pending running completed failed total pct done_bytes total_bytes unknown_sizes active stalled
-  read -r pending running completed failed total pct done_bytes total_bytes unknown_sizes active stalled < <(
-    jq -r '[.pending,.running,.completed,.failed,.total,.percent,.known_done_bytes,.known_total_bytes,.unknown_size_items,.controller_running,.stalled] | @tsv' <<<"$status"
+Default:
+  base,loras
+
+Options:
+  --all             Show all completed downloads instead of the latest 20
+  -h, --help        Show this help
+EOF_USAGE
+}
+
+_hf_download_snapshot_aggregate() {
+  jq -sc '
+    def scope_state:
+      if ((.exists // false) | not) then "not-started"
+      elif ((.total // 0) == 0 and ((.controller // {}) | length) == 0) then "not-started"
+      elif (.controller_running // false) then "running"
+      elif ((.failed // 0) > 0 or (.controller.status // "") == "failed") then "failed"
+      elif (.stalled // false) then "stalled"
+      elif ((.total // 0) > 0 and (.pending // 0) == 0 and (.running // 0) == 0 and (.failed // 0) == 0) then "completed"
+      elif (.controller.status // "") == "completed" then "completed"
+      elif (.controller.status // "") == "stopped" then "stopped"
+      elif (.controller.status // "") == "prepared" then "prepared"
+      else (.controller.status // "idle")
+      end;
+
+    . as $states
+    | {
+        scopes: [$states[] | {name:.scope,status:scope_state,state_dir:.state_dir}],
+        pending: ([$states[] | (.pending // 0)] | add // 0),
+        running: ([$states[] | (.running // 0)] | add // 0),
+        completed: ([$states[] | (.completed // 0)] | add // 0),
+        failed: ([$states[] | (.failed // 0)] | add // 0),
+        total: ([$states[] | (.total // 0)] | add // 0),
+        known_total_bytes: ([$states[] | (.known_total_bytes // 0)] | add // 0),
+        known_done_bytes: ([$states[] | (.known_done_bytes // 0)] | add // 0),
+        unknown_size_items: ([$states[] | (.unknown_size_items // 0)] | add // 0),
+        controller_running: any($states[]; (.controller_running // false)),
+        stalled: any($states[]; (.stalled // false)),
+        items: [$states[] | .items[]?]
+      }
+    | .percent = (
+        if .known_total_bytes > 0 then
+          ((.known_done_bytes * 1000.0 / .known_total_bytes | round) / 10.0)
+        elif .total > 0 then
+          ((.completed * 1000.0 / .total | round) / 10.0)
+        else
+          0.0
+        end
+      )
+  '
+}
+
+_hf_download_show_snapshot_render() {
+  local status="${1:?status json}" show_all="${2:-false}"
+  local pending running completed failed total pct done_bytes total_bytes unknown_sizes stalled scope_summary
+
+  read -r pending running completed failed total pct done_bytes total_bytes unknown_sizes stalled < <(
+    jq -r '[.pending,.running,.completed,.failed,.total,.percent,.known_done_bytes,.known_total_bytes,.unknown_size_items,.stalled] | @tsv' <<<"$status"
   )
+  scope_summary="$(jq -r '[.scopes[] | "\(.name)=\(.status)"] | join("   ")' <<<"$status")"
 
   echo ""
   echo "================================================================================"
   echo "=== HF Manifest Downloader Snapshot @ $(date '+%Y-%m-%d %H:%M:%S')"
+  echo "=== Scopes: $scope_summary"
   echo "=== Pending: $pending   Running: $running   Completed: $completed   Failed: $failed"
-  echo "=== Controller active: $active   State: $state"
-  if ((total_bytes > 0)); then
+  if ((total == 0)); then
+    echo "=== Overall: no planned items in selected scopes"
+  elif ((total_bytes > 0)); then
     echo "=== Overall: ${pct}% ($(helpers_human_bytes "$done_bytes") / $(helpers_human_bytes "$total_bytes")); unknown-size items: $unknown_sizes"
   else
     echo "=== Overall: ${pct}% by file count; remote sizes unavailable"
   fi
-  [[ "$stalled" == "true" ]] && echo "=== WARNING: unfinished items remain but the controller is not running"
+  [[ "$stalled" == "true" ]] && echo "=== WARNING: unfinished items remain but a controller is not running"
   echo "================================================================================"
 
-  local rows row name dir expected observed item_pct message
+  local rows scope name dir expected observed item_pct message
 
   echo ""
   echo "Pending"
   echo "--------------------------------------------------------------------------------"
-  rows="$(jq -r '.items[] | select(.status=="pending") | [.name,.display_dir,(.total_bytes|tostring),(.message//"")] | @tsv' <<<"$status")"
+  rows="$(jq -r '.items[] | select(.status=="pending") | [.scope,.name,.display_dir,(.total_bytes|tostring),(.message//"")] | @tsv' <<<"$status")"
   if [[ -z "$rows" ]]; then
     echo "  (none)"
   else
-    while IFS=$'\t' read -r name dir expected message; do
-      printf '  ⏳ %-52s [%s]  %s%s\n' "$name" "$dir" \
+    while IFS=$'\t' read -r scope name dir expected message; do
+      printf '  %-8s ⏳ %-43s [%s]  %s%s\n' "$scope" "$name" "$dir" \
         "$([[ "$expected" -gt 0 ]] && helpers_human_bytes "$expected" || echo 'size unknown')" \
         "$([[ -n "$message" ]] && printf ' — %s' "$message")"
     done <<<"$rows"
@@ -167,12 +223,12 @@ hf_download_show_snapshot() {
   echo ""
   echo "Running"
   echo "--------------------------------------------------------------------------------"
-  rows="$(jq -r '.items[] | select(.status=="running") | [.name,.display_dir,(.observed_bytes|tostring),(.total_bytes|tostring),(.item_percent|tostring)] | @tsv' <<<"$status")"
+  rows="$(jq -r '.items[] | select(.status=="running") | [.scope,.name,.display_dir,(.observed_bytes|tostring),(.total_bytes|tostring),(.item_percent|tostring)] | @tsv' <<<"$status")"
   if [[ -z "$rows" ]]; then
     echo "  (none)"
   else
     local width="${HF_MANIFEST_PROGRESS_BAR_WIDTH:-40}" bar_len bar
-    while IFS=$'\t' read -r name dir observed expected item_pct; do
+    while IFS=$'\t' read -r scope name dir observed expected item_pct; do
       local pct_int="${item_pct%.*}"
       [[ "$pct_int" =~ ^[0-9]+$ ]] || pct_int=0
       bar_len=$((width * pct_int / 100))
@@ -180,10 +236,10 @@ hf_download_show_snapshot() {
       bar=${bar// /#}
       printf -v bar '%-*s' "$width" "$bar"
       if ((expected > 0)); then
-        printf ' %5s%% [%-*s] %s / %s  [%s] <- %s\n' "$item_pct" "$width" "$bar" \
+        printf ' %-8s %5s%% [%-*s] %s / %s  [%s] <- %s\n' "$scope" "$item_pct" "$width" "$bar" \
           "$(helpers_human_bytes "$observed")" "$(helpers_human_bytes "$expected")" "$dir" "$name"
       else
-        printf '   n/a  [%-*s] %s observed  [%s] <- %s\n' "$width" "$bar" \
+        printf ' %-8s   n/a  [%-*s] %s observed  [%s] <- %s\n' "$scope" "$width" "$bar" \
           "$(helpers_human_bytes "$observed")" "$dir" "$name"
       fi
     done <<<"$rows"
@@ -192,20 +248,29 @@ hf_download_show_snapshot() {
   echo ""
   echo "Completed"
   echo "--------------------------------------------------------------------------------"
-  rows="$(jq -r --argjson max "${HF_MANIFEST_COMPLETED_MAX:-20}" '
-    [.items[] | select(.status=="completed")] as $done
-    | ($done | reverse | .[:$max] | reverse)[]
-    | [.name,.display_dir,(.final_bytes|tostring),(.message//"")] | @tsv
+  local completed_max="${HF_MANIFEST_COMPLETED_MAX:-20}"
+  [[ "$completed_max" =~ ^[0-9]+$ ]] || completed_max=20
+  ((completed_max > 0)) || completed_max=20
+  if [[ "$show_all" == "true" ]]; then
+    completed_max=0
+  fi
+
+  rows="$(jq -r --argjson max "$completed_max" '
+    [.items[] | select(.status=="completed")]
+    | sort_by(.finished_at // .created_at // "")
+    | reverse
+    | (if $max > 0 then .[:$max] else . end)[]
+    | [.scope,.name,.display_dir,(.final_bytes|tostring),(.message//"")] | @tsv
   ' <<<"$status")"
   if [[ -z "$rows" ]]; then
     echo "  (none)"
   else
-    while IFS=$'\t' read -r name dir observed message; do
-      printf '  ✅ %-52s [%s]  %s%s\n' "$name" "$dir" "$(helpers_human_bytes "$observed")" \
+    while IFS=$'\t' read -r scope name dir observed message; do
+      printf '  %-8s ✅ %-43s [%s]  %s%s\n' "$scope" "$name" "$dir" "$(helpers_human_bytes "$observed")" \
         "$([[ -n "$message" ]] && printf ' — %s' "$message")"
     done <<<"$rows"
-    if ((completed > HF_MANIFEST_COMPLETED_MAX)); then
-      echo "  … showing the most recent ${HF_MANIFEST_COMPLETED_MAX}; JSON status contains all $completed"
+    if [[ "$show_all" != "true" ]] && ((completed > completed_max)); then
+      echo "  … showing latest $completed_max of $completed; use --all to show all $completed"
     fi
   fi
 
@@ -213,7 +278,106 @@ hf_download_show_snapshot() {
     echo ""
     echo "Failed"
     echo "--------------------------------------------------------------------------------"
-    jq -r '.items[] | select(.status=="failed") | "  ❌ \(.name) [\(.display_dir)] — \(.message) — log: \(.log)"' <<<"$status"
+    jq -r '.items[] | select(.status=="failed") | "  ❌ \(.scope)  \(.name) [\(.display_dir)] — \(.message) — log: \(.log)"' <<<"$status"
   fi
   echo ""
+}
+
+hf_download_show_snapshot() {
+  local scopes="base,loras" show_all=false scope_arg_set=false arg
+
+  while (($# > 0)); do
+    arg="$1"
+    case "$arg" in
+      --all)
+        show_all=true
+        ;;
+      -h|--help)
+        _hf_download_show_snapshot_usage
+        return 0
+        ;;
+      --)
+        shift
+        if (($# > 0)); then
+          if [[ "$scope_arg_set" == "true" ]]; then
+            echo "[hf-manifest] Only one scope list may be supplied." >&2
+            return 2
+          fi
+          scopes="$1"
+          scope_arg_set=true
+          shift
+          (($# == 0)) || {
+            echo "[hf-manifest] Unexpected argument: $1" >&2
+            return 2
+          }
+        fi
+        break
+        ;;
+      -*)
+        echo "[hf-manifest] Unknown option: $arg" >&2
+        _hf_download_show_snapshot_usage >&2
+        return 2
+        ;;
+      *)
+        if [[ "$scope_arg_set" == "true" ]]; then
+          echo "[hf-manifest] Only one scope list may be supplied." >&2
+          return 2
+        fi
+        scopes="$arg"
+        scope_arg_set=true
+        ;;
+    esac
+    shift
+  done
+
+  local -a statuses=()
+  local status state scope raw_scope
+
+  # Backward compatibility for internal/legacy callers that pass an actual
+  # state directory rather than the public base/loras scope syntax.
+  if [[ "$scope_arg_set" == "true" && "$scopes" == */* ]]; then
+    state="$scopes"
+    raw_scope="$(basename -- "$state")"
+    status="$(hf_download_status_json "$state")" || return 1
+    status="$(jq -c --arg scope "$raw_scope" '
+      . + {scope:$scope}
+      | .items = ((.items // []) | map(. + {scope:$scope}))
+    ' <<<"$status")" || return 1
+    statuses+=("$status")
+  else
+    local -a requested=()
+    local -A seen=()
+    IFS=',' read -ra requested <<<"$scopes"
+
+    for scope in "${requested[@]}"; do
+      scope="${scope#"${scope%%[![:space:]]*}"}"
+      scope="${scope%"${scope##*[![:space:]]}"}"
+      [[ -n "$scope" ]] || continue
+      case "$scope" in
+        base|loras) ;;
+        *)
+          echo "[hf-manifest] Unknown scope: $scope (expected base, loras, or base,loras)" >&2
+          return 2
+          ;;
+      esac
+      [[ -z "${seen[$scope]:-}" ]] || continue
+      seen[$scope]=1
+
+      state="$(_hf_manifest_state_dir)/$scope"
+      status="$(hf_download_status_json "$state")" || return 1
+      status="$(jq -c --arg scope "$scope" '
+        . + {scope:$scope}
+        | .items = ((.items // []) | map(. + {scope:$scope}))
+      ' <<<"$status")" || return 1
+      statuses+=("$status")
+    done
+  fi
+
+  if ((${#statuses[@]} == 0)); then
+    echo "[hf-manifest] No scopes selected." >&2
+    return 2
+  fi
+
+  status="$(printf '%s\n' "${statuses[@]}" | _hf_download_snapshot_aggregate)" || return 1
+  _hf_download_show_snapshot_render "$status" "$show_all"
 }
