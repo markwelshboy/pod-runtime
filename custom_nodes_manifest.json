@@ -523,7 +523,6 @@
       "masquerade-nodes-comfyui",
       "comfyliterals",
       "comfyui-fsampler",
-      "comfyui-vae-utils",
       "comfyui-custom-scripts",
       "comfyui-mxtoolkit",
       "comfyui-crystools",
@@ -537,10 +536,8 @@
       "comfyui-various",
       "comfyui-y7nodes",
       "comfyui-fbcnn",
-      "comfyui-nag",
       "comfyui-resolution-master",
       "comfyui-editutils",
-      "comfyui-basic_data_handling",
       "comfyui-linkspotlight",
       "comfyui-loraplotnode"
     ],
