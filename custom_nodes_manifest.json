@@ -480,6 +480,22 @@
     "comfyui-plaguekind-nodes": {
       "remote": "https://github.com/PlagueKind/Comfyui-PlagueKind-Nodes.git",
       "local": "Comfyui-PlagueKind-Nodes"
+    },
+    "comfyui-depthanythingv2": {
+      "remote": "https://github.com/kijai/ComfyUI-DepthAnythingV2.git",
+      "local": "ComfyUI-DepthAnythingV2"
+    },
+    "comfyui-krea2-styletransfer": {
+      "remote": "https://github.com/jieg9341-lab/ComfyUI-Krea2-StyleTransfer.git",
+      "local": "ComfyUI-Krea2-StyleTransfer"
+    },
+    "comfyui-krea-moodboards": {
+      "remote": "https://github.com/Andro-Meta/ComfyUI-Krea-Moodboards.git",
+      "local": "ComfyUI-Krea-Moodboards"
+    },
+    "comfyui-vosr2": {
+      "remote": "https://github.com/ylchen333/ComfyUI-VOSR2.git",
+      "local": "ComfyUI-VOSR2"
     }
   },
   "sets": {
@@ -562,6 +578,8 @@
       "comfyui-krea2t-enhancer",
       "comfyui-krea2textencoder",
       "comfyui-krea2-style-refrence",
+      "comfyui-krea2-styletransfer",
+      "comfyui-krea-moodboards",
       "krea-2-two-stage-sampler",
       "comfyui-krea2edit",
       "comfyui-krea2-controlnet",
@@ -588,15 +606,17 @@
       "comfyui-fill-nodes",
       "comfyui-efficiency-nodes",
       "comfyui-controlnet-aux",
-      "comfyui-propost"
+      "comfyui-propost",
+      "comfyui-vosr2"
     ],
     "krea2-lonecat": [
-      "comfyui-florence2",
+      "comfyui-ultimatesdupscale",
+      "comfyui-depthanythingv2",
       "derfuu-comfyui-moddednodes",
-      "comfyui-eulerdiscretescheduler",
       "comfyui-levelpixel",
       "demonalone-nodes-comfyui",
-      "comfyui-qwenvl-mod"
+      "comfyui-qwenvl-mod",
+      "comfyui-eulerdiscretescheduler"
     ],
     "minimax": [
       "comfyui-starnodes",

@@ -756,6 +756,10 @@
       {
         "url": "https://huggingface.co/Patil/Krea-2-depth-controlnet/resolve/main/depth-control-lora.safetensors",
         "path": "{LORAS_DIR}/Krea-2/depth-control-lora.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/resolve/main/bfs_head_swap_v1.1_krea2.safetensors",
+        "path": "{LORAS_DIR}/Krea-2/bfs_head_swap_v1.1_krea2.safetensors"
       }
     ],
     "krea2_character_loras": [
