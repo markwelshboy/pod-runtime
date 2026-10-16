@@ -180,7 +180,7 @@
     },
     "comfyui-seedvr2-tilingupscaler": {
       "remote": "https://github.com/moonwhaler/comfyui-seedvr2-tilingupscaler",
-      "local": "comfyui-seedvr2-tilingupscaler"
+      "local": "ComfyUI-SeedVR2_TilingUpscaler"
     },
     "comfyui-inpaint-cropandstitch": {
       "remote": "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch",
@@ -496,6 +496,10 @@
     "comfyui-vosr2": {
       "remote": "https://github.com/ylchen333/ComfyUI-VOSR2.git",
       "local": "ComfyUI-VOSR2"
+    },
+    "hai-prompt-library": {
+      "remote": "https://github.com/markwelshboy/hAI_prompt_library.git",
+      "local": "hAI_prompt_library"
     }
   },
   "sets": {
@@ -604,7 +608,8 @@
       "comfyui-efficiency-nodes",
       "comfyui-controlnet-aux",
       "comfyui-propost",
-      "comfyui-vosr2"
+      "comfyui-vosr2",
+      "hai-prompt-library"
     ],
     "krea2-lonecat": [
       "comfyui-ultimatesdupscale",
