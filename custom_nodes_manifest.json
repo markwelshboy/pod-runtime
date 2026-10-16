@@ -497,9 +497,17 @@
       "remote": "https://github.com/ylchen333/ComfyUI-VOSR2.git",
       "local": "ComfyUI-VOSR2"
     },
-    "hai-prompt-library": {
-      "remote": "https://github.com/markwelshboy/hAI_prompt_library.git",
-      "local": "hAI_prompt_library"
+    "comfyui-body-decal": {
+      "remote": "https://github.com/verias/comfyui-body-decal.git",
+      "local": "ComfyUI-Body-Decal"
+    },
+    "comfyui-huggingface_dataset": {
+      "remote": "https://github.com/StableLlama/ComfyUI-huggingface_dataset.git",
+      "local": "ComfyUI-HuggingFace-Dataset"
+    },
+    "comfyui-basic-data-handling": {
+      "remote": "https://github.com/StableLlama/ComfyUI-basic_data_handling.git",
+      "local": "ComfyUI-Basic-Data-Handling"
     }
   },
   "sets": {
@@ -543,7 +551,10 @@
       "comfyui-resolution-master",
       "comfyui-editutils",
       "comfyui-linkspotlight",
-      "comfyui-loraplotnode"
+      "comfyui-loraplotnode",
+      "comfyui-basic-data-handling",
+      "comfyui-huggingface_dataset",
+      "comfyui-body-decal"
     ],
     "default-extras": [
       "comfyui-vrgamedevgirl",
@@ -608,8 +619,7 @@
       "comfyui-efficiency-nodes",
       "comfyui-controlnet-aux",
       "comfyui-propost",
-      "comfyui-vosr2",
-      "hai-prompt-library"
+      "comfyui-vosr2"
     ],
     "krea2-lonecat": [
       "comfyui-ultimatesdupscale",
