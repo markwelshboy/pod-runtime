@@ -180,7 +180,7 @@
     },
     "comfyui-seedvr2-tilingupscaler": {
       "remote": "https://github.com/moonwhaler/comfyui-seedvr2-tilingupscaler",
-      "local": "ComfyUI-SeedVR2_TilingUpscaler"
+      "local": "comfyui-seedvr2-tilingupscaler"
     },
     "comfyui-inpaint-cropandstitch": {
       "remote": "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch",
