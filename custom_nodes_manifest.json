@@ -508,6 +508,10 @@
     "comfyui-basic-data-handling": {
       "remote": "https://github.com/StableLlama/ComfyUI-basic_data_handling.git",
       "local": "ComfyUI-Basic-Data-Handling"
+    },
+    "comfyui-hAI_prompt_library": {
+      "remote": "https://github.com/markwelshboy/hAI_prompt_library.git",
+      "local": "ComfyUI-hAI-Prompt-Library"
     }
   },
   "sets": {
@@ -553,8 +557,7 @@
       "comfyui-linkspotlight",
       "comfyui-loraplotnode",
       "comfyui-basic-data-handling",
-      "comfyui-huggingface_dataset",
-      "comfyui-body-decal"
+      "comfyui-huggingface_dataset"
     ],
     "default-extras": [
       "comfyui-vrgamedevgirl",
@@ -619,7 +622,9 @@
       "comfyui-efficiency-nodes",
       "comfyui-controlnet-aux",
       "comfyui-propost",
-      "comfyui-vosr2"
+      "comfyui-vosr2",
+      "comfyui-body-decal",
+      "comfyui-hAI_prompt_library"
     ],
     "krea2-lonecat": [
       "comfyui-ultimatesdupscale",
