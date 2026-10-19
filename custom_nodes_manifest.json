@@ -512,6 +512,10 @@
     "comfyui-hAI_prompt_library": {
       "remote": "https://github.com/markwelshboy/hAI_prompt_library.git",
       "local": "ComfyUI-hAI-Prompt-Library"
+    },
+    "comfyui-krea2-bbox-prompter": {
+      "remote": "https://github.com/ukr8b3g-cmyk/Krea2-BBOX-Prompter.git",
+      "local": "ComfyUI-Krea2-BBOX-Prompter"
     }
   },
   "sets": {
@@ -624,7 +628,8 @@
       "comfyui-propost",
       "comfyui-vosr2",
       "comfyui-body-decal",
-      "comfyui-hAI_prompt_library"
+      "comfyui-hAI_prompt_library",
+      "comfyui-krea2-bbox-prompter"
     ],
     "krea2-lonecat": [
       "comfyui-ultimatesdupscale",
