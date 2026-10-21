@@ -520,6 +520,10 @@
     "comfyui-tab-manager": {
       "remote": "https://github.com/RedysDump/ComfyUI-Tab-Manager.git",
       "local": "ComfyUI-Tab-Manager"
+    },
+    "comfyui-krea2-conditioning": {
+      "remote": "https://github.com/huwhitememes/comfyui-krea2-conditioning.git",
+      "local": "ComfyUI-Krea2-Conditioning"
     }
   },
   "sets": {
@@ -634,7 +638,8 @@
       "comfyui-vosr2",
       "comfyui-body-decal",
       "comfyui-hAI_prompt_library",
-      "comfyui-krea2-bbox-prompter"
+      "comfyui-krea2-bbox-prompter",
+      "comfyui-krea2-conditioning"
     ],
     "krea2-lonecat": [
       "comfyui-ultimatesdupscale",
