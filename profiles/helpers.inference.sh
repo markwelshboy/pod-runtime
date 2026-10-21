@@ -9,6 +9,8 @@ source "${POD_RUNTIME_DIR}/helpers.sh"
 inference_repair_onnxruntime_gpu() {
   local pip_bin="${PIP:-/opt/venv/bin/pip}"
   local python_bin="${PY:-/opt/venv/bin/python}"
+  local gpu_version=""
+  local gpu_requirement="onnxruntime-gpu"
 
   if "${python_bin}" - <<'PY'
 try:
@@ -25,9 +27,27 @@ PY
     return 0
   fi
 
-  echo "[onnxruntime] CUDA provider missing; reasserting baked GPU runtime without dependency churn."
+  # If CPU onnxruntime overwrote the shared module files, the GPU distribution
+  # metadata normally still exists. Capture that baked version before uninstall
+  # so repair restores image state instead of drifting to a newer runtime.
+  gpu_version="$("${python_bin}" - <<'PY' 2>/dev/null || true
+from importlib.metadata import PackageNotFoundError, version
+try:
+    print(version("onnxruntime-gpu"))
+except PackageNotFoundError:
+    pass
+PY
+)"
+  if [[ -n "${gpu_version}" ]]; then
+    gpu_requirement="onnxruntime-gpu==${gpu_version}"
+    echo "[onnxruntime] baked GPU distribution version: ${gpu_version}"
+  else
+    echo "[onnxruntime] baked GPU distribution metadata missing; reinstalling constrained onnxruntime-gpu." >&2
+  fi
+
+  echo "[onnxruntime] CUDA provider missing; reasserting GPU runtime without dependency churn."
   "${pip_bin}" uninstall -y onnxruntime onnxruntime-gpu >/dev/null 2>&1 || true
-  "${pip_bin}" install --constraint /opt/constraints.txt --no-deps --force-reinstall onnxruntime-gpu
+  "${pip_bin}" install --constraint /opt/constraints.txt --no-deps --force-reinstall "${gpu_requirement}"
 
   "${python_bin}" - <<'PY'
 import onnxruntime as ort
