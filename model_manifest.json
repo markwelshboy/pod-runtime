@@ -718,6 +718,10 @@
       {
         "url": "https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors",
         "path": "{CHECKPOINTS_DIR}/sam3.1_multiplex_fp16.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/lodestones/Kroma/resolve/main/kroma-v0.3.1-turbo-opd.safetensors",
+        "path": "{CHECKPOINTS_DIR}/kroma-v0.3.1-turbo-opd.safetensors"
       }
     ],
     "krea2_loras": [

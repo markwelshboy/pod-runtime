@@ -516,6 +516,10 @@
     "comfyui-krea2-bbox-prompter": {
       "remote": "https://github.com/ukr8b3g-cmyk/Krea2-BBOX-Prompter.git",
       "local": "ComfyUI-Krea2-BBOX-Prompter"
+    },
+    "comfyui-tab-manager": {
+      "remote": "https://github.com/RedysDump/ComfyUI-Tab-Manager.git",
+      "local": "ComfyUI-Tab-Manager"
     }
   },
   "sets": {
@@ -561,7 +565,8 @@
       "comfyui-linkspotlight",
       "comfyui-loraplotnode",
       "comfyui-basic-data-handling",
-      "comfyui-huggingface_dataset"
+      "comfyui-huggingface_dataset",
+      "comfyui-tab-manager"
     ],
     "default-extras": [
       "comfyui-vrgamedevgirl",
