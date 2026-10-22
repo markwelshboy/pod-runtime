@@ -725,7 +725,11 @@
       },
       {
         "url": "https://huggingface.co/lodestones/Kroma/resolve/main/kroma-v0.3.1-turbo-opd.safetensors",
-        "path": "{CHECKPOINTS_DIR}/kroma-v0.3.1-turbo-opd.safetensors"
+        "path": "{DIFFUSION_MODELS_DIR}/kroma-v0.3.1-turbo-opd.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/lodestones/Kroma/resolve/main/kroma-v0.3-base.safetensors",
+        "path": "{DIFFUSION_MODELS_DIR}/kroma-v0.3-base.safetensors"
       }
     ],
     "krea2_loras": [
