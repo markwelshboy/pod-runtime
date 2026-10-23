@@ -582,7 +582,10 @@
       "comfyui-loraplotnode",
       "comfyui-basic-data-handling",
       "comfyui-huggingface_dataset",
-      "comfyui-tab-manager"
+      "comfyui-tab-manager",
+      "comfyui-tiled-diffusion",
+      "comfyui-inspire-pack",
+      "comfyui-yolo"
     ],
     "default-extras": [
       "comfyui-vrgamedevgirl",
