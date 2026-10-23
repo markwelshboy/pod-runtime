@@ -25,6 +25,15 @@ _hf_manifest_kill_tree() {
   kill -s "$signal" "$parent" 2>/dev/null || true
 }
 
+_hf_manifest_download_jobs() {
+  local jobs="${HF_MANIFEST_DOWNLOAD_JOBS:-2}"
+  if [[ "$jobs" =~ ^[1-9][0-9]*$ ]]; then
+    printf '%s\n' "$jobs"
+  else
+    printf '2\n'
+  fi
+}
+
 _hf_manifest_download_item() {
   local item="${1:?item}" state="${2:?state}"
   local row id transport url path repo_type repo_id revision repo_file total work_dir log
@@ -112,22 +121,57 @@ _hf_manifest_download_item() {
   return 0
 }
 
+_hf_manifest_run_item() {
+  local item="${1:?item}" state="${2:?state}"
+  local bytes rc
+
+  _hf_manifest_set_item_status "$item" running "downloading" 0 || return 1
+  _hf_manifest_download_item "$item" "$state"
+  rc=$?
+
+  if ((rc == 0)); then
+    bytes="$(stat -c %s "$(jq -r '.path' "$item")" 2>/dev/null || echo 0)"
+    _hf_manifest_set_item_status "$item" completed "downloaded" "$bytes" || true
+  else
+    bytes="$(_hf_manifest_work_bytes "$(jq -r '.work_dir' "$item")")"
+    _hf_manifest_set_item_status "$item" failed "download failed with rc=$rc; see item log" "$bytes" || true
+  fi
+  return "$rc"
+}
+
 _hf_manifest_controller() {
   local state="${1:?state}"
   set +e
   set +u
   set +o pipefail
 
-  local failures=0 item status bytes rc current_item=""
+  local failures=0 item status child
+  local jobs active=0
+  jobs="$(_hf_manifest_download_jobs)"
+
   _hf_manifest_controller_trap() {
-    local sig="${1:-TERM}" current_status="" current_bytes=0
-    if [[ -n "$current_item" && -f "$current_item" ]]; then
-      current_status="$(jq -r '.status // ""' "$current_item" 2>/dev/null || true)"
-      if [[ "$current_status" == "running" ]]; then
-        current_bytes="$(_hf_manifest_work_bytes "$(jq -r '.work_dir // ""' "$current_item" 2>/dev/null || true)")"
-        _hf_manifest_set_item_status "$current_item" failed "interrupted by $sig" "$current_bytes" || true
-      fi
+    local sig="${1:-TERM}" running_item current_status current_bytes
+
+    # A direct signal to the controller should stop its workers too. The public
+    # hf_download_stop path already kills the whole process tree, so this is a
+    # harmless no-op there and protects callers that signal controller.pid.
+    while IFS= read -r child; do
+      [[ "$child" =~ ^[0-9]+$ ]] || continue
+      _hf_manifest_kill_tree "$child" "$sig"
+    done < <(ps -o pid= --ppid "${BASHPID:-$$}" 2>/dev/null | awk '{print $1}')
+
+    if [[ -f "$state/items.list" ]]; then
+      while IFS= read -r running_item || [[ -n "$running_item" ]]; do
+        [[ -f "$running_item" ]] || continue
+        current_status="$(jq -r '.status // ""' "$running_item" 2>/dev/null || true)"
+        [[ "$current_status" == "running" ]] || continue
+        current_bytes="$(_hf_manifest_work_bytes "$(jq -r '.work_dir // ""' "$running_item" 2>/dev/null || true)")"
+        _hf_manifest_set_item_status "$running_item" failed "interrupted by $sig" "$current_bytes" || true
+      done <"$state/items.list"
     fi
+
+    failures="$(jq -sr '[.[] | select(.status == "failed")] | length' "$state"/items/*.json 2>/dev/null || echo 0)"
+    [[ "$failures" =~ ^[0-9]+$ ]] || failures=0
     _hf_manifest_set_controller_status "$state" stopped "$failures" "interrupted by $sig" || true
     exit 143
   }
@@ -135,27 +179,31 @@ _hf_manifest_controller() {
   trap '_hf_manifest_controller_trap INT' INT
 
   printf '%s\n' "${BASHPID:-$$}" >"$state/controller.pid"
-  _hf_manifest_set_controller_status "$state" running 0 "sequential background downloader active"
+  _hf_manifest_set_controller_status "$state" running 0 "parallel background downloader active (jobs=$jobs)"
 
   while IFS= read -r item || [[ -n "$item" ]]; do
     [[ -f "$item" ]] || continue
     status="$(jq -r '.status // "pending"' "$item" 2>/dev/null)"
     [[ "$status" == "completed" ]] && continue
 
-    current_item="$item"
-    _hf_manifest_set_item_status "$item" running "downloading" 0 || true
-    _hf_manifest_download_item "$item" "$state"
-    rc=$?
-    if ((rc == 0)); then
-      bytes="$(stat -c %s "$(jq -r '.path' "$item")" 2>/dev/null || echo 0)"
-      _hf_manifest_set_item_status "$item" completed "downloaded" "$bytes" || true
-    else
-      failures=$((failures + 1))
-      bytes="$(_hf_manifest_work_bytes "$(jq -r '.work_dir' "$item")")"
-      _hf_manifest_set_item_status "$item" failed "download failed with rc=$rc; see item log" "$bytes" || true
-    fi
-    current_item=""
+    while ((active >= jobs)); do
+      wait -n
+      active=$((active - 1))
+    done
+
+    (
+      _hf_manifest_run_item "$item" "$state"
+    ) &
+    active=$((active + 1))
   done <"$state/items.list"
+
+  while ((active > 0)); do
+    wait -n
+    active=$((active - 1))
+  done
+
+  failures="$(jq -sr '[.[] | select(.status == "failed")] | length' "$state"/items/*.json 2>/dev/null || echo 0)"
+  [[ "$failures" =~ ^[0-9]+$ ]] || failures=0
 
   if ((failures > 0)); then
     _hf_manifest_set_controller_status "$state" failed "$failures" "completed with failures"
@@ -214,15 +262,21 @@ hf_download_from_manifest() {
     return 1
   }
 
-  local total pending present known unknown
+  local total pending present known unknown jobs configured_jobs
   total="$(jq -r '.total // 0' <<<"$plan")"
   pending="$(jq -r '.pending // 0' <<<"$plan")"
   present="$(jq -r '.already_present // 0' <<<"$plan")"
   known="$(jq -r '.known_total_bytes // 0' <<<"$plan")"
   unknown="$(jq -r '.unknown_sizes // 0' <<<"$plan")"
+  jobs="$(_hf_manifest_download_jobs)"
+  configured_jobs="${HF_MANIFEST_DOWNLOAD_JOBS:-2}"
 
+  if [[ "$configured_jobs" != "$jobs" ]]; then
+    echo "[hf-manifest] WARNING: invalid HF_MANIFEST_DOWNLOAD_JOBS='$configured_jobs'; using $jobs" >&2
+  fi
   echo "[hf-manifest] Prepared $total item(s): pending=$pending already-present=$present"
   echo "[hf-manifest] Known total: $(helpers_human_bytes "$known") across $((total - unknown)) item(s); unknown size=$unknown"
+  echo "[hf-manifest] Download concurrency: $jobs file(s)"
 
   if ((total == 0 || pending == 0)); then
     _hf_manifest_set_controller_status "$state" completed 0 "nothing to download"
