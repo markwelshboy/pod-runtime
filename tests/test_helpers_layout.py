@@ -1,3 +1,4 @@
+import os
 import subprocess
 import unittest
 from pathlib import Path
@@ -93,6 +94,116 @@ class HelpersLayoutTests(unittest.TestCase):
         for path in paths:
             result = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, f"{path}: {result.stderr}")
+
+    def test_hf_manifest_controller_respects_download_jobs_and_stops_workers(self):
+        common = ROOT / "helpers.d" / "helpers_hf_manifest.d" / "01-common.sh"
+        download = ROOT / "helpers.d" / "helpers_hf_manifest.d" / "02-download.sh"
+        env = os.environ.copy()
+        env.update({"HF_COMMON": str(common), "HF_DOWNLOAD": str(download)})
+
+        script = r'''
+set -euo pipefail
+source "$HF_COMMON"
+source "$HF_DOWNLOAD"
+
+_hf_manifest_download_item() {
+  local item="${1:?item}"
+  local path work
+  path="$(jq -r '.path' "$item")"
+  work="$(jq -r '.work_dir' "$item")"
+  mkdir -p "$work"
+  head -c 1024 /dev/zero >"$work/partial"
+  sleep "${TEST_DOWNLOAD_SLEEP:-0.4}" || return $?
+  head -c 2048 /dev/zero >"$path"
+}
+
+make_state() {
+  local state="${1:?state}" i id item
+  mkdir -p "$state/items" "$state/work"
+  : >"$state/items.list"
+  for i in 1 2 3 4; do
+    id="$(printf '%04d' "$i")"
+    item="$state/items/$id.json"
+    jq -n \
+      --arg id "$id" \
+      --arg path "$state/out-$id.bin" \
+      --arg work "$state/work/$id" \
+      '{id:$id,status:"pending",path:$path,work_dir:$work,total_bytes:2048}' \
+      >"$item"
+    echo "$item" >>"$state/items.list"
+  done
+}
+
+state="$(mktemp -d)"
+stop_state=""
+trap 'rm -rf "$state" "${stop_state:-}"' EXIT
+make_state "$state"
+
+export HF_MANIFEST_DOWNLOAD_JOBS=2 TEST_DOWNLOAD_SLEEP=0.4
+_hf_manifest_controller "$state" &
+pid=$!
+
+saw_two=0
+for _ in {1..40}; do
+  running="$(jq -sr '[.[] | select(.status=="running")] | length' "$state"/items/*.json)"
+  if [[ "$running" -eq 2 ]]; then
+    saw_two=1
+    break
+  fi
+  sleep 0.05
+done
+[[ "$saw_two" -eq 1 ]]
+wait "$pid"
+
+completed="$(jq -sr '[.[] | select(.status=="completed")] | length' "$state"/items/*.json)"
+failed="$(jq -sr '[.[] | select(.status=="failed")] | length' "$state"/items/*.json)"
+[[ "$completed" -eq 4 && "$failed" -eq 0 ]]
+[[ "$(jq -r '.status' "$state/controller.json")" == "completed" ]]
+
+HF_MANIFEST_DOWNLOAD_JOBS=4
+[[ "$(_hf_manifest_download_jobs)" == "4" ]]
+HF_MANIFEST_DOWNLOAD_JOBS=invalid
+[[ "$(_hf_manifest_download_jobs)" == "2" ]]
+
+stop_state="$(mktemp -d)"
+make_state "$stop_state"
+export HF_MANIFEST_DOWNLOAD_JOBS=2 TEST_DOWNLOAD_SLEEP=5
+_hf_manifest_controller "$stop_state" &
+stop_pid=$!
+
+saw_two=0
+for _ in {1..40}; do
+  running="$(jq -sr '[.[] | select(.status=="running")] | length' "$stop_state"/items/*.json)"
+  if [[ "$running" -eq 2 ]]; then
+    saw_two=1
+    break
+  fi
+  sleep 0.05
+done
+[[ "$saw_two" -eq 1 ]]
+
+kill -TERM "$stop_pid"
+set +e
+wait "$stop_pid"
+stop_rc=$?
+set -e
+[[ "$stop_rc" -eq 143 ]]
+
+running="$(jq -sr '[.[] | select(.status=="running")] | length' "$stop_state"/items/*.json)"
+failed="$(jq -sr '[.[] | select(.status=="failed")] | length' "$stop_state"/items/*.json)"
+pending="$(jq -sr '[.[] | select(.status=="pending")] | length' "$stop_state"/items/*.json)"
+[[ "$running" -eq 0 && "$failed" -eq 2 && "$pending" -eq 2 ]]
+[[ "$(jq -r '.status' "$stop_state/controller.json")" == "stopped" ]]
+'''
+        result = subprocess.run(
+            ["bash", "-c", script],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":
