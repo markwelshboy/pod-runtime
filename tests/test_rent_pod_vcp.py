@@ -1,8 +1,10 @@
 import importlib.util
 import io
+import os
 import sys
+import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import nullcontext, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -58,6 +60,13 @@ class RentPodVcpTests(unittest.TestCase):
             "vcp config comfydev3900 ssh -i /home/markr/.ssh/id_ed25519_runpod "
             "-p 13479 root@64.247.206.216",
         )
+
+    def test_vcp_registry_lock_uses_config_sidecar(self):
+        with tempfile.TemporaryDirectory() as td:
+            config = Path(td) / "config.json"
+            with mock.patch.dict(os.environ, {"VCP_CONFIG": str(config)}):
+                with vcp_handoff._vcp_registry_lock():
+                    self.assertTrue(Path(str(config) + ".lock").exists())
 
     def test_wait_hook_prints_named_manual_handoff_on_success(self):
         def fake_wait(*args, **kwargs):
@@ -116,9 +125,12 @@ class RentPodVcpTests(unittest.TestCase):
             "machine_id": "machine456",
             "gpu": "NVIDIA L40S",
         }
-        with mock.patch.object(vcp_handoff.vcp_targets, "save_target") as save:
+        with mock.patch.object(
+            vcp_handoff, "_vcp_registry_lock", return_value=nullcontext()
+        ) as lock, mock.patch.object(vcp_handoff.vcp_targets, "save_target") as save:
             rc = vcp_handoff.configure_vcp(identity, "/tmp/key", "l40development")
         self.assertEqual(rc, 0)
+        lock.assert_called_once_with()
         args, kwargs = save.call_args
         self.assertEqual(args[0], "l40development")
         self.assertEqual(args[1], ["-i", "/tmp/key", "-p", "2222", "root@1.2.3.4"])
@@ -138,18 +150,20 @@ class RentPodVcpTests(unittest.TestCase):
         self.assertEqual(rc, 78)
         configure.assert_not_called()
 
-
     def test_confirmed_delete_hook_reaps_vcp_by_pod_id(self):
         vcp_handoff.core.wait_for_ssh = lambda *args, **kwargs: ({}, None)
         vcp_handoff.core.run_provision = lambda identity, key: 0
         vcp_handoff.core.delete_pod_confirmed = lambda *args, **kwargs: None
         with mock.patch.object(
+            vcp_handoff, "_vcp_registry_lock", return_value=nullcontext()
+        ) as lock, mock.patch.object(
             vcp_handoff.vcp_targets,
             "remove_matching_targets",
             return_value={"targets": ["q3c"], "legacy": False},
         ) as reap:
             vcp_handoff.install_core_hooks(True, "q3c")
             vcp_handoff.core.delete_pod_confirmed("token", "pod123")
+        lock.assert_called_once_with()
         reap.assert_called_once_with(pod_id="pod123", endpoints=set())
 
     def test_confirmed_delete_hook_does_not_reap_on_delete_failure(self):
