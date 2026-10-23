@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import fcntl
+import json
+import os
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from string import Formatter
-from typing import Any
+from typing import Any, Mapping
 
 try:
     import tomllib
@@ -14,6 +18,9 @@ except ModuleNotFoundError as exc:  # pragma: no cover - local CLI targets py3.1
     raise RuntimeError("rent-pod naming profiles require Python 3.11+ (tomllib)") from exc
 
 import rent_pod as core
+
+
+NAME_RESERVATION_GRACE_SECONDS = 120.0
 
 
 @dataclass(frozen=True)
@@ -130,6 +137,26 @@ def _option_value(argv: list[str], name: str) -> str | None:
     return value
 
 
+def _replace_option_value(argv: list[str], name: str, value: str) -> list[str]:
+    """Replace every spelling of an option with one canonical split-form value."""
+    result: list[str] = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == name:
+            if i + 1 >= len(argv):
+                raise ValueError(f"{name} requires a value")
+            i += 2
+            continue
+        if arg.startswith(name + "="):
+            i += 1
+            continue
+        result.append(arg)
+        i += 1
+    result.extend([name, value])
+    return result
+
+
 def render_pattern(
     pattern: str,
     context: Any,
@@ -158,13 +185,112 @@ def existing_pod_names(api_key: str) -> set[str]:
     }
 
 
-def increment_name(base: str, existing: set[str]) -> str:
-    if base not in existing:
+def increment_name(base: str, existing: set[str], *, always_suffix: bool = False) -> str:
+    if not always_suffix and base not in existing:
         return base
     suffix = 1
     while f"{base}-{suffix}" in existing:
         suffix += 1
     return f"{base}-{suffix}"
+
+
+def reservation_path(environ: Mapping[str, str] | None = None) -> Path:
+    env = environ if environ is not None else os.environ
+    return Path(
+        env.get(
+            "RENT_POD_NAME_RESERVATIONS",
+            "~/.cache/pod-runtime/rent-pod-name-reservations.json",
+        )
+    ).expanduser()
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _load_reservations(path: Path) -> dict[str, dict[str, Any]]:
+    if not path.exists():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    except OSError as exc:
+        raise ValueError(f"cannot read Pod-name reservation state {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        return {}
+    reservations = raw.get("reservations")
+    if not isinstance(reservations, dict):
+        return {}
+    return {
+        str(name): dict(record)
+        for name, record in reservations.items()
+        if isinstance(name, str) and isinstance(record, dict)
+    }
+
+
+def _live_reservations(
+    reservations: dict[str, dict[str, Any]],
+    *,
+    now: float,
+) -> dict[str, dict[str, Any]]:
+    live: dict[str, dict[str, Any]] = {}
+    for name, record in reservations.items():
+        try:
+            pid = int(record.get("pid") or 0)
+            created_at = float(record.get("created_at") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if _pid_alive(pid) or now - created_at <= NAME_RESERVATION_GRACE_SECONDS:
+            live[name] = {"pid": pid, "created_at": created_at}
+    return live
+
+
+def reserve_incremented_name(
+    base: str,
+    existing: set[str],
+    *,
+    always_suffix: bool,
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    """Choose and reserve a unique name across concurrent local rent-pod processes."""
+    path = reservation_path(environ)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_name(path.name + ".lock")
+
+    try:
+        with lock_path.open("a+", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            now = time.time()
+            reservations = _live_reservations(_load_reservations(path), now=now)
+            chosen = increment_name(
+                base,
+                set(existing) | set(reservations),
+                always_suffix=always_suffix,
+            )
+            reservations[chosen] = {"pid": os.getpid(), "created_at": now}
+            tmp = path.with_name(f"{path.name}.tmp.{os.getpid()}")
+            tmp.write_text(
+                json.dumps(
+                    {"version": 1, "reservations": reservations},
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            os.replace(tmp, path)
+            return chosen
+    except OSError as exc:
+        raise ValueError(f"cannot reserve Pod name in {path}: {exc}") from exc
 
 
 def apply_template_naming(
@@ -173,11 +299,23 @@ def apply_template_naming(
     api_key: str,
     *,
     resolve_collisions: bool,
+    environ: Mapping[str, str] | None = None,
 ) -> tuple[list[str], str | None, str | None]:
-    """Apply naming precedence: explicit --name > template naming > core default."""
+    """Apply naming precedence: explicit --name stem > template naming > core default."""
     explicit = _option_value(argv, "--name")
     if explicit is not None:
-        return list(argv), explicit, "CLI"
+        if resolve_collisions:
+            if not api_key:
+                raise ValueError("RUNPOD_API_KEY is required to resolve Pod-name collisions")
+            chosen = reserve_incremented_name(
+                explicit,
+                existing_pod_names(api_key),
+                always_suffix=True,
+                environ=environ,
+            )
+        else:
+            chosen = increment_name(explicit, set(), always_suffix=True)
+        return _replace_option_value(argv, "--name", chosen), chosen, "CLI"
 
     naming = template_naming_config(context)
     if naming is None:
@@ -188,6 +326,11 @@ def apply_template_naming(
     if resolve_collisions and naming.collision == "increment":
         if not api_key:
             raise ValueError("RUNPOD_API_KEY is required to resolve template Pod-name collisions")
-        chosen = increment_name(base, existing_pod_names(api_key))
+        chosen = reserve_incremented_name(
+            base,
+            existing_pod_names(api_key),
+            always_suffix=False,
+            environ=environ,
+        )
 
     return [*argv, "--name", chosen], chosen, "template"
