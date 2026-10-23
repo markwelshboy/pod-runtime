@@ -580,16 +580,16 @@
       "comfyui-editutils",
       "comfyui-linkspotlight",
       "comfyui-loraplotnode",
-      "comfyui-basic-data-handling",
-      "comfyui-huggingface_dataset",
-      "comfyui-tab-manager",
-      "comfyui-tiled-diffusion",
-      "comfyui-inspire-pack",
-      "comfyui-yolo"
+      "comfyui-tab-manager"
     ],
     "default-extras": [
       "comfyui-vrgamedevgirl",
       "comfyui-pixaroma",
+      "comfyui-tiled-diffusion",
+      "comfyui-inspire-pack",
+      "comfyui-yolo",
+      "comfyui-basic-data-handling",
+      "comfyui-huggingface_dataset",
       "comfyui-huggingface"
     ],
     "imagedit": [
