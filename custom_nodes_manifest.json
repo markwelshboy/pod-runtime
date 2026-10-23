@@ -524,6 +524,18 @@
     "comfyui-krea2-conditioning": {
       "remote": "https://github.com/huwhitememes/comfyui-krea2-conditioning.git",
       "local": "ComfyUI-Krea2-Conditioning"
+    },
+    "comfyui-yolo": {
+      "remote": "https://github.com/kadirnar/ComfyUI-YOLO.git",
+      "local": "ComfyUI-YOLO"
+    },
+    "comfyui-tiled-diffusion": {
+      "remote": "https://github.com/shiimizu/ComfyUI-TiledDiffusion.git",
+      "local": "ComfyUI-TiledDiffusion"
+    },
+    "comfyui-inspire-pack": {
+      "remote": "https://github.com/ltdrdata/ComfyUI-Inspire-Pack.git",
+      "local": "ComfyUI-Inspire-Pack"
     }
   },
   "sets": {
