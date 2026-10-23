@@ -205,6 +205,84 @@ pending="$(jq -sr '[.[] | select(.status=="pending")] | length' "$stop_state"/it
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_sage_bundle_publish_policy_auto_publishes_only_missing_exact_key(self):
+        sage = ROOT / "helpers.d" / "helpers_sage_runtime.sh"
+        env = os.environ.copy()
+        env["SAGE_RUNTIME"] = str(sage)
+
+        script = r'''
+set -euo pipefail
+source "$SAGE_RUNTIME"
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+TRACE="$tmp/trace"
+BUNDLE="$tmp/bundle.tgz"
+: > "$BUNDLE"
+export PY=/bin/true
+
+torch_sage_key() { printf '%s\n' 'pycp312_torch2.11.0_cu130_sm_90'; }
+_sage_hf_repo_id() { printf '%s\n' 'owner/repo'; }
+_sage_hf_repo_type() { printf '%s\n' 'dataset'; }
+_sage_hf_revision() { printf '%s\n' 'main'; }
+_sage_hf_python() { printf '%s\n' '/bin/true'; }
+_sage_remote_bundle_exists() {
+  printf 'exists-check:%s\n' "${TEST_EXISTS_RC:-0}" >> "$TRACE"
+  return "${TEST_EXISTS_RC:-0}"
+}
+build_sage_bundle_wrapper() {
+  printf 'build:%s\n' "$1" >> "$TRACE"
+  printf '%s\n' "$BUNDLE"
+}
+
+: > "$TRACE"
+export PUSH_SAGE_BUNDLE=0 SAGE_FORCE_REBUILD=0 TEST_EXISTS_RC=44
+push_sage_bundle_if_requested >/dev/null 2>&1
+grep -q '^exists-check:44$' "$TRACE"
+grep -q '^build:pycp312_torch2.11.0_cu130_sm_90$' "$TRACE"
+
+: > "$TRACE"
+export PUSH_SAGE_BUNDLE=0 SAGE_FORCE_REBUILD=0 TEST_EXISTS_RC=0
+push_sage_bundle_if_requested >/dev/null 2>&1
+grep -q '^exists-check:0$' "$TRACE"
+! grep -q '^build:' "$TRACE"
+
+: > "$TRACE"
+export PUSH_SAGE_BUNDLE=1 SAGE_FORCE_REBUILD=0 TEST_EXISTS_RC=0
+push_sage_bundle_if_requested >/dev/null 2>&1
+! grep -q '^build:' "$TRACE"
+
+: > "$TRACE"
+export PUSH_SAGE_BUNDLE=1 SAGE_FORCE_REBUILD=1 TEST_EXISTS_RC=99
+push_sage_bundle_if_requested >/dev/null 2>&1
+! grep -q '^exists-check:' "$TRACE"
+grep -q '^build:' "$TRACE"
+
+: > "$TRACE"
+export PUSH_SAGE_BUNDLE=0 SAGE_FORCE_REBUILD=1 TEST_EXISTS_RC=0
+push_sage_bundle_if_requested >/dev/null 2>&1
+grep -q '^exists-check:0$' "$TRACE"
+! grep -q '^build:' "$TRACE"
+
+: > "$TRACE"
+export PUSH_SAGE_BUNDLE=0 SAGE_FORCE_REBUILD=0 TEST_EXISTS_RC=7
+set +e
+push_sage_bundle_if_requested >/dev/null 2>&1
+rc=$?
+set -e
+[[ "$rc" -eq 7 ]]
+! grep -q '^build:' "$TRACE"
+'''
+        result = subprocess.run(
+            ["bash", "-c", script],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
