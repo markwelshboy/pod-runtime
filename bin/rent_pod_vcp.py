@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import fcntl
 import re
 import shlex
 import sys
-from typing import Any
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Iterator
 
 import rent_pod as core
 import vcp_targets
@@ -76,6 +79,17 @@ def print_vcp_handoff(
     print(f"           vcp target {shlex.quote(target)}")
 
 
+@contextmanager
+def _vcp_registry_lock() -> Iterator[None]:
+    """Serialize rent-pod VCP registry mutations across local processes."""
+    config = vcp_targets.config_path()
+    config.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = config.with_name(config.name + ".lock")
+    with lock_path.open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        yield
+
+
 def configure_vcp(
     identity: dict[str, Any],
     key: str,
@@ -90,15 +104,16 @@ def configure_vcp(
     }
     print(f"[rent-pod] Configuring VCP target {target}...")
     try:
-        vcp_targets.save_target(
-            target,
-            vcp_ssh_args(identity, key),
-            pod_id=str(identity.get("pod_id") or "") or None,
-            description=description,
-            provider="runpod",
-            metadata=metadata,
-            make_active=True,
-        )
+        with _vcp_registry_lock():
+            vcp_targets.save_target(
+                target,
+                vcp_ssh_args(identity, key),
+                pod_id=str(identity.get("pod_id") or "") or None,
+                description=description,
+                provider="runpod",
+                metadata=metadata,
+                make_active=True,
+            )
     except Exception as exc:
         print(
             f"[rent-pod] WARNING: VCP target configuration failed: {exc}; "
@@ -157,10 +172,11 @@ def install_core_hooks(auto_configure: bool, rent_name: str | None = None) -> No
         if not pod_id:
             return
         try:
-            cleanup = vcp_targets.remove_matching_targets(
-                pod_id=str(pod_id),
-                endpoints=set(),
-            )
+            with _vcp_registry_lock():
+                cleanup = vcp_targets.remove_matching_targets(
+                    pod_id=str(pod_id),
+                    endpoints=set(),
+                )
         except Exception as exc:
             print(
                 f"[rent-pod] WARNING: VCP cleanup failed after pod deletion: {exc}",
