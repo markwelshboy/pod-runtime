@@ -139,6 +139,11 @@ _hf_manifest_run_item() {
   return "$rc"
 }
 
+_hf_manifest_worker() {
+  trap 'exit 143' TERM INT
+  _hf_manifest_run_item "$@"
+}
+
 _hf_manifest_controller() {
   local state="${1:?state}"
   set +e
@@ -151,6 +156,7 @@ _hf_manifest_controller() {
 
   _hf_manifest_controller_trap() {
     local sig="${1:-TERM}" running_item current_status current_bytes
+    local controller_pid="${BASHPID:-$$}"
 
     # A direct signal to the controller should stop its workers too. The public
     # hf_download_stop path already kills the whole process tree, so this is a
@@ -158,7 +164,7 @@ _hf_manifest_controller() {
     while IFS= read -r child; do
       [[ "$child" =~ ^[0-9]+$ ]] || continue
       _hf_manifest_kill_tree "$child" "$sig"
-    done < <(ps -o pid= --ppid "${BASHPID:-$$}" 2>/dev/null | awk '{print $1}')
+    done < <(ps -o pid= --ppid "$controller_pid" 2>/dev/null | awk '{print $1}')
 
     if [[ -f "$state/items.list" ]]; then
       while IFS= read -r running_item || [[ -n "$running_item" ]]; do
@@ -191,9 +197,7 @@ _hf_manifest_controller() {
       active=$((active - 1))
     done
 
-    (
-      _hf_manifest_run_item "$item" "$state"
-    ) &
+    _hf_manifest_worker "$item" "$state" &
     active=$((active + 1))
   done <"$state/items.list"
 
