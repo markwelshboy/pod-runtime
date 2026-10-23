@@ -1,3 +1,5 @@
+import os
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime
@@ -37,13 +39,17 @@ class RentPodNamingTests(unittest.TestCase):
         )
         return context
 
+    def _reservation_env(self, root: Path) -> dict[str, str]:
+        return {"RENT_POD_NAME_RESERVATIONS": str(root / "reservations.json")}
+
     def test_registers_naming_metadata(self):
         self.assertIn("naming", templates.LOCAL_KEYS)
 
     def test_directory_template_supplies_incrementing_name(self):
         with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
             context = self._context(
-                Path(td),
+                root,
                 '[naming]\npattern = "q3c"\ncollision = "increment"\n',
             )
             with mock.patch.object(
@@ -56,36 +62,132 @@ class RentPodNamingTests(unittest.TestCase):
                     context,
                     "token",
                     resolve_collisions=True,
+                    environ=self._reservation_env(root),
                 )
         self.assertEqual(pod_name, "q3c-2")
         self.assertEqual(source, "template")
         self.assertEqual(argv[-2:], ["--name", "q3c-2"])
 
-    def test_first_name_uses_bare_pattern(self):
+    def test_first_template_name_uses_bare_pattern(self):
         self.assertEqual(naming.increment_name("q3c", {"other"}), "q3c")
 
-    def test_cli_name_wins_without_inventory_lookup(self):
-        context = mock.Mock()
-        with mock.patch.object(naming, "template_naming_config") as profile:
-            argv, pod_name, source = naming.apply_template_naming(
-                ["l40s", "--name", "manual"],
-                context,
-                "token",
-                resolve_collisions=True,
-            )
-        profile.assert_not_called()
-        self.assertEqual(argv, ["l40s", "--name", "manual"])
-        self.assertEqual((pod_name, source), ("manual", "CLI"))
-
-    def test_dry_run_renders_base_without_querying_inventory(self):
+    def test_explicit_name_is_a_numbered_stem(self):
         with tempfile.TemporaryDirectory() as td:
-            context = self._context(Path(td), '[naming]\npattern = "q3c"\n')
+            root = Path(td)
+            context = mock.Mock()
+            with mock.patch.object(
+                naming,
+                "existing_pod_names",
+                return_value={"manual-1", "other"},
+            ) as existing:
+                argv, pod_name, source = naming.apply_template_naming(
+                    ["l40s", "--name", "manual"],
+                    context,
+                    "token",
+                    resolve_collisions=True,
+                    environ=self._reservation_env(root),
+                )
+        existing.assert_called_once_with("token")
+        self.assertEqual(argv, ["l40s", "--name", "manual-2"])
+        self.assertEqual((pod_name, source), ("manual-2", "CLI"))
+
+    def test_explicit_equals_name_is_rewritten_once(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            with mock.patch.object(naming, "existing_pod_names", return_value=set()):
+                argv, pod_name, source = naming.apply_template_naming(
+                    ["l40s", "--name=rp-krea2"],
+                    mock.Mock(),
+                    "token",
+                    resolve_collisions=True,
+                    environ=self._reservation_env(root),
+                )
+        self.assertEqual(argv, ["l40s", "--name", "rp-krea2-1"])
+        self.assertEqual((pod_name, source), ("rp-krea2-1", "CLI"))
+
+    def test_local_reservations_close_parallel_inventory_gap(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            env = self._reservation_env(root)
+            context = mock.Mock()
+            with mock.patch.object(naming, "existing_pod_names", return_value=set()):
+                _argv1, first, _source1 = naming.apply_template_naming(
+                    ["l40s", "--name", "rp-krea2"],
+                    context,
+                    "token",
+                    resolve_collisions=True,
+                    environ=env,
+                )
+                _argv2, second, _source2 = naming.apply_template_naming(
+                    ["l40s", "--name", "rp-krea2"],
+                    context,
+                    "token",
+                    resolve_collisions=True,
+                    environ=env,
+                )
+        self.assertEqual(first, "rp-krea2-1")
+        self.assertEqual(second, "rp-krea2-2")
+
+    def test_reservation_lock_is_safe_across_processes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            reservation = root / "reservations.json"
+            env = os.environ.copy()
+            env["RENT_POD_NAME_RESERVATIONS"] = str(reservation)
+            env["PYTHONPATH"] = str(BIN) + os.pathsep + env.get("PYTHONPATH", "")
+            code = (
+                "from rent_pod_naming import reserve_incremented_name; "
+                "print(reserve_incremented_name('rp-krea2', set(), always_suffix=True))"
+            )
+            processes = [
+                subprocess.Popen(
+                    [sys.executable, "-c", code],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    env=env,
+                )
+                for _ in range(4)
+            ]
+            results = []
+            for process in processes:
+                stdout, stderr = process.communicate(timeout=10)
+                self.assertEqual(process.returncode, 0, stderr)
+                results.append(stdout.strip())
+
+        self.assertEqual(
+            set(results),
+            {"rp-krea2-1", "rp-krea2-2", "rp-krea2-3", "rp-krea2-4"},
+        )
+
+    def test_explicit_dry_run_previews_first_suffix_without_query_or_reservation(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            env = self._reservation_env(root)
+            with mock.patch.object(naming, "existing_pod_names") as existing:
+                argv, pod_name, source = naming.apply_template_naming(
+                    ["l40s", "--name", "rp-krea2", "--dry-run"],
+                    mock.Mock(),
+                    "",
+                    resolve_collisions=False,
+                    environ=env,
+                )
+        existing.assert_not_called()
+        self.assertEqual(argv[-2:], ["--name", "rp-krea2-1"])
+        self.assertEqual((pod_name, source), ("rp-krea2-1", "CLI"))
+        self.assertFalse(Path(env["RENT_POD_NAME_RESERVATIONS"]).exists())
+
+    def test_dry_run_renders_template_base_without_querying_inventory(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            context = self._context(root, '[naming]\npattern = "q3c"\n')
             with mock.patch.object(naming, "existing_pod_names") as existing:
                 argv, pod_name, source = naming.apply_template_naming(
                     ["l40s", "--dry-run"],
                     context,
                     "",
                     resolve_collisions=False,
+                    environ=self._reservation_env(root),
                 )
         existing.assert_not_called()
         self.assertEqual(argv[-2:], ["--name", "q3c"])
