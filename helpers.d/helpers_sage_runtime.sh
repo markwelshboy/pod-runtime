@@ -218,38 +218,19 @@ PY
   return 1
 }
 
-push_sage_bundle_if_requested() {
-  _sage_true "${PUSH_SAGE_BUNDLE:-0}" || {
-    echo "[sage-hf] PUSH_SAGE_BUNDLE is disabled; skipping publish." >&2
-    return 0
-  }
+_sage_remote_bundle_exists() {
+  local repo="${1:?repo}"
+  local repo_type="${2:?repo_type}"
+  local revision="${3:?revision}"
+  local filename="${4:?filename}"
+  local py="${5:?python}"
 
-  local key tarpath repo repo_type revision py filename rc=0
-  key="$(torch_sage_key)" || return 1
-  repo="$(_sage_hf_repo_id)"
-  repo_type="$(_sage_hf_repo_type)"
-  revision="$(_sage_hf_revision)"
-  py="$(_sage_hf_python)" || return 1
-  filename="bundles/torch_sage_bundle_${key}.tgz"
-
-  if [[ -z "$repo" ]]; then
-    echo "[sage-hf] ERROR: HF_REPO_ID/HFF_REPO is not configured." >&2
-    return 1
-  fi
-
-  # PUSH_SAGE_BUNDLE means "publish this stack if it is missing", not
-  # "repackage and overwrite the exact same artifact on every pod boot".
-  # This is intentionally a remote existence check rather than a local-file
-  # check: a locally cached bundle may be the result of a previous failed
-  # upload, in which case it still needs to be published.
-  if ! _sage_true "${SAGE_FORCE_REBUILD:-0}"; then
-    echo "[sage-hf] Checking whether ${repo}:${filename} is already published..." >&2
-    if HF_SAGE_REPO="$repo" \
-       HF_SAGE_REPO_TYPE="$repo_type" \
-       HF_SAGE_REVISION="$revision" \
-       HF_SAGE_FILENAME="$filename" \
-       HF_SAGE_TRACEBACK="${HFF_VERBOSE:-${SAGE_HF_VERBOSE:-false}}" \
-       "$py" - <<'PY'
+  HF_SAGE_REPO="$repo" \
+  HF_SAGE_REPO_TYPE="$repo_type" \
+  HF_SAGE_REVISION="$revision" \
+  HF_SAGE_FILENAME="$filename" \
+  HF_SAGE_TRACEBACK="${HFF_VERBOSE:-${SAGE_HF_VERBOSE:-false}}" \
+  "$py" - <<'PY'
 import os
 import sys
 from huggingface_hub import HfApi
@@ -270,8 +251,50 @@ except Exception as exc:
 
 raise SystemExit(0 if exists else 44)
 PY
-    then
-      echo "[sage-hf] Exact bundle already published for key=${key}; skipping rebuild/re-upload." >&2
+}
+
+push_sage_bundle_if_requested() {
+  local key tarpath repo repo_type revision py filename rc=0
+  local push_requested=0 force_rebuild=0
+
+  _sage_true "${PUSH_SAGE_BUNDLE:-0}" && push_requested=1
+  _sage_true "${SAGE_FORCE_REBUILD:-0}" && force_rebuild=1
+
+  key="$(torch_sage_key)" || return 1
+  repo="$(_sage_hf_repo_id)"
+  repo_type="$(_sage_hf_repo_type)"
+  revision="$(_sage_hf_revision)"
+  filename="bundles/torch_sage_bundle_${key}.tgz"
+
+  if [[ -z "$repo" ]]; then
+    if ((push_requested)); then
+      echo "[sage-hf] ERROR: HF_REPO_ID/HFF_REPO is not configured." >&2
+      return 1
+    fi
+    echo "[sage-hf] PUSH_SAGE_BUNDLE is disabled and no Hub repo is configured; skipping auto-publish check." >&2
+    return 0
+  fi
+
+  py="$(_sage_hf_python)" || return 1
+
+  # PUSH_SAGE_BUNDLE=0 means "do not overwrite an existing bundle". A cache
+  # miss is different: if the exact current stack/architecture bundle is absent,
+  # publish it once so a later pod with the same architecture can restore it.
+  # The exact key includes Python ABI, Torch, CUDA, and GPU_ARCH, so this avoids
+  # treating an incompatible same-SM bundle as a reusable artifact.
+  #
+  # Preserve the explicit force behavior only when publishing was requested:
+  # PUSH_SAGE_BUNDLE=1 + SAGE_FORCE_REBUILD=1 deliberately republishes.
+  if ((push_requested && force_rebuild)); then
+    echo "[sage-hf] PUSH_SAGE_BUNDLE and SAGE_FORCE_REBUILD are enabled; rebuilding/re-publishing key=${key}." >&2
+  else
+    echo "[sage-hf] Checking whether ${repo}:${filename} is already published..." >&2
+    if _sage_remote_bundle_exists "$repo" "$repo_type" "$revision" "$filename" "$py"; then
+      if ((push_requested)); then
+        echo "[sage-hf] Exact bundle already published for key=${key}; skipping rebuild/re-upload." >&2
+      else
+        echo "[sage-hf] PUSH_SAGE_BUNDLE is disabled and exact bundle already exists for key=${key}; no publish needed." >&2
+      fi
       return 0
     else
       rc=$?
@@ -279,10 +302,13 @@ PY
         echo "[sage-hf] ERROR: could not determine whether Sage bundle is already published (rc=${rc}); skipping publish attempt." >&2
         return "$rc"
       fi
-      echo "[sage-hf] Exact bundle is not published for key=${key}; preparing upload." >&2
     fi
-  else
-    echo "[sage-hf] SAGE_FORCE_REBUILD is enabled; rebuilding/re-publishing key=${key}." >&2
+
+    if ((push_requested)); then
+      echo "[sage-hf] Exact bundle is not published for key=${key}; preparing upload." >&2
+    else
+      echo "[sage-hf] PUSH_SAGE_BUNDLE is disabled, but no exact bundle exists for key=${key}; auto-publishing this first bundle." >&2
+    fi
   fi
 
   if ! "$PY" - <<'PY'
