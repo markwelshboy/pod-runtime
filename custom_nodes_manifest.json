@@ -540,6 +540,10 @@
     "comfyui-getsetracks": {
       "remote": "https://github.com/SparknightLLC/ComfyUI-GetSetRacks.git",
       "local": "ComfyUI-GetSetRacks"
+    },
+    "comfyui-ipadapter-plus": {
+      "remote": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
+      "local": "ComfyUI-IPAdapter-Plus"
     }
   },
   "sets": {
