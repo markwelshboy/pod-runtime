@@ -1,49 +1,83 @@
+# Keep the state-directory implementation used internally by the downloader,
+# then expose a scope-aware public wrapper. Explicit paths remain compatible.
+if declare -F hf_download_is_active >/dev/null 2>&1 \
+   && ! declare -F _hf_download_is_active_state >/dev/null 2>&1; then
+  eval "$(declare -f hf_download_is_active \
+    | sed '1s/^hf_download_is_active[[:space:]]*()/_hf_download_is_active_state ()/')"
+fi
+
+hf_download_is_active() {
+  local target="${1:-base,loras}" resolved scope state
+
+  if [[ "$target" == */* || "$target" == .* ]]; then
+    _hf_download_is_active_state "$target"
+    return $?
+  fi
+
+  resolved="$(_hf_manifest_resolve_states "$target")" || return $?
+  while IFS=$'\t' read -r scope state; do
+    [[ -n "$state" ]] || continue
+    if _hf_download_is_active_state "$state"; then
+      return 0
+    fi
+  done <<<"$resolved"
+  return 1
+}
+
 hf_download_monitor_progress() {
   local interval="${1:-${HF_MANIFEST_PROGRESS_INTERVAL:-60}}"
   local log="${2:-${COMFY_LOGS:-/workspace/logs}/hf_manifest_progress.log}"
-  local state
-  state="$(_hf_manifest_state_dir "${3:-}")"
+  local target="${3:-base,loras}"
   mkdir -p -- "$(dirname -- "$log")"
 
   while :; do
-    hf_download_show_snapshot "$state" | tee -a "$log"
-    local status active
-    status="$(hf_download_status_json "$state")" || return 1
-    active="$(jq -r '.active // false' <<<"$status")"
-    [[ "$active" == "true" ]] || break
+    hf_download_show_snapshot "$target" | tee -a "$log"
+    hf_download_is_active "$target" || break
     sleep "$interval"
   done
 
   local final failed stalled
-  final="$(hf_download_status_json "$state")" || return 1
+  final="$(hf_download_status_json "$target")" || return 1
   failed="$(jq -r '.failed // 0' <<<"$final")"
   stalled="$(jq -r '.stalled // false' <<<"$final")"
   ((failed == 0)) && [[ "$stalled" != "true" ]]
 }
 
 hf_download_wait() {
-  local state
-  state="$(_hf_manifest_state_dir "${1:-}")"
-  while hf_download_is_active "$state"; do
+  local target="${1:-base,loras}"
+  while hf_download_is_active "$target"; do
     sleep 1
   done
+
   local status
-  status="$(hf_download_status_json "$state")" || return 1
+  status="$(hf_download_status_json "$target")" || return 1
   [[ "$(jq -r '.failed // 0' <<<"$status")" == "0" ]] \
     && [[ "$(jq -r '.stalled // false' <<<"$status")" != "true" ]]
 }
 
 hf_download_stop() {
-  local state
-  state="$(_hf_manifest_state_dir "${1:-}")"
-  local pid=""
-  [[ -f "$state/controller.pid" ]] && pid="$(cat "$state/controller.pid" 2>/dev/null || true)"
-  if hf_download_is_active "$state"; then
-    _hf_manifest_kill_tree "$pid" TERM
-    _hf_manifest_set_controller_status "$state" stopped 0 "stopped by user"
-    echo "[hf-manifest] Stopped controller pid=$pid"
+  local target="${1:-base,loras}" resolved scope state pid stopped=0
+
+  if [[ "$target" == */* || "$target" == .* ]]; then
+    resolved="$(printf '%s\t%s\n' "$(basename -- "$target")" "$target")"
   else
-    echo "[hf-manifest] No active controller."
+    resolved="$(_hf_manifest_resolve_states "$target")" || return $?
+  fi
+
+  while IFS=$'\t' read -r scope state; do
+    [[ -n "$state" ]] || continue
+    pid=""
+    [[ -f "$state/controller.pid" ]] && pid="$(cat "$state/controller.pid" 2>/dev/null || true)"
+    if _hf_download_is_active_state "$state"; then
+      _hf_manifest_kill_tree "$pid" TERM
+      _hf_manifest_set_controller_status "$state" stopped 0 "stopped by user"
+      echo "[hf-manifest] Stopped ${scope} controller pid=$pid"
+      stopped=$((stopped + 1))
+    fi
+  done <<<"$resolved"
+
+  if ((stopped == 0)); then
+    echo "[hf-manifest] No active controller in ${target}."
   fi
 }
 
