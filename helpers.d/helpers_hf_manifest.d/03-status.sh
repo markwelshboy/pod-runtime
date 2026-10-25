@@ -1,6 +1,46 @@
-hf_download_status_json() {
-  local state
-  state="$(_hf_manifest_state_dir "${1:-}")"
+: "${HF_BASE_STATE:=${HF_MANIFEST_STATE_DIR}/base}"
+: "${HF_LORA_STATE:=${HF_MANIFEST_STATE_DIR}/loras}"
+export HF_BASE_STATE HF_LORA_STATE
+
+_hf_manifest_scope_state_dir() {
+  case "${1:-}" in
+    base) printf '%s\n' "${HF_BASE_STATE:-${HF_MANIFEST_STATE_DIR}/base}" ;;
+    loras) printf '%s\n' "${HF_LORA_STATE:-${HF_MANIFEST_STATE_DIR}/loras}" ;;
+    *) return 2 ;;
+  esac
+}
+
+_hf_manifest_resolve_states() {
+  local target="${1:-base,loras}" scope
+
+  # Preserve the historical explicit-state-directory interface.
+  if [[ "$target" == */* || "$target" == .* ]]; then
+    printf '%s\t%s\n' "$(basename -- "$target")" "$target"
+    return 0
+  fi
+
+  local -a requested=()
+  local -A seen=()
+  IFS=',' read -ra requested <<<"$target"
+  for scope in "${requested[@]}"; do
+    scope="${scope#"${scope%%[![:space:]]*}"}"
+    scope="${scope%"${scope##*[![:space:]]}"}"
+    [[ -n "$scope" ]] || continue
+    case "$scope" in
+      base|loras) ;;
+      *)
+        echo "[hf-manifest] Unknown scope: $scope (expected base, loras, or base,loras)" >&2
+        return 2
+        ;;
+    esac
+    [[ -z "${seen[$scope]:-}" ]] || continue
+    seen[$scope]=1
+    printf '%s\t%s\n' "$scope" "$(_hf_manifest_scope_state_dir "$scope")"
+  done
+}
+
+_hf_download_status_json_state() {
+  local state="${1:?state directory}"
   local py
   py="$(_hf_manifest_python)" || return 1
 
@@ -119,25 +159,6 @@ print(json.dumps(result, separators=(",", ":")))
 PY
 }
 
-_hf_download_show_snapshot_usage() {
-  cat <<'EOF_USAGE'
-Usage:
-  hf_download_show_snapshot [SCOPES] [OPTIONS]
-
-Scopes:
-  base              Base model downloads
-  loras             Optional LoRA downloads
-  base,loras        Multiple scopes
-
-Default:
-  base,loras
-
-Options:
-  --all             Show all completed downloads instead of the latest 20
-  -h, --help        Show this help
-EOF_USAGE
-}
-
 _hf_download_snapshot_aggregate() {
   jq -sc '
     def scope_state:
@@ -165,6 +186,7 @@ _hf_download_snapshot_aggregate() {
         known_done_bytes: ([$states[] | (.known_done_bytes // 0)] | add // 0),
         unknown_size_items: ([$states[] | (.unknown_size_items // 0)] | add // 0),
         controller_running: any($states[]; (.controller_running // false)),
+        active: any($states[]; (.controller_running // false)),
         stalled: any($states[]; (.stalled // false)),
         items: [$states[] | .items[]?]
       }
@@ -178,6 +200,56 @@ _hf_download_snapshot_aggregate() {
         end
       )
   '
+}
+
+_hf_download_status_json_scopes() {
+  local target="${1:-base,loras}" scope state status
+  local -a statuses=()
+
+  while IFS=$'\t' read -r scope state; do
+    [[ -n "$state" ]] || continue
+    status="$(_hf_download_status_json_state "$state")" || return 1
+    status="$(jq -c --arg scope "$scope" '
+      . + {scope:$scope}
+      | .items = ((.items // []) | map(. + {scope:$scope}))
+    ' <<<"$status")" || return 1
+    statuses+=("$status")
+  done < <(_hf_manifest_resolve_states "$target")
+
+  if ((${#statuses[@]} == 0)); then
+    echo "[hf-manifest] No scopes selected." >&2
+    return 2
+  fi
+
+  printf '%s\n' "${statuses[@]}" | _hf_download_snapshot_aggregate
+}
+
+hf_download_status_json() {
+  local target="${1:-base,loras}"
+  if [[ "$target" == */* || "$target" == .* ]]; then
+    _hf_download_status_json_state "$target"
+  else
+    _hf_download_status_json_scopes "$target"
+  fi
+}
+
+_hf_download_show_snapshot_usage() {
+  cat <<'EOF_USAGE'
+Usage:
+  hf_download_show_snapshot [SCOPES] [OPTIONS]
+
+Scopes:
+  base              Base model downloads
+  loras             Optional LoRA downloads
+  base,loras        Multiple scopes
+
+Default:
+  base,loras
+
+Options:
+  --all             Show all completed downloads instead of the latest 20
+  -h, --help        Show this help
+EOF_USAGE
 }
 
 _hf_download_show_snapshot_render() {
@@ -251,9 +323,7 @@ _hf_download_show_snapshot_render() {
   local completed_max="${HF_MANIFEST_COMPLETED_MAX:-20}"
   [[ "$completed_max" =~ ^[0-9]+$ ]] || completed_max=20
   ((completed_max > 0)) || completed_max=20
-  if [[ "$show_all" == "true" ]]; then
-    completed_max=0
-  fi
+  [[ "$show_all" == "true" ]] && completed_max=0
 
   rows="$(jq -r --argjson max "$completed_max" '
     [.items[] | select(.status=="completed")]
@@ -289,9 +359,7 @@ hf_download_show_snapshot() {
   while (($# > 0)); do
     arg="$1"
     case "$arg" in
-      --all)
-        show_all=true
-        ;;
+      --all) show_all=true ;;
       -h|--help)
         _hf_download_show_snapshot_usage
         return 0
@@ -299,10 +367,10 @@ hf_download_show_snapshot() {
       --)
         shift
         if (($# > 0)); then
-          if [[ "$scope_arg_set" == "true" ]]; then
+          [[ "$scope_arg_set" == "false" ]] || {
             echo "[hf-manifest] Only one scope list may be supplied." >&2
             return 2
-          fi
+          }
           scopes="$1"
           scope_arg_set=true
           shift
@@ -319,10 +387,10 @@ hf_download_show_snapshot() {
         return 2
         ;;
       *)
-        if [[ "$scope_arg_set" == "true" ]]; then
+        [[ "$scope_arg_set" == "false" ]] || {
           echo "[hf-manifest] Only one scope list may be supplied." >&2
           return 2
-        fi
+        }
         scopes="$arg"
         scope_arg_set=true
         ;;
@@ -330,54 +398,17 @@ hf_download_show_snapshot() {
     shift
   done
 
-  local -a statuses=()
-  local status state scope raw_scope
-
-  # Backward compatibility for internal/legacy callers that pass an actual
-  # state directory rather than the public base/loras scope syntax.
-  if [[ "$scope_arg_set" == "true" && "$scopes" == */* ]]; then
-    state="$scopes"
-    raw_scope="$(basename -- "$state")"
-    status="$(hf_download_status_json "$state")" || return 1
+  local status raw_scope
+  if [[ "$scope_arg_set" == "true" && ( "$scopes" == */* || "$scopes" == .* ) ]]; then
+    status="$(_hf_download_status_json_state "$scopes")" || return 1
+    raw_scope="$(basename -- "$scopes")"
     status="$(jq -c --arg scope "$raw_scope" '
       . + {scope:$scope}
       | .items = ((.items // []) | map(. + {scope:$scope}))
-    ' <<<"$status")" || return 1
-    statuses+=("$status")
+    ' <<<"$status" | _hf_download_snapshot_aggregate)" || return 1
   else
-    local -a requested=()
-    local -A seen=()
-    IFS=',' read -ra requested <<<"$scopes"
-
-    for scope in "${requested[@]}"; do
-      scope="${scope#"${scope%%[![:space:]]*}"}"
-      scope="${scope%"${scope##*[![:space:]]}"}"
-      [[ -n "$scope" ]] || continue
-      case "$scope" in
-        base|loras) ;;
-        *)
-          echo "[hf-manifest] Unknown scope: $scope (expected base, loras, or base,loras)" >&2
-          return 2
-          ;;
-      esac
-      [[ -z "${seen[$scope]:-}" ]] || continue
-      seen[$scope]=1
-
-      state="$(_hf_manifest_state_dir)/$scope"
-      status="$(hf_download_status_json "$state")" || return 1
-      status="$(jq -c --arg scope "$scope" '
-        . + {scope:$scope}
-        | .items = ((.items // []) | map(. + {scope:$scope}))
-      ' <<<"$status")" || return 1
-      statuses+=("$status")
-    done
+    status="$(_hf_download_status_json_scopes "$scopes")" || return 1
   fi
 
-  if ((${#statuses[@]} == 0)); then
-    echo "[hf-manifest] No scopes selected." >&2
-    return 2
-  fi
-
-  status="$(printf '%s\n' "${statuses[@]}" | _hf_download_snapshot_aggregate)" || return 1
   _hf_download_show_snapshot_render "$status" "$show_all"
 }
