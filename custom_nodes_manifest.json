@@ -536,6 +536,10 @@
     "comfyui-inspire-pack": {
       "remote": "https://github.com/ltdrdata/ComfyUI-Inspire-Pack.git",
       "local": "ComfyUI-Inspire-Pack"
+    },
+    "comfyui-getsetracks": {
+      "remote": "https://github.com/SparknightLLC/ComfyUI-GetSetRacks.git",
+      "local": "ComfyUI-GetSetRacks"
     }
   },
   "sets": {
@@ -590,7 +594,8 @@
       "comfyui-yolo",
       "comfyui-basic-data-handling",
       "comfyui-huggingface_dataset",
-      "comfyui-huggingface"
+      "comfyui-huggingface",
+      "comfyui-getsetracks"
     ],
     "imagedit": [
       "comfyui-inpaint-cropandstitch",

@@ -772,6 +772,14 @@
       {
         "url": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/resolve/main/bfs_head_swap_v1.1_krea2.safetensors",
         "path": "{LORAS_DIR}/Krea-2/bfs_head_swap_v1.1_krea2.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/MaxedOut/ComfyUI-Starter-Packs/resolve/00a44d26e02565a6177ec5a02fee83c02101f314/SDXL/controlnet/xinsir-openpose-sdxl-1.0.safetensors",
+        "path": "{CONTROLNET_DIR}/SDXL/xinsir-openpose-sdxl-1.0.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/dimitribarbot/controlnet-openpose-sdxl-1.0-safetensors/resolve/main/diffusion_pytorch_model.safetensors",
+        "path": "{CONTROLNET_DIR}/SDXL/dimitribarbot-controlnet-openpose-sdxl-1.0.safetensors"
       }
     ],
     "krea2_character_loras": [
