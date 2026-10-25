@@ -772,6 +772,20 @@
       {
         "url": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/resolve/main/bfs_head_swap_v1.1_krea2.safetensors",
         "path": "{LORAS_DIR}/Krea-2/bfs_head_swap_v1.1_krea2.safetensors"
+      }
+    ],
+    "sdxl_base": [
+      {
+        "id": "sdxl-base-models-checkpoints-SDXL",
+        "mode": "tree",
+        "repo_id": "markwelshboyx/diffusionetc",
+        "repo_type": "model",
+        "revision": "main",
+        "include": [
+          "models/checkpoints/SDXL/*.safetensors"
+        ],
+        "strip_prefix": "models/checkpoints/SDXL",
+        "path": "{CHECKPOINTS_DIR}/SDXL"
       },
       {
         "url": "https://huggingface.co/MaxedOut/ComfyUI-Starter-Packs/resolve/00a44d26e02565a6177ec5a02fee83c02101f314/SDXL/controlnet/xinsir-openpose-sdxl-1.0.safetensors",
@@ -780,6 +794,20 @@
       {
         "url": "https://huggingface.co/dimitribarbot/controlnet-openpose-sdxl-1.0-safetensors/resolve/main/diffusion_pytorch_model.safetensors",
         "path": "{CONTROLNET_DIR}/SDXL/dimitribarbot-controlnet-openpose-sdxl-1.0.safetensors"
+      }
+    ],
+    "sdxl_detailer_loras": [
+      {
+        "id": "sdxl-detailers-models-loras-SDXL-detailers",
+        "mode": "tree",
+        "repo_id": "markwelshboyx/diffusionetc",
+        "repo_type": "model",
+        "revision": "main",
+        "include": [
+          "models/loras/SDXL/detailers/*.safetensors"
+        ],
+        "strip_prefix": "models/loras/SDXL/detailers",
+        "path": "{LORAS_DIR}/SDXL/detailers"
       }
     ],
     "krea2_character_loras": [
