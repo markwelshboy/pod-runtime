@@ -239,8 +239,8 @@ ensure_comfy_dirs() {
     "${VAE_DIR:?}" \
     "${LORAS_DIR:?}" \
     "${DETECTION_DIR:?}" \
-    "${CTRLNET_DIR:?}" \
-    "${CTRLNET_UNION_DIR:?}" \
+    "${CONTROLNET_DIR:?}" \
+    "${CONTROLNET_UNION_DIR:?}" \
     "${ULTRALYTICS_DIR:?}" \
     "${SEEDVR2_DIR:?}" \
     "${UPSCALE_DIR:?}" \
