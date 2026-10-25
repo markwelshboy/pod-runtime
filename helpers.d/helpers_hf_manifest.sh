@@ -15,6 +15,8 @@ source "${_hf_manifest_lib_dir}/02-download.sh"
 # shellcheck source=/dev/null
 source "${_hf_manifest_lib_dir}/03-status.sh"
 # shellcheck source=/dev/null
+source "${_hf_manifest_lib_dir}/03-speed.sh"
+# shellcheck source=/dev/null
 source "${_hf_manifest_lib_dir}/04-dispatch.sh"
 # shellcheck source=/dev/null
 source "${_hf_manifest_root_dir}/helpers_hf_manifest_selection.sh"
