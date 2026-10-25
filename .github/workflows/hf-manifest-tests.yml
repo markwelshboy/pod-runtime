@@ -115,7 +115,7 @@ jobs:
             exit 1
           fi
 
-      - name: Test explicit selection, background downloads, and status
+      - name: Test explicit selection, background downloads, status, and throughput
         shell: bash
         run: |
           set -euo pipefail
@@ -152,7 +152,7 @@ jobs:
           : > "$local_dir/$file"
           for _ in 1 2 3 4; do
             head -c 16384 /dev/zero >> "$local_dir/$file"
-            sleep 0.15
+            sleep 0.25
           done
           printf '%s\n' "$local_dir/$file"
           HF
@@ -160,6 +160,7 @@ jobs:
 
           export HFF_VENV="$test_root/hff"
           export COMFY_LOGS="$test_root/logs"
+          export HF_MANIFEST_SPEED_MIN_INTERVAL=0.1
           source ./helpers.d/helpers_hf_manifest.sh
 
           HF_DOWNLOADER=false aria2_download_from_manifest | grep -q ARIA2_ORIGINAL
@@ -218,12 +219,45 @@ jobs:
           {"sections":{"test_base":[{"url":"https://huggingface.co/acme/demo/resolve/main/models/fake.bin","path":"$test_root/hf-out.bin","bytes":65536}]}}
           JSON
           hf_download_from_manifest "$test_root/hf.json" "$test_root/hf-state" "test_base"
-          sleep 0.30
+
+          # First status sample establishes the recent-speed baseline. Average
+          # speed is immediately available from bytes observed since started_at.
+          sleep 0.20
           live_status="$(hf_download_status_json "$test_root/hf-state")"
-          jq -e '.running == 1 and .items[0].observed_bytes > 0 and .items[0].observed_bytes < .items[0].total_bytes' <<<"$live_status" >/dev/null
+          jq -e '
+            .running == 1
+            and .items[0].observed_bytes > 0
+            and .items[0].observed_bytes < .items[0].total_bytes
+            and .items[0].average_bytes_per_sec > 0
+            and .items[0].recent_warming_up == true
+          ' <<<"$live_status" >/dev/null
+
+          # After more bytes arrive, recent throughput should become measurable.
+          sleep 0.20
+          speed_status="$(hf_download_status_json "$test_root/hf-state")"
+          jq -e '
+            .running == 1
+            and .items[0].recent_warming_up == false
+            and .items[0].recent_bytes_per_sec > 0
+            and .active_recent_bytes_per_sec > 0
+            and .active_average_bytes_per_sec > 0
+          ' <<<"$speed_status" >/dev/null
+
+          # An immediate snapshot must reuse the last recent sample rather than
+          # advancing the baseline too quickly and collapsing the rate to zero.
+          snapshot="$(hf_download_show_snapshot "$test_root/hf-state")"
+          grep -Fq 'Throughput (approximate' <<<"$snapshot"
+          grep -Fq 'Aggregate active:' <<<"$snapshot"
+          grep -Fq ' recent | ' <<<"$snapshot"
+
           hf_download_wait "$test_root/hf-state"
           final_status="$(hf_download_status_json "$test_root/hf-state")"
-          jq -e '.completed == 1 and .failed == 0 and .percent == 100' <<<"$final_status" >/dev/null
+          jq -e '
+            .completed == 1
+            and .failed == 0
+            and .percent == 100
+            and .items[0].average_bytes_per_sec > 0
+          ' <<<"$final_status" >/dev/null
           [[ "$(stat -c %s "$test_root/hf-out.bin")" -eq 65536 ]]
 
           # HTTP URLs may percent-encode repository filenames; hf download must
