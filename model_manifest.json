@@ -776,7 +776,7 @@
     ],
     "sdxl_base": [
       {
-        "id": "sdxl-base-models-checkpoints-SDXL",
+        "id": "sdxl_base-models-checkpoints-SDXL",
         "mode": "tree",
         "repo_id": "markwelshboyx/diffusionetc",
         "repo_type": "model",
@@ -798,7 +798,7 @@
     ],
     "sdxl_detailer_loras": [
       {
-        "id": "sdxl-detailers-models-loras-SDXL-detailers",
+        "id": "sdxl_detailer_loras-models-loras-SDXL-detailers",
         "mode": "tree",
         "repo_id": "markwelshboyx/diffusionetc",
         "repo_type": "model",
