@@ -784,6 +784,9 @@
         "include": [
           "models/checkpoints/SDXL/*.safetensors"
         ],
+        "exclude": [
+          "models/checkpoints/SDXL/kroma*.safetensors"
+        ],
         "strip_prefix": "models/checkpoints/SDXL",
         "path": "{CHECKPOINTS_DIR}/SDXL"
       },
