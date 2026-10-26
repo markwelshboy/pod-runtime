@@ -663,7 +663,13 @@
       "comfyui-body-decal",
       "comfyui-hAI_prompt_library",
       "comfyui-krea2-bbox-prompter",
-      "comfyui-krea2-conditioning"
+      "comfyui-krea2-conditioning",
+      "demonalone-nodes-comfyui",
+      "comfyui-depthanythingv2",
+      "comfyui-eulerdiscretescheduler",
+      "comfyui-ultimatesdupscale",
+      "comfyui-seedvr2-videoupscaler",
+      "comfyui-seedvr2-tilingupscaler"
     ],
     "krea2-lonecat": [
       "comfyui-ultimatesdupscale",
