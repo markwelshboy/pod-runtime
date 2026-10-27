@@ -12,6 +12,7 @@
     "DETECTION_DIR": "{MODELS_DIR}/detection",
     "UPSCALE_DIR": "{MODELS_DIR}/upscale_models",
     "SAMS_DIR": "{MODELS_DIR}/sams",
+    "SAM3_DIR": "{MODELS_DIR}/sam3",
     "CONTROLNET_DIR": "{MODELS_DIR}/controlnet",
     "CHECKPOINTS_DIR": "{MODELS_DIR}/checkpoints",
     "SEEDVR2_DIR": "{MODELS_DIR}/SEEDVR2",
@@ -729,7 +730,7 @@
       },
       {
         "url": "https://huggingface.co/facebook/sam3/resolve/main/sam3.pt",
-        "path": "{MODELS_DIR}/sam3/sam3.pt"
+        "path": "{SAM3_DIR}/sam3.pt"
       },
       {
         "url": "https://huggingface.co/lodestones/Kroma/resolve/main/kroma-v0.3.1-turbo-opd.safetensors",
