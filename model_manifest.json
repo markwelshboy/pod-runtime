@@ -830,9 +830,9 @@
         "path": "{LORAS_DIR}/SDXL/detailers"
       }
     ],
-    "krea2_character_loras": [
+    "krea2_characters_loras": [
       {
-        "id": "krea2_character_loras-models-loras-characters-siobhan-krea2-5h1vy-woman-rank-64-automagic",
+        "id": "krea2_characters_loras-models-loras-characters-siobhan-krea2-5h1vy-woman-rank-64-automagic",
         "mode": "tree",
         "repo_id": "markwelshboyx/diffusionetc",
         "repo_type": "model",
