@@ -250,7 +250,9 @@ ensure_comfy_dirs() {
     "${TEXT_COND_DIR:?}" \
     "${RMBG_DIR:?}" \
     "${BIREFNET_DIR:?}" \
-    "${SDMATTE_DIR:?}"
+    "${SDMATTE_DIR:?}" \
+    "${SAMS_DIR:?}" \
+    "${SAM3_DIR:?}"
 
   #-- Ultralytics sub-directories
   mkdir -p \
