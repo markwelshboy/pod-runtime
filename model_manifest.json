@@ -637,30 +637,18 @@
         "path": "{DIFFUSION_MODELS_DIR}/iclight/iclight_sd15_fc.safetensors"
       }
     ],
-    "seedvr2_base": [
+    "seedvr2_fp8_base": [
       {
         "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors",
         "path": "{VAE_DIR}/ema_vae_fp16.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_3b_fp16.safetensors",
-        "path": "{SEEDVR2_DIR}/seedvr2_ema_3b_fp16.safetensors"
       },
       {
         "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_3b_fp8_e4m3fn.safetensors",
         "path": "{SEEDVR2_DIR}/seedvr2_ema_3b_fp8_e4m3fn.safetensors"
       },
       {
-        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_fp16.safetensors",
-        "path": "{SEEDVR2_DIR}/seedvr2_ema_7b_fp16.safetensors"
-      },
-      {
         "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_fp8_e4m3fn.safetensors",
         "path": "{SEEDVR2_DIR}/seedvr2_ema_7b_fp8_e4m3fn.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp16.safetensors",
-        "path": "{SEEDVR2_DIR}/seedvr2_ema_7b_sharp_fp16.safetensors"
       },
       {
         "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_7b_sharp_fp8_e4m3fn.safetensors",
@@ -740,16 +728,26 @@
       },
       {
         "url": "https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors",
-        "path": "{CHECKPOINTS_DIR}/sam3.1_multiplex_fp16.safetensors"
+        "path": "{SAM3_DIR}/sam3.1_multiplex_fp16.safetensors"
       },
       {
         "url": "https://huggingface.co/1038lab/sam3/resolve/main/sam3.safetensors",
-        "path": "{CHECKPOINTS_DIR}/sam3.safetensors"
+        "path": "{SAM3_DIR}/sam3.safetensors"
       },
       {
         "url": "https://huggingface.co/facebook/sam3/resolve/main/sam3.pt",
         "path": "{SAM3_DIR}/sam3.pt"
       },
+      {
+        "url": "https://huggingface.co/MaxedOut/ComfyUI-Starter-Packs/resolve/00a44d26e02565a6177ec5a02fee83c02101f314/SDXL/controlnet/xinsir-openpose-sdxl-1.0.safetensors",
+        "path": "{CONTROLNET_DIR}/SDXL/xinsir-openpose-sdxl-1.0.safetensors"
+      },
+      {
+        "url": "https://huggingface.co/dimitribarbot/controlnet-openpose-sdxl-1.0-safetensors/resolve/main/diffusion_pytorch_model.safetensors",
+        "path": "{CONTROLNET_DIR}/SDXL/dimitribarbot-controlnet-openpose-sdxl-1.0.safetensors"
+      }
+    ],
+    "krea2_kroma_base": [
       {
         "url": "https://huggingface.co/lodestones/Kroma/resolve/main/kroma-v0.3.1-turbo-opd.safetensors",
         "path": "{DIFFUSION_MODELS_DIR}/kroma-v0.3.1-turbo-opd.safetensors"
@@ -816,19 +814,11 @@
         ],
         "strip_prefix": "models/checkpoints/SDXL",
         "path": "{CHECKPOINTS_DIR}/SDXL"
-      },
-      {
-        "url": "https://huggingface.co/MaxedOut/ComfyUI-Starter-Packs/resolve/00a44d26e02565a6177ec5a02fee83c02101f314/SDXL/controlnet/xinsir-openpose-sdxl-1.0.safetensors",
-        "path": "{CONTROLNET_DIR}/SDXL/xinsir-openpose-sdxl-1.0.safetensors"
-      },
-      {
-        "url": "https://huggingface.co/dimitribarbot/controlnet-openpose-sdxl-1.0-safetensors/resolve/main/diffusion_pytorch_model.safetensors",
-        "path": "{CONTROLNET_DIR}/SDXL/dimitribarbot-controlnet-openpose-sdxl-1.0.safetensors"
       }
     ],
-    "sdxl_detailer_loras": [
+    "sdxl_detailers_loras": [
       {
-        "id": "sdxl_detailer_loras-models-loras-SDXL-detailers",
+        "id": "sdxl_detailers_loras-models-loras-SDXL-detailers",
         "mode": "tree",
         "repo_id": "markwelshboyx/diffusionetc",
         "repo_type": "model",
