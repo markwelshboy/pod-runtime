@@ -544,6 +544,14 @@
     "comfyui-ipadapter-plus": {
       "remote": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
       "local": "ComfyUI-IPAdapter-Plus"
+    },
+    "comfyui-telegramsender": {
+      "remote": "https://github.com/smbdsbrain/ComfyUI-TelegramSender.git",
+      "local": "ComfyUI-TelegramSender"
+    },
+    "comfyui-mobile-frontend": {
+      "remote": "https://github.com/cosmicbuffalo/ComfyUI-Mobile-Frontend.git",
+      "local": "ComfyUI-Mobile-Frontend"
     }
   },
   "sets": {
@@ -599,7 +607,9 @@
       "comfyui-basic-data-handling",
       "comfyui-huggingface_dataset",
       "comfyui-huggingface",
-      "comfyui-getsetracks"
+      "comfyui-getsetracks",
+      "comfyui-telegramsender",
+      "comfyui-mobile-frontend"
     ],
     "imagedit": [
       "comfyui-inpaint-cropandstitch",
