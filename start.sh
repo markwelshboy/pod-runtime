@@ -300,11 +300,236 @@ echo ""
 
 show_env || true
 
-if ${SCRIPT_DIR}/run_comfy_mux.sh start; then
-  tg "🚀 ComfyUI is UP on 8188, 8288 (GPU0), 8388 (GPU1 if present)." || true
+# The mux reports a bitmask of ports that actually passed their HTTP health
+# checks. Capture that line without buffering its live startup output, so the
+# Telegram message never advertises an optional GPU port that failed to start.
+comfy_telegram_ready_message() {
+  local mask="${1:-}" pod_id="${RUNPOD_POD_ID:-}"
+  local -a ports=(8188 8288 8388 8488 8588)
+  local -a names=("Main" "GPU0" "GPU1" "GPU2" "GPU3")
+  local i port url
+  local message="🚀 ComfyUI is UP."
+
+  if [[ ! "$mask" =~ ^0x[[:xdigit:]]+$ ]]; then
+    printf '%s\n' "$message"
+    return 0
+  fi
+
+  # SSH-launched sessions may not inherit the RunPod identity. Follow the
+  # existing mux behavior and recover only the non-secret ID from PID 1.
+  if [[ -z "$pod_id" && -r /proc/1/environ ]]; then
+    pod_id="$(tr '\0' '\n' < /proc/1/environ | awk -F= '$1 == "RUNPOD_POD_ID" {print $2; exit}')" || true
+  fi
+  if [[ ! "$pod_id" =~ ^[A-Za-z0-9-]+$ ]]; then
+    printf '%s\n' "$message"
+    return 0
+  fi
+
+  for i in "${!ports[@]}"; do
+    (( (mask & (1 << i)) != 0 )) || continue
+    port="${ports[i]}"
+    url="https://${pod_id}-${port}.proxy.runpod.net"
+    message+=
+
+#------------------------------------------------------------------------
+section 9 "Optional Hugging Face LoRAs"
+#------------------------------------------------------------------------
+# HF_LORA_DOWNLOADS maps each family to <family>_loras. These are deliberately
+# non-blocking and begin only after ComfyUI is up, so optional libraries do not
+# delay time-to-ready.
+
+if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}" == "true" && -n "${HF_LORA_DOWNLOADS:-}" ]]; then
+  lora_sections="$(hf_manifest_sections_for_families "$MODEL_MANIFEST_URL" "$HF_LORA_DOWNLOADS" loras)" || {
+    echo "⚠️ Could not resolve HF_LORA_DOWNLOADS='${HF_LORA_DOWNLOADS}'; optional LoRAs will not be downloaded." >&2
+    lora_sections=""
+  }
+  if [[ -n "$lora_sections" ]]; then
+    echo "[loras] Families : ${HF_LORA_DOWNLOADS}"
+    echo "[loras] Sections : ${lora_sections}"
+    if hf_download_from_manifest "$MODEL_MANIFEST_URL" "$HF_LORA_STATE" "$lora_sections"; then
+      echo "[loras] Optional LoRA provisioning is running in the background."
+      hf_download_show_snapshot "$HF_LORA_STATE" || true
+    else
+      echo "⚠️ Optional LoRA downloader failed to start." >&2
+    fi
+  fi
+else
+  echo "[loras] No optional LoRA families requested."
+fi
+
+#------------------------------------------------------------------------
+section 10 "Pull my model repo from Hugging Face and symlink into ComfyUI"
+#------------------------------------------------------------------------
+
+if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
+  export HF_EXCLUDE_GLOBS="${HF_MY_REPO_EXCLUDE_GLOBS:-training/** snapshot/** models/loras/** deleteme/** latestimages/**}"
+  export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS:-models/ultralytics/** models/upscale_models/** models/sam3/**}"
+
+  if HF_REPO_TYPE="${HF_MY_REPO_TYPE:-model}" \
+      init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL"; then
+    if ! hf_my_repo_sync_assets "$HF_MY_REPO_LOCAL" "$HF_MY_REPO_ID"; then
+      _sync_warn "$HF_MY_REPO_ID downloaded, but asset extraction/linking reported errors."
+    fi
+  else
+    _sync_warn "HF repo download failed for $HF_MY_REPO_ID at '$HF_MY_REPO_LOCAL'."
+  fi
+else
+  echo "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
+fi
+
+#------------------------------------------------------------------------
+section 11 "Disk Watcher"
+#------------------------------------------------------------------------
+
+disk_watch_start --path / --log /workspace/logs/disk_watch.log || true
+pod_nag --interval 3600 || true
+
+echo ""
+echo "Bootstrap complete. Bootstrap log: ${COMFY_LOGS}/startup.log"
+echo "General logs: ${COMFY_LOGS}"
+echo ""
+echo "=== Bootstrap done: $(date) ==="
+
+sleep infinity
+\n\n'"${names[i]} (:${port})"
+    message+=
+
+#------------------------------------------------------------------------
+section 9 "Optional Hugging Face LoRAs"
+#------------------------------------------------------------------------
+# HF_LORA_DOWNLOADS maps each family to <family>_loras. These are deliberately
+# non-blocking and begin only after ComfyUI is up, so optional libraries do not
+# delay time-to-ready.
+
+if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}" == "true" && -n "${HF_LORA_DOWNLOADS:-}" ]]; then
+  lora_sections="$(hf_manifest_sections_for_families "$MODEL_MANIFEST_URL" "$HF_LORA_DOWNLOADS" loras)" || {
+    echo "⚠️ Could not resolve HF_LORA_DOWNLOADS='${HF_LORA_DOWNLOADS}'; optional LoRAs will not be downloaded." >&2
+    lora_sections=""
+  }
+  if [[ -n "$lora_sections" ]]; then
+    echo "[loras] Families : ${HF_LORA_DOWNLOADS}"
+    echo "[loras] Sections : ${lora_sections}"
+    if hf_download_from_manifest "$MODEL_MANIFEST_URL" "$HF_LORA_STATE" "$lora_sections"; then
+      echo "[loras] Optional LoRA provisioning is running in the background."
+      hf_download_show_snapshot "$HF_LORA_STATE" || true
+    else
+      echo "⚠️ Optional LoRA downloader failed to start." >&2
+    fi
+  fi
+else
+  echo "[loras] No optional LoRA families requested."
+fi
+
+#------------------------------------------------------------------------
+section 10 "Pull my model repo from Hugging Face and symlink into ComfyUI"
+#------------------------------------------------------------------------
+
+if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
+  export HF_EXCLUDE_GLOBS="${HF_MY_REPO_EXCLUDE_GLOBS:-training/** snapshot/** models/loras/** deleteme/** latestimages/**}"
+  export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS:-models/ultralytics/** models/upscale_models/** models/sam3/**}"
+
+  if HF_REPO_TYPE="${HF_MY_REPO_TYPE:-model}" \
+      init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL"; then
+    if ! hf_my_repo_sync_assets "$HF_MY_REPO_LOCAL" "$HF_MY_REPO_ID"; then
+      _sync_warn "$HF_MY_REPO_ID downloaded, but asset extraction/linking reported errors."
+    fi
+  else
+    _sync_warn "HF repo download failed for $HF_MY_REPO_ID at '$HF_MY_REPO_LOCAL'."
+  fi
+else
+  echo "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
+fi
+
+#------------------------------------------------------------------------
+section 11 "Disk Watcher"
+#------------------------------------------------------------------------
+
+disk_watch_start --path / --log /workspace/logs/disk_watch.log || true
+pod_nag --interval 3600 || true
+
+echo ""
+echo "Bootstrap complete. Bootstrap log: ${COMFY_LOGS}/startup.log"
+echo "General logs: ${COMFY_LOGS}"
+echo ""
+echo "=== Bootstrap done: $(date) ==="
+
+sleep infinity
+\n'"ComfyUI: ${url}/"
+    message+=
+
+#------------------------------------------------------------------------
+section 9 "Optional Hugging Face LoRAs"
+#------------------------------------------------------------------------
+# HF_LORA_DOWNLOADS maps each family to <family>_loras. These are deliberately
+# non-blocking and begin only after ComfyUI is up, so optional libraries do not
+# delay time-to-ready.
+
+if [[ "${ENABLE_MODEL_MANIFEST_DOWNLOAD:-true}" == "true" && -n "${HF_LORA_DOWNLOADS:-}" ]]; then
+  lora_sections="$(hf_manifest_sections_for_families "$MODEL_MANIFEST_URL" "$HF_LORA_DOWNLOADS" loras)" || {
+    echo "⚠️ Could not resolve HF_LORA_DOWNLOADS='${HF_LORA_DOWNLOADS}'; optional LoRAs will not be downloaded." >&2
+    lora_sections=""
+  }
+  if [[ -n "$lora_sections" ]]; then
+    echo "[loras] Families : ${HF_LORA_DOWNLOADS}"
+    echo "[loras] Sections : ${lora_sections}"
+    if hf_download_from_manifest "$MODEL_MANIFEST_URL" "$HF_LORA_STATE" "$lora_sections"; then
+      echo "[loras] Optional LoRA provisioning is running in the background."
+      hf_download_show_snapshot "$HF_LORA_STATE" || true
+    else
+      echo "⚠️ Optional LoRA downloader failed to start." >&2
+    fi
+  fi
+else
+  echo "[loras] No optional LoRA families requested."
+fi
+
+#------------------------------------------------------------------------
+section 10 "Pull my model repo from Hugging Face and symlink into ComfyUI"
+#------------------------------------------------------------------------
+
+if [[ "${ENABLE_MY_REPO_DOWNLOAD:-false}" == "true" ]]; then
+  export HF_EXCLUDE_GLOBS="${HF_MY_REPO_EXCLUDE_GLOBS:-training/** snapshot/** models/loras/** deleteme/** latestimages/**}"
+  export HF_INCLUDE_GLOBS="${HF_MY_REPO_INCLUDE_GLOBS:-models/ultralytics/** models/upscale_models/** models/sam3/**}"
+
+  if HF_REPO_TYPE="${HF_MY_REPO_TYPE:-model}" \
+      init_repo --hf "$HF_MY_REPO_ID" "$HF_MY_REPO_LOCAL"; then
+    if ! hf_my_repo_sync_assets "$HF_MY_REPO_LOCAL" "$HF_MY_REPO_ID"; then
+      _sync_warn "$HF_MY_REPO_ID downloaded, but asset extraction/linking reported errors."
+    fi
+  else
+    _sync_warn "HF repo download failed for $HF_MY_REPO_ID at '$HF_MY_REPO_LOCAL'."
+  fi
+else
+  echo "ENABLE_MYREPO_DOWNLOAD=false → skipping MyRepo sync."
+fi
+
+#------------------------------------------------------------------------
+section 11 "Disk Watcher"
+#------------------------------------------------------------------------
+
+disk_watch_start --path / --log /workspace/logs/disk_watch.log || true
+pod_nag --interval 3600 || true
+
+echo ""
+echo "Bootstrap complete. Bootstrap log: ${COMFY_LOGS}/startup.log"
+echo "General logs: ${COMFY_LOGS}"
+echo ""
+echo "=== Bootstrap done: $(date) ==="
+
+sleep infinity
+\n'"Mobile:  ${url}/mobile"
+  done
+  printf '%s\n' "$message"
+}
+
+comfy_mux_start_log="$(mktemp)"
+if "${SCRIPT_DIR}/run_comfy_mux.sh" start | tee "$comfy_mux_start_log"; then
+  comfy_start_mask="$(sed -nE 's/^COMFY_START_MASK=(0x[[:xdigit:]]+) .*/\1/p' "$comfy_mux_start_log" | tail -n 1)"
+  tg "$(comfy_telegram_ready_message "$comfy_start_mask")" || true
 else
   tg "⚠️ ComfyUI launch had warnings. Check ${COMFY_LOGS}." || true
 fi
+rm -f "$comfy_mux_start_log"
 
 #------------------------------------------------------------------------
 section 9 "Optional Hugging Face LoRAs"
