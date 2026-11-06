@@ -552,6 +552,14 @@
     "comfyui-mobile-frontend": {
       "remote": "https://github.com/cosmicbuffalo/ComfyUI-Mobile-Frontend.git",
       "local": "ComfyUI-Mobile-Frontend"
+    },
+    "comfyui-sequential-image-loader": {
+      "remote": "https://github.com/shootthesound/ComfyUI-SequentialImageLoader.git",
+      "local": "ComfyUI-SequentialImageLoader"
+    },
+    "comfyui-cleanfreak": {
+      "remote": "https://github.com/shootthesound/ComfyUI-CleanFreak.git",
+      "local": "ComfyUI-CleanFreak"
     }
   },
   "sets": {
@@ -606,10 +614,11 @@
       "comfyui-yolo",
       "comfyui-basic-data-handling",
       "comfyui-huggingface_dataset",
-      "comfyui-huggingface",
       "comfyui-getsetracks",
       "comfyui-telegramsender",
-      "comfyui-mobile-frontend"
+      "comfyui-mobile-frontend",
+      "comfyui-sequential-image-loader",
+      "comfyui-cleanfreak"
     ],
     "imagedit": [
       "comfyui-inpaint-cropandstitch",

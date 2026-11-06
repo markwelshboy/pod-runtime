@@ -691,6 +691,10 @@
         "path": "{VAE_DIR}/qwen_image_vae.safetensors"
       },
       {
+        "url": "https://huggingface.co/rzgar/Qwen-Image-WAN2.2-VAE-Collection/resolve/main/Vanilla/qwen_image_HDR_vae_fp32_comfy.safetensors",
+        "path": "{VAE_DIR}/qwen_image_HDR_vae_fp32_comfy.safetensors"
+      },
+      {
         "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/loras/krea2_turbo_lora_rank_64_bf16.safetensors",
         "path": "{LORAS_DIR}/Krea-2/krea2_turbo_lora_rank_64_bf16.safetensors"
       },
