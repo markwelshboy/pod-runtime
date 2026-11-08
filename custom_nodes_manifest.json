@@ -557,9 +557,13 @@
       "remote": "https://github.com/shootthesound/ComfyUI-SequentialImageLoader.git",
       "local": "ComfyUI-SequentialImageLoader"
     },
-    "comfyui-cleanfreak": {
+    "comfyui-clean-freak": {
       "remote": "https://github.com/shootthesound/ComfyUI-CleanFreak.git",
       "local": "ComfyUI-CleanFreak"
+    },
+    "comfyui-prompt-library": {
+      "remote": "https://github.com/markwelshboy/ComfyUI-PromptLibrary.git",
+      "local": "ComfyUI-PromptLibrary"
     }
   },
   "sets": {
@@ -604,7 +608,9 @@
       "comfyui-editutils",
       "comfyui-linkspotlight",
       "comfyui-loraplotnode",
-      "comfyui-tab-manager"
+      "comfyui-tab-manager",
+      "comfyui-hAI_prompt_library",
+      "comfyui-prompt-library"
     ],
     "default-extras": [
       "comfyui-vrgamedevgirl",
@@ -618,7 +624,7 @@
       "comfyui-telegramsender",
       "comfyui-mobile-frontend",
       "comfyui-sequential-image-loader",
-      "comfyui-cleanfreak"
+      "comfyui-clean-freak"
     ],
     "imagedit": [
       "comfyui-inpaint-cropandstitch",
@@ -680,7 +686,6 @@
       "comfyui-propost",
       "comfyui-vosr2",
       "comfyui-body-decal",
-      "comfyui-hAI_prompt_library",
       "comfyui-krea2-bbox-prompter",
       "comfyui-krea2-conditioning",
       "demonalone-nodes-comfyui",
