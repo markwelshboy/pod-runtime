@@ -131,6 +131,36 @@ class SnapshotCheckpointTests(unittest.TestCase):
                         "session_id": "valid", "group": "../../etc",
                     })
 
+    def test_snapshot_can_add_discovered_custom_node_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint = Path(tmp) / "tabs.json"
+            checkpoint.write_text("{}")
+            node_root = Path("/workspace/.pod-state/custom_nodes")
+            with mock.patch.object(mod, "session_file", return_value=checkpoint), \
+                 mock.patch.object(mod, "snapshot_paths", return_value=([str(checkpoint)], [])), \
+                 mock.patch.object(mod, "_snapshot_executable", return_value="/bin/snapshot-pod"), \
+                 mock.patch.object(mod, "_is_within_workspace", return_value=True), \
+                 mock.patch.object(mod, "prepare_custom_nodes_manifest",
+                                   return_value=(node_root, ["2 pending custom nodes"])) as discover:
+                cmd, messages = mod.make_snapshot_command({
+                    "session_id": "valid",
+                    "include": {"custom_nodes": True},
+                })
+            discover.assert_called_once_with()
+            self.assertEqual(cmd[-2:], [str(checkpoint), str(node_root)])
+            self.assertIn("2 pending custom nodes", messages)
+
+    def test_custom_node_discovery_is_opt_in_for_legacy_api_clients(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            checkpoint = Path(tmp) / "tabs.json"
+            checkpoint.write_text("{}")
+            with mock.patch.object(mod, "session_file", return_value=checkpoint), \
+                 mock.patch.object(mod, "snapshot_paths", return_value=([str(checkpoint)], [])), \
+                 mock.patch.object(mod, "_snapshot_executable", return_value="/bin/snapshot-pod"), \
+                 mock.patch.object(mod, "prepare_custom_nodes_manifest",
+                                   side_effect=AssertionError("must not discover")):
+                mod.make_snapshot_command({"session_id": "valid", "include": {}})
+
     def test_snapshot_options_do_not_allow_arbitrary_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             checkpoint = Path(tmp) / "a.json"

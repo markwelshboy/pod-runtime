@@ -15,6 +15,12 @@ on:
       - tests/test_pod_snapshot_cli.py
       - tests/test_snapshot_entrypoint.py
       - custom_nodes/pod_runtime_workspace_snapshot/**
+      - bin/custom_node_snapshot.py
+      - bin/custom_nodes.py
+      - tests/test_custom_node_pinned_restore.py
+      - helpers.sh
+      - helpers.d/helpers_custom_node_manifest_manage.sh
+      - tests/test_custom_node_snapshot.py
       - tests/test_workspace_snapshot_node.py
       - start.sh
       - .github/workflows/snapshot-tests.yml
@@ -31,6 +37,12 @@ on:
       - tests/test_pod_snapshot_cli.py
       - tests/test_snapshot_entrypoint.py
       - custom_nodes/pod_runtime_workspace_snapshot/**
+      - bin/custom_node_snapshot.py
+      - bin/custom_nodes.py
+      - tests/test_custom_node_pinned_restore.py
+      - helpers.sh
+      - helpers.d/helpers_custom_node_manifest_manage.sh
+      - tests/test_custom_node_snapshot.py
       - tests/test_workspace_snapshot_node.py
       - start.sh
       - .github/workflows/snapshot-tests.yml
@@ -45,7 +57,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify Python syntax
         run: |
-          python3 -m py_compile snapshot-pod bin/snapshot-pod bin/pod_state.py bin/pod_snapshot_cli.py bin/pod_env_state.py bin/pod_history_state.py
+          python3 -m py_compile snapshot-pod bin/snapshot-pod bin/pod_state.py bin/pod_snapshot_cli.py bin/pod_env_state.py bin/pod_history_state.py bin/custom_node_snapshot.py custom_nodes/pod_runtime_workspace_snapshot/__init__.py
       - name: Run pod snapshot tests
         run: |
           python3 -m unittest discover -s tests -p 'test_pod_state.py' -v
@@ -55,8 +67,10 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_pod_history_state.py' -v
           python3 -m unittest discover -s tests -p 'test_pod_snapshot_display.py' -v
           python3 -m unittest discover -s tests -p 'test_workspace_snapshot_node.py' -v
+          python3 -m unittest discover -s tests -p 'test_custom_node_snapshot.py' -v
+          python3 -m unittest discover -s tests -p 'test_custom_node_pinned_restore.py' -v
 
       - name: Check frontend syntax
         run: node --check --input-type=module < custom_nodes/pod_runtime_workspace_snapshot/web/workspace_snapshot.js
       - name: Check bootstrap syntax
-        run: bash -n start.sh
+        run: bash -n start.sh helpers.sh helpers.d/helpers_custom_node_manifest_manage.sh

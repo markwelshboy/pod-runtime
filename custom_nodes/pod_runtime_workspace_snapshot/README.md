@@ -124,3 +124,83 @@ one concurrent upload per ComfyUI process.
 ## Tests
 
     python3 -m unittest discover -s tests -p 'test_workspace_snapshot_node.py' -v
+
+
+## Custom-node environment checkpoints
+
+**Capture + HF snapshot** now includes a **Custom-node environment + pending set**
+checkbox, enabled by default. The collector reads the real installed custom
+node folders and the manifest used by install_custom_nodes. It does not
+install plugins or change their checkouts during capture.
+
+The tool compares active manifest definitions with the installed Git remotes
+and supplements its inventory with installer status data. Newly discovered
+Git repositories with a usable remote and commit are added to the snapshot
+copy's pending set. Existing node definitions retain their pip/clone overrides
+and are pinned to the observed Git commit in the **snapshot copy**.
+
+These files are included in the same Hugging Face archive:
+
+    /workspace/.pod-state/custom_nodes/manifest.json
+    /workspace/.pod-state/custom_nodes/inventory.json
+    /workspace/.pod-state/custom_nodes/packages.json
+
+inventory.json records installed revisions, dirty state and unresolved
+non-Git folders. packages.json records Python package versions for diagnosis,
+but is not replayed as pip requirements automatically. Local uncommitted code,
+non-Git folders, unsupported Git remotes and manually installed packages
+may require manual reconstruction. Warnings are included with the job result.
+
+### Restore all parts of a workspace on a new pod
+
+Supply these variables **to the pod launcher before start.sh**:
+
+    POD_RESTORE_GROUP=comfy-workspace
+    POD_RESTORE_SNAPSHOT=latest
+
+An exact snapshot ID can be used instead of latest. On an explicit restore,
+start.sh downloads the selected snapshot after hf-tools installation and
+before installing custom nodes. It validates the archived manifest and selects
+the pending set alongside originally selected optional sets. The existing
+launcher/main manifest is left untouched.
+
+**Normal startup never selects a previously restored manifest automatically.**
+If an explicitly requested snapshot lacks a manifest or cannot be validated,
+startup stops rather than silently installing a different set of nodes.
+
+A full snapshot with large output folders must be downloaded and extracted
+before custom-node installation on the new pod. For software-only recovery,
+create a snapshot with image directories deselected.
+
+### Inspect and promote pending nodes
+
+Preview installed vs managed nodes without writing files:
+
+    python3 /workspace/pod-runtime/bin/custom_node_snapshot.py discover --dry-run
+
+Create a local, snapshot-specific manifest and inventory without uploading:
+
+    python3 /workspace/pod-runtime/bin/custom_node_snapshot.py discover
+
+Promote a tested pending node into the checked-out primary manifest:
+
+    python3 /workspace/pod-runtime/bin/custom_node_snapshot.py promote comfyui-new --set krea2
+
+This writes /workspace/pod-runtime/custom_nodes_manifest.json locally, without
+modifying the snapshot's historical pending set. Review and commit/push the
+main manifest separately. Existing definitions are never silently replaced.
+
+
+### One-shot restoration behavior
+
+After a successful snapshot reconstruction and custom-node installation,
+start.sh records a receipt under /workspace/.pod-state/restore-receipts/.
+If the same container restarts with the same restore environment variables,
+the receipt prevents downloading and installing from that snapshot again.
+That restart follows the normal launcher manifest instead. The receipt is
+stored outside archived custom-node state and will not be copied to new pods.
+
+To deliberately repeat the restore in that container, supply
+POD_RESTORE_FORCE=true along with POD_RESTORE_SNAPSHOT. Removing the receipt
+also allows retrying. Failed plugin installations do not create a receipt.
+

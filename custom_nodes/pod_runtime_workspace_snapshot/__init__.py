@@ -12,6 +12,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import uuid
@@ -234,6 +235,55 @@ def _snapshot_executable() -> str:
     raise RuntimeError("snapshot-pod not found on PATH or in /workspace/pod-runtime")
 
 
+def prepare_custom_nodes_manifest() -> tuple[Path, list[str]]:
+    """Capture the installed custom-node environment into the snapshot.
+
+    It never modifies the checked-out main manifest or installed nodes.
+    """
+    runtime = Path(os.environ.get("POD_RUNTIME_DIR", "/workspace/pod-runtime"))
+    tool = runtime / "bin" / "custom_node_snapshot.py"
+    if not tool.is_file():
+        raise RuntimeError(f"custom-node snapshot tool not found: {tool}")
+    destination = Path("/workspace/.pod-state/custom_nodes")
+    source = os.environ.get("CUSTOM_NODES_MANIFEST_URL") or str(runtime / "custom_nodes_manifest.json")
+    command = [
+        sys.executable, str(tool), "discover",
+        "--base", source,
+        "--nodes-root", str(comfy_home() / "custom_nodes"),
+        "--status-file", os.environ.get(
+            "CUSTOM_NODE_STATUS_FILE",
+            os.path.join(os.environ.get("CUSTOM_LOG_DIR", "/workspace/logs/custom_nodes"),
+                         "install_status.json")),
+        "--sets", os.environ.get("CUSTOM_NODE_SETS", ""),
+        "--output", str(destination / "manifest.json"),
+        "--inventory", str(destination / "inventory.json"),
+        "--packages", str(destination / "packages.json"),
+    ]
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, errors="replace",
+            check=False, timeout=120,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError("Custom-node inventory timed out") from error
+    if result.returncode:
+        raise RuntimeError(
+            "Custom-node discovery failed (snapshot cancelled): "
+            + (result.stderr or result.stdout)[-2500:]
+        )
+    try:
+        inventory = json.loads((destination / "inventory.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise RuntimeError("Custom-node discovery did not create a valid inventory") from error
+    summary = inventory.get("summary", {})
+    warnings = [
+        f"Custom nodes: {summary.get('new_pending', 0)} new pending, "
+        f"{summary.get('unresolved', 0)} unresolved; see inventory.json."
+    ]
+    warnings.extend(str(msg) for msg in inventory.get("warnings", [])[:30])
+    return destination, warnings
+
+
 def make_snapshot_command(payload: dict[str, Any]) -> tuple[list[str], list[str]]:
     sid = str(payload.get("session_id", ""))
     session = session_file(sid)
@@ -247,9 +297,15 @@ def make_snapshot_command(payload: dict[str, Any]) -> tuple[list[str], list[str]
     choices = payload.get("include", {})
     if not isinstance(choices, dict) or any(type(v) is not bool for v in choices.values()):
         raise ValueError("include must contain booleans")
-    if set(choices) - {"input", "output_gpu0", "output", "workflows", "tab_manager", "settings"}:
+    if set(choices) - {"input", "output_gpu0", "output", "workflows", "tab_manager", "settings", "custom_nodes"}:
         raise ValueError("Unknown snapshot include option")
     paths, warnings = snapshot_paths(session, choices)
+    if choices.get("custom_nodes", False):
+        node_snapshot_dir, node_warnings = prepare_custom_nodes_manifest()
+        if not _is_within_workspace(node_snapshot_dir):
+            raise ValueError("Custom-node manifest is outside /workspace")
+        paths.append(str(node_snapshot_dir))
+        warnings.extend(node_warnings)
     command = [_snapshot_executable(), "--group", group, "--name", name,
                "--tag", tag, "--paths", *paths]
     return command, warnings
@@ -274,10 +330,12 @@ def _run_snapshot(job_id: str, command: list[str]) -> None:
 
 
 def start_job(payload: dict[str, Any]) -> dict[str, Any]:
-    command, warnings = make_snapshot_command(payload)
+    # Keep discovery inside the lock so concurrent requests cannot overwrite
+    # a manifest while the first snapshot is being prepared/uploaded.
     with _JOB_LOCK:
         if any(j["status"] in ("queued", "running") for j in _JOBS.values()):
             raise ValueError("Another snapshot upload is still running")
+        command, warnings = make_snapshot_command(payload)
         job_id = uuid.uuid4().hex[:12]
         _JOBS[job_id] = {
             "id": job_id, "status": "queued", "warnings": warnings,

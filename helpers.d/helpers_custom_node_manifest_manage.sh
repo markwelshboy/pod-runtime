@@ -169,6 +169,9 @@ custom_node_manifest() {
       [[ "${1:-}" == --manifest || "${1:-}" == --target-manifest ]] && target="${2:?path required}"
       _custom_nodes_manage rename-set "$old" "$new" --manifest "$target"
       ;;
+    discover|promote)
+      "${PY_BIN:-${PY:-python}}" "${POD_RUNTIME_DIR}/bin/custom_node_snapshot.py" "$command" "$@"
+      ;;
     delete-set|delete-tag)
       local name="${1:?set name required}"; shift
       target="$(_custom_nodes_local_manifest_default)"

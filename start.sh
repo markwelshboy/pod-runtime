@@ -178,6 +178,65 @@ section 3 "Git Auth Bootstrap"
 git_auth_bootstrap || true
 
 #------------------------------------------------------------------------
+# Explicit one-shot pod snapshot recreation. Normal launches NEVER select a
+# leftover snapshot-local manifest. Restore before custom node installation.
+#------------------------------------------------------------------------
+snapshot_restore_applied=0
+if [[ -n "${POD_RESTORE_SNAPSHOT:-}" ]]; then
+  restore_group="${POD_RESTORE_GROUP:-comfy-workspace}"
+  restore_id="${POD_RESTORE_SNAPSHOT}"
+  if [[ ! "$restore_group" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$ ]]; then
+    echo "[snapshot-restore] Invalid POD_RESTORE_GROUP: $restore_group" >&2
+    exit 2
+  fi
+  if [[ ! "$restore_id" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    echo "[snapshot-restore] Invalid POD_RESTORE_SNAPSHOT identifier" >&2
+    exit 2
+  fi
+
+  # Keep the one-shot restore from running again on a restart of the same
+  # container, even if the launcher retains POD_RESTORE_SNAPSHOT.
+  restore_key="$(printf '%s' "$(hostname):$restore_group:$restore_id" | sha256sum | cut -d' ' -f1)"
+  restore_receipt="/workspace/.pod-state/restore-receipts/$restore_key.done"
+  if [[ -f "$restore_receipt" && "${POD_RESTORE_FORCE:-false}" != "true" ]]; then
+    echo "[snapshot-restore] Already applied to this container; using normal launcher manifest."
+  else
+    section 3.5 "Restore ComfyUI Workspace Snapshot"
+    echo "[snapshot-restore] Restoring ${restore_group}/${restore_id} before custom-node installation"
+    if ! "$SCRIPT_DIR/configure-pod" "$restore_group" --snapshot "$restore_id"; then
+      echo "[snapshot-restore] Restore failed; refusing incomplete environment restoration." >&2
+      exit 1
+    fi
+    local_snapshot_manifest="/workspace/.pod-state/custom_nodes/manifest.json"
+    local_snapshot_inventory="/workspace/.pod-state/custom_nodes/inventory.json"
+    [[ -f "$local_snapshot_manifest" && -f "$local_snapshot_inventory" ]] || {
+      echo "[snapshot-restore] No custom-node manifest/inventory in restored snapshot." >&2
+      exit 1
+    }
+
+    snapshot_python="$(command -v python3 || true)"
+    [[ -n "$snapshot_python" ]] || {
+      echo "[snapshot-restore] Python 3 unavailable for manifest validation" >&2
+      exit 1
+    }
+    # Validate before overriding launcher configuration. Do not edit the main
+    # manifest, and never select a snapshot manifest on ordinary startup.
+    if ! restore_sets="$("$snapshot_python" "$SCRIPT_DIR/bin/custom_node_snapshot.py" restore-sets --manifest "$local_snapshot_manifest" --inventory "$local_snapshot_inventory" --launcher-sets "${CUSTOM_NODE_SETS:-}")"; then
+      echo "[snapshot-restore] Custom-node manifest validation failed." >&2
+      exit 1
+    fi
+    export CUSTOM_NODES_MANIFEST_URL="$local_snapshot_manifest"
+    export CUSTOM_NODE_SETS="$restore_sets"
+    echo "[snapshot-restore] Manifest: $CUSTOM_NODES_MANIFEST_URL"
+    echo "[snapshot-restore] Sets: default${CUSTOM_NODE_SETS:+,$CUSTOM_NODE_SETS}"
+    if [[ "${INSTALL_CUSTOM_NODES:-true}" == "false" ]]; then
+      echo "[snapshot-restore] WARN: INSTALL_CUSTOM_NODES=false; nodes will not be installed." >&2
+    fi
+  snapshot_restore_applied=1
+  fi
+fi
+
+#------------------------------------------------------------------------
 section 4 "Install Custom Nodes"
 #------------------------------------------------------------------------
 # Keep this phase free of bulk model downloads. Custom-node pip installs are
@@ -185,8 +244,17 @@ section 4 "Install Custom Nodes"
 
 if [[ "${INSTALL_CUSTOM_NODES:-true}" == "true" ]]; then
   echo "Installing custom nodes. Trying ${CUSTOM_NODES_MANIFEST_URL}..."
-  if ! install_custom_nodes; then
+  if install_custom_nodes; then
+    if [[ "$snapshot_restore_applied" == 1 ]]; then
+      mkdir -p "$(dirname "$restore_receipt")"
+      printf 'group=%s\nsnapshot=%s\ncompleted=%s\n' "$restore_group" "$restore_id" "$(date -Is)" > "$restore_receipt"
+      echo "[snapshot-restore] One-shot restoration receipt: $restore_receipt"
+    fi
+  else
     echo "⚠️ install_custom_nodes reported errors; custom-node extras may be incomplete."
+    if [[ "$snapshot_restore_applied" == 1 ]]; then
+      echo "[snapshot-restore] Custom-node install incomplete; no restore receipt written." >&2
+    fi
   fi
   snapshot_custom_nodes_state "after-install_custom_nodes" || true
 else
