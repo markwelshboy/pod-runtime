@@ -81,9 +81,33 @@ class NodeDiscoveryTests(unittest.TestCase):
             "ref": pending_hash,
         })
         self.assertEqual(report["selected_sets"], ["krea2"])
-        self.assertEqual(report["summary"]["unresolved"], 1)
+        self.assertEqual(report["summary"]["unresolved"], 2)
         self.assertEqual(report["summary"]["new_pending"], 1)
         self.assertIn("runtime-link", [x["local"] for x in report["installed"]])
+
+    def test_plain_folder_inside_parent_git_checkout_is_not_misidentified(self):
+        git(self.nodes, "init")
+        git(self.nodes, "config", "user.email", "snapshot-test@example.invalid")
+        git(self.nodes, "config", "user.name", "Snapshot Test")
+        (self.nodes / "README.md").write_text("parent repository\n")
+        git(self.nodes, "add", "README.md")
+        git(self.nodes, "commit", "-m", "Parent")
+        git(self.nodes, "remote", "add", "origin", "https://github.com/example/parent.git")
+        (self.nodes / "PlainFolder").mkdir()
+        captured, report = snapshot_nodes.discover(self.manifest, self.nodes)
+        self.assertNotIn("plainfolder", captured["nodes"])
+        self.assertTrue(any(x["local"] == "PlainFolder" and x["status"] == "non-git"
+                            for x in report["installed"]))
+
+    def test_external_symlinked_git_node_is_recreated_as_normal_checkout(self):
+        external = self.root / "external"
+        external.mkdir()
+        source, sha = make_repo(external, "NodeCode", "https://github.com/example/linked.git")
+        (self.nodes / "LinkedNode").symlink_to(source, target_is_directory=True)
+        captured, report = snapshot_nodes.discover(self.manifest, self.nodes)
+        self.assertEqual(captured["nodes"]["linkednode"]["ref"], sha)
+        self.assertEqual(captured["nodes"]["linkednode"]["local"], "LinkedNode")
+        self.assertTrue(any("symlinked Git" in w for w in report["warnings"]))
 
     def test_dirty_changes_warn_but_do_not_get_baked_into_manifest(self):
         p, _ = make_repo(self.nodes, "ComfyUI-Known",
