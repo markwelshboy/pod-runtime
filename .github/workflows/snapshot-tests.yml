@@ -18,6 +18,8 @@ on:
       - bin/custom_node_snapshot.py
       - bin/custom_nodes.py
       - tests/test_custom_node_pinned_restore.py
+      - helpers.sh
+      - helpers.d/helpers_custom_node_manifest_manage.sh
       - tests/test_custom_node_snapshot.py
       - tests/test_workspace_snapshot_node.py
       - start.sh
@@ -38,6 +40,8 @@ on:
       - bin/custom_node_snapshot.py
       - bin/custom_nodes.py
       - tests/test_custom_node_pinned_restore.py
+      - helpers.sh
+      - helpers.d/helpers_custom_node_manifest_manage.sh
       - tests/test_custom_node_snapshot.py
       - tests/test_workspace_snapshot_node.py
       - start.sh
@@ -69,4 +73,4 @@ jobs:
       - name: Check frontend syntax
         run: node --check --input-type=module < custom_nodes/pod_runtime_workspace_snapshot/web/workspace_snapshot.js
       - name: Check bootstrap syntax
-        run: bash -n start.sh
+        run: bash -n start.sh helpers.sh helpers.d/helpers_custom_node_manifest_manage.sh
