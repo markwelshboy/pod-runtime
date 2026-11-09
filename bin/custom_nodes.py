@@ -203,11 +203,11 @@ def clone_node(item: tuple[str, dict], custom_dir: Path, log_dir: Path) -> tuple
                     log=log,
                 )
                 if rc_fetch:
-                    shallow = run_command(
+                    shallow = subprocess.run(
                         ["git", "-C", str(destination), "rev-parse", "--is-shallow-repository"],
-                        log=log,
+                        capture_output=True, text=True, check=False,
                     )
-                    if shallow == 0:
+                    if shallow.returncode == 0 and shallow.stdout.strip() == "true":
                         rc_fetch = run_command(
                             ["git", "-C", str(destination), "fetch", "--unshallow", "origin"],
                             log=log,
