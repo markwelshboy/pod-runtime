@@ -170,6 +170,7 @@ def discover(base_manifest: dict[str, Any], custom_dir: Path, *,
     inventory: list[dict[str, Any]] = []
     warnings: list[str] = []
     new_ids: list[str] = []
+    captured_ids: list[str] = []
 
     for entry in _node_dirs(custom_dir):
         record: dict[str, Any] = {"local": entry.name, "status": "unresolved"}
@@ -264,8 +265,12 @@ def discover(base_manifest: dict[str, Any], custom_dir: Path, *,
             new_ids.append(node_id)
             record["manifest_id"] = node_id
             record["status"] = "pending"
+        captured_ids.append(node_id)
         inventory.append(record)
 
+    # Do not depend on the launcher's optional-set flags to recover a node:
+    # Manager/manual installs may not be represented in those flags.
+    manifest["sets"]["snapshot-installed"] = list(dict.fromkeys(captured_ids))
     chosen = {x.strip() for x in re.split(r"[\s,]+", selected_sets) if x.strip()}
     # The main installer status can include additional selected workflow sets.
     # Keep only sets present in the captured manifest.
@@ -278,6 +283,7 @@ def discover(base_manifest: dict[str, Any], custom_dir: Path, *,
         except (OSError, ValueError, TypeError, AttributeError):
             pass
     chosen.discard("pending")
+    chosen.discard("snapshot-installed")
     chosen.discard("default")
     validate_manifest(manifest)
     report_out: dict[str, Any] = {
@@ -358,6 +364,8 @@ def cmd_restore_sets(args: argparse.Namespace) -> int:
     requested.update(s.strip() for s in re.split(r"[\s,]+", args.launcher_sets) if s.strip())
     if manifest["sets"].get("pending"):
         requested.add("pending")
+    if manifest["sets"].get("snapshot-installed"):
+        requested.add("snapshot-installed")
     requested.discard("default")
     unknown = requested - set(manifest["sets"])
     if unknown:
