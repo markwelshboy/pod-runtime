@@ -14,6 +14,9 @@ on:
       - tests/test_pod_state.py
       - tests/test_pod_snapshot_cli.py
       - tests/test_snapshot_entrypoint.py
+      - custom_nodes/pod_runtime_workspace_snapshot/**
+      - tests/test_workspace_snapshot_node.py
+      - start.sh
       - .github/workflows/snapshot-tests.yml
   pull_request:
     paths:
@@ -27,6 +30,9 @@ on:
       - tests/test_pod_state.py
       - tests/test_pod_snapshot_cli.py
       - tests/test_snapshot_entrypoint.py
+      - custom_nodes/pod_runtime_workspace_snapshot/**
+      - tests/test_workspace_snapshot_node.py
+      - start.sh
       - .github/workflows/snapshot-tests.yml
 
 permissions:
@@ -48,3 +54,9 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_pod_env_state.py' -v
           python3 -m unittest discover -s tests -p 'test_pod_history_state.py' -v
           python3 -m unittest discover -s tests -p 'test_pod_snapshot_display.py' -v
+          python3 -m unittest discover -s tests -p 'test_workspace_snapshot_node.py' -v
+
+      - name: Check frontend syntax
+        run: node --check --input-type=module < custom_nodes/pod_runtime_workspace_snapshot/web/workspace_snapshot.js
+      - name: Check bootstrap syntax
+        run: bash -n start.sh
