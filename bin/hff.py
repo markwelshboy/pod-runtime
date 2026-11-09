@@ -953,7 +953,10 @@ def cmd_snapshot_list(args) -> None:
     # get/show/destroy, including snapshots stored in nested directories.
     for manifest in sorted(
         _snapshot_manifests(files, args.snapdir),
-        key=lambda p: _snapshot_relative_id(p, args.snapdir),
+        key=lambda p: (
+            Path(p).name.removesuffix(".manifest.json"),
+            _snapshot_relative_id(p, args.snapdir),
+        ),
         reverse=True,
     ):
         print(_snapshot_relative_id(manifest, args.snapdir))
