@@ -193,6 +193,25 @@ else
   echo "INSTALL_CUSTOM_NODES=false → skipping extra custom node installation."
 fi
 
+# Built-in Workspace Snapshots frontend/backend bridge. Keep this separate
+# from the third-party node manifest; its code ships with pod-runtime.
+if [[ "${INSTALL_WORKSPACE_SNAPSHOT_NODE:-true}" == "true" ]]; then
+  ws_source="$SCRIPT_DIR/custom_nodes/pod_runtime_workspace_snapshot"
+  ws_target="$COMFY_HOME/custom_nodes/pod_runtime_workspace_snapshot"
+  if [[ -d "$ws_source" ]]; then
+    if [[ -L "$ws_target" ]]; then
+      ln -sfn "$ws_source" "$ws_target"
+    elif [[ ! -e "$ws_target" ]]; then
+      ln -s "$ws_source" "$ws_target"
+    else
+      echo "[workspace-snapshot] Existing non-symlink node at $ws_target; leaving untouched." >&2
+    fi
+    echo "[workspace-snapshot] Installed custom node from $ws_source"
+  else
+    echo "[workspace-snapshot] Source directory missing: $ws_source" >&2
+  fi
+fi
+
 #------------------------------------------------------------------------
 section 5 "SageAttention: Pull (if available) or Build from Source"
 #------------------------------------------------------------------------
