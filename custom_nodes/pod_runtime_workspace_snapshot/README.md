@@ -189,3 +189,18 @@ Promote a tested pending node into the checked-out primary manifest:
 This writes /workspace/pod-runtime/custom_nodes_manifest.json locally, without
 modifying the snapshot's historical pending set. Review and commit/push the
 main manifest separately. Existing definitions are never silently replaced.
+
+
+### One-shot restoration behavior
+
+After a successful snapshot reconstruction and custom-node installation,
+start.sh records a receipt under /workspace/.pod-state/restore-receipts/.
+If the same container restarts with the same restore environment variables,
+the receipt prevents downloading and installing from that snapshot again.
+That restart follows the normal launcher manifest instead. The receipt is
+stored outside archived custom-node state and will not be copied to new pods.
+
+To deliberately repeat the restore in that container, supply
+POD_RESTORE_FORCE=true along with POD_RESTORE_SNAPSHOT. Removing the receipt
+also allows retrying. Failed plugin installations do not create a receipt.
+
