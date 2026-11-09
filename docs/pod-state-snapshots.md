@@ -273,3 +273,45 @@ snapshot-pod prune krea-comparisons --dry-run
 `--paths` cannot be combined with a template; `--group` and `--compress`
 only apply to direct-path snapshot creation. Existing Git-project snapshots,
 including their source-safety checks, are unchanged.
+
+
+## Raw HFF snapshots stored in subdirectories
+
+The underlying `hff snapshot list` command searches recursively beneath its
+configured snapshot directory (normally `snapshot/`). Nested snapshots are
+displayed with a folder-qualified ID, for example:
+
+```text
+comfy-datasets/20261108_153401__dataset_simple_vs_radau
+pods/krea-comparisons/20261109_120000__experiment
+20260303_154420__Photo_Fixes
+```
+
+All identifiers printed by `list` may be passed directly to the raw HFF
+`get`, `show`, and `destroy` commands. A short ID also works when it
+uniquely identifies a snapshot beneath that namespace:
+
+```bash
+hff snapshot list
+hff snapshot get 20261108_153401__dataset_simple_vs_radau
+hff snapshot show comfy-datasets/20261108_153401__dataset_simple_vs_radau
+```
+
+For duplicate IDs in different folders, HFF requires the folder-qualified
+identifier and reports the matching locations rather than guessing.
+
+To limit HFF to a specific folder, set the wrapper's namespace for that command:
+
+```bash
+HFF_SNAPSHOT_DIR=snapshot/comfy-datasets \
+  hff snapshot get 20261108_153401__dataset_simple_vs_radau
+```
+
+The lower-level `hff get` command downloads an individual repository-relative
+file and does not interpret it as an HFF snapshot. For example,
+`hff get snapshot/comfy-datasets/20261108_153401__dataset_simple_vs_radau.tar`
+downloads the archive without automatically extracting or verifying its
+associated snapshot manifest.
+
+These raw HFF commands are distinct from `snapshot-pod` /
+`configure-pod`, which additionally manage pod-state journal metadata.
