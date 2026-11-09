@@ -304,6 +304,11 @@ def _require_token(handler):
 
 @PromptServer.instance.routes.get(PREFIX + "/health")
 async def workspace_snapshot_health(_request: web.Request) -> web.Response:
+    # Mint the token before the frontend asks the user to read it via SSH.
+    try:
+        auth_token()
+    except OSError:
+        return web.json_response({"error": "Could not initialize access token"}, status=503)
     return web.json_response({"ready": True, "requires_token": True})
 
 
