@@ -75,6 +75,7 @@ class NodeDiscoveryTests(unittest.TestCase):
         self.assertEqual(captured["nodes"]["known"]["ref"], known_hash)
         self.assertEqual(captured["nodes"]["known"]["pip"], before["nodes"]["known"]["pip"])
         self.assertEqual(captured["sets"]["pending"], ["comfyui-new"])
+        self.assertEqual(captured["sets"]["snapshot-installed"], ["known", "comfyui-new"])
         self.assertEqual(captured["nodes"]["comfyui-new"], {
             "remote": "https://github.com/example/new.git",
             "local": "ComfyUI-New",
@@ -154,6 +155,7 @@ class NodeDiscoveryTests(unittest.TestCase):
     def test_restoration_includes_pending_and_selected_sets(self):
         captured, report = snapshot_nodes.discover(self.manifest, self.nodes, selected_sets="krea2")
         captured["sets"]["pending"] = ["known"]  # simulate a historical pending node
+        captured["sets"]["snapshot-installed"] = ["known"]
         report["selected_sets"] = ["krea2"]
         man, inv = self.root / "manifest.json", self.root / "inventory.json"
         man.write_text(json.dumps(captured))
@@ -164,7 +166,7 @@ class NodeDiscoveryTests(unittest.TestCase):
         ])
         with mock.patch("builtins.print") as printer:
             self.assertEqual(snapshot_nodes.cmd_restore_sets(args), 0)
-        self.assertEqual(printer.call_args.args[0], "krea2,pending")
+        self.assertEqual(printer.call_args.args[0], "krea2,pending,snapshot-installed")
         args.launcher_sets = "unknown"
         with self.assertRaisesRegex(ValueError, "missing sets"):
             snapshot_nodes.cmd_restore_sets(args)
