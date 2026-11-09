@@ -371,7 +371,14 @@ function openPanel() {
       setBusy(false);
     }
   };
-  refreshButton.click();
+  // The health request creates the per-pod token file, so it exists when
+  // the browser asks the user to read it from the RunPod shell.
+  api.fetchApi(PREFIX + "/health", { cache: "no-store" })
+    .then((response) => {
+      if (!response.ok) throw new Error("Snapshot backend is not ready");
+      refreshButton.click();
+    })
+    .catch((error) => status("Error: " + error.message));
 }
 
 app.registerExtension({
