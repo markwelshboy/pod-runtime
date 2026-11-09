@@ -16,6 +16,8 @@ on:
       - tests/test_snapshot_entrypoint.py
       - custom_nodes/pod_runtime_workspace_snapshot/**
       - bin/custom_node_snapshot.py
+      - bin/custom_nodes.py
+      - tests/test_custom_node_pinned_restore.py
       - tests/test_custom_node_snapshot.py
       - tests/test_workspace_snapshot_node.py
       - start.sh
@@ -34,6 +36,8 @@ on:
       - tests/test_snapshot_entrypoint.py
       - custom_nodes/pod_runtime_workspace_snapshot/**
       - bin/custom_node_snapshot.py
+      - bin/custom_nodes.py
+      - tests/test_custom_node_pinned_restore.py
       - tests/test_custom_node_snapshot.py
       - tests/test_workspace_snapshot_node.py
       - start.sh
@@ -60,6 +64,7 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_pod_snapshot_display.py' -v
           python3 -m unittest discover -s tests -p 'test_workspace_snapshot_node.py' -v
           python3 -m unittest discover -s tests -p 'test_custom_node_snapshot.py' -v
+          python3 -m unittest discover -s tests -p 'test_custom_node_pinned_restore.py' -v
 
       - name: Check frontend syntax
         run: node --check --input-type=module < custom_nodes/pod_runtime_workspace_snapshot/web/workspace_snapshot.js
