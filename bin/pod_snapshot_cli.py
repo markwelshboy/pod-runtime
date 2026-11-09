@@ -56,6 +56,58 @@ def resolve_template_arg(args: argparse.Namespace) -> str:
     return str(value)
 
 
+
+def group_template(group: str, paths: Iterable[str] = (), *, compress: str = "none") -> dict[str, Any]:
+    """An in-memory, repository-free template for a one-off dataset group."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", group):
+        raise SnapshotCliError("--group must use letters, numbers, underscores or hyphens")
+    return {
+        "version": 1,
+        "name": group,
+        "workspace": "/workspace",
+        "repos": [],
+        "snapshot": {
+            "paths": list(paths),
+            "compress": compress,
+            "retention": {
+                "recent": 5,
+                "daily": 7,
+                "weekly": 4,
+                "grace_hours": 72,
+                "auto_prune_after_snapshot": False,
+            },
+        },
+    }
+
+
+def resolve_snapshot_paths(values: Iterable[str], *, workspace: Path = Path("/workspace")) -> list[str]:
+    """Resolve input paths from CWD; reject missing paths and workspace escapes."""
+    root = workspace.resolve()
+    resolved: list[str] = []
+    for raw in values:
+        try:
+            path = Path(raw).expanduser().resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise SnapshotCliError(f"snapshot path does not exist or cannot be resolved: {raw}") from exc
+        if path == root or not path.is_relative_to(root):
+            raise SnapshotCliError(f"snapshot path must be beneath {root}: {raw}")
+        if str(path) not in resolved:
+            resolved.append(str(path))
+    if not resolved:
+        raise SnapshotCliError("--paths requires at least one existing file or directory")
+    return resolved
+
+
+def load_template_or_group(name: str) -> dict[str, Any]:
+    """Existing templates take precedence; unrecognized safe names select ad-hoc groups."""
+    try:
+        return core.load_template(name)
+    except core.PodStateError as exc:
+        if str(exc).startswith("template not found:") and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", name):
+            return group_template(name)
+        raise
+
+
 def snap_manifest_remote_path(template_name: str, sid: str) -> str:
     return f"{core.snapshot_dir(template_name)}/{sid}.manifest.json"
 
@@ -492,8 +544,9 @@ class Tee(io.TextIOBase):
         return self.buffer.getvalue()
 
 
-def run_core_snapshot(args: argparse.Namespace) -> str | None:
-    ns = argparse.Namespace(template=args.template, name=args.name, force=args.force, dry_run=args.dry_run)
+def run_core_snapshot(args: argparse.Namespace, *, inline_template: dict[str, Any] | None = None) -> str | None:
+    ns = argparse.Namespace(template=args.template, inline_template=inline_template,
+                            name=args.name, force=args.force, dry_run=args.dry_run)
     tee = Tee(sys.stdout)
     with contextlib.redirect_stdout(tee):
         core.cmd_snapshot(ns)
@@ -517,6 +570,9 @@ def snapshot_create_parser() -> argparse.ArgumentParser:
     p.add_argument("template", nargs="?", help="template name or YAML path")
     p.add_argument("--template", dest="template_opt", default="", help="template name or YAML path")
     p.add_argument("--name", default="", help="short human-readable snapshot name")
+    p.add_argument("--paths", nargs="+", metavar="PATH", help="snapshot files/directories directly, relative to CWD or absolute")
+    p.add_argument("--group", default="", help="namespace for --paths snapshots (default: ad-hoc)")
+    p.add_argument("--compress", choices=("none", "gz"), help="archive compression for --paths (default: none)")
     p.add_argument("--note", "--why", "--description", dest="note", default="", help="why this snapshot was taken")
     p.add_argument("--next", dest="next_action", default="", help="suggested next action")
     p.add_argument("--tag", action="append", default=[], help="tag (repeatable)")
@@ -531,9 +587,23 @@ def snapshot_create_parser() -> argparse.ArgumentParser:
 
 def cmd_snapshot_create(argv: list[str]) -> int:
     args = snapshot_create_parser().parse_args(argv)
-    args.template = resolve_template_arg(args)
-    template = core.load_template(args.template)
-    sid = run_core_snapshot(args)
+    inline_template = None
+    if args.paths is not None:
+        if args.template or args.template_opt:
+            raise SnapshotCliError("--paths cannot be combined with a template")
+        group = args.group or "ad-hoc"
+        inline_template = group_template(
+            group, resolve_snapshot_paths(args.paths), compress=args.compress or "none"
+        )
+        core.validate_template(inline_template)
+        args.template = group
+        template = inline_template
+    else:
+        if args.group or args.compress is not None:
+            raise SnapshotCliError("--group and --compress require --paths")
+        args.template = resolve_template_arg(args)
+        template = core.load_template(args.template)
+    sid = run_core_snapshot(args, inline_template=inline_template)
     if sid is None:
         return 0
 
@@ -593,7 +663,7 @@ def snapshot_management_parser(action: str) -> argparse.ArgumentParser:
 
 def cmd_snapshot_management(action: str, argv: list[str]) -> int:
     args = snapshot_management_parser(action).parse_args(argv)
-    template = core.load_template(args.template)
+    template = load_template_or_group(args.template)
     name = template["name"]
     if action == "list":
         snapshots = load_snapshots(name)
@@ -654,7 +724,7 @@ def configure_parser() -> argparse.ArgumentParser:
 def cmd_configure(argv: list[str]) -> int:
     args = configure_parser().parse_args(argv)
     args.template = resolve_template_arg(args)
-    template = core.load_template(args.template)
+    template = load_template_or_group(args.template) if args.snapshot else core.load_template(args.template)
     requested = args.snapshot
     selected_sid: str | None = None
     interactive_choice = requested == PICK_SNAPSHOT
@@ -673,6 +743,7 @@ def cmd_configure(argv: list[str]) -> int:
 
     ns = argparse.Namespace(
         template=args.template,
+        inline_template=template if template.get("_template_path") is None else None,
         snapshot=selected_sid or "",
         dry_run=args.dry_run,
     )
@@ -755,7 +826,7 @@ def interactive_edit(meta: dict[str, Any], template_name: str) -> dict[str, Any]
 def cmd_configure_snapshot(argv: list[str]) -> int:
     args = configure_snapshot_parser().parse_args(argv)
     args.template = resolve_template_arg(args)
-    template = core.load_template(args.template)
+    template = load_template_or_group(args.template)
     template_name = template["name"]
 
     if args.snapshot:
