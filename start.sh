@@ -178,6 +178,55 @@ section 3 "Git Auth Bootstrap"
 git_auth_bootstrap || true
 
 #------------------------------------------------------------------------
+# Explicit one-shot pod snapshot recreation. Normal launches NEVER select a
+# leftover snapshot-local manifest. Restore before custom node installation.
+#------------------------------------------------------------------------
+if [[ -n "${POD_RESTORE_SNAPSHOT:-}" ]]; then
+  restore_group="${POD_RESTORE_GROUP:-comfy-workspace}"
+  restore_id="${POD_RESTORE_SNAPSHOT}"
+  if [[ ! "$restore_group" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$ ]]; then
+    echo "[snapshot-restore] Invalid POD_RESTORE_GROUP: $restore_group" >&2
+    exit 2
+  fi
+  if [[ ! "$restore_id" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    echo "[snapshot-restore] Invalid POD_RESTORE_SNAPSHOT identifier" >&2
+    exit 2
+  fi
+
+  section 3.5 "Restore ComfyUI Workspace Snapshot"
+  echo "[snapshot-restore] Restoring ${restore_group}/${restore_id} before custom-node installation"
+  if ! "$SCRIPT_DIR/configure-pod" "$restore_group" --snapshot "$restore_id"; then
+    echo "[snapshot-restore] Restore failed; refusing incomplete environment restoration." >&2
+    exit 1
+  fi
+  local_snapshot_manifest="/workspace/.pod-state/custom_nodes/manifest.json"
+  local_snapshot_inventory="/workspace/.pod-state/custom_nodes/inventory.json"
+  [[ -f "$local_snapshot_manifest" && -f "$local_snapshot_inventory" ]] || {
+    echo "[snapshot-restore] No custom-node manifest/inventory in restored snapshot." >&2
+    exit 1
+  }
+
+  snapshot_python="$(command -v python3 || true)"
+  [[ -n "$snapshot_python" ]] || {
+    echo "[snapshot-restore] Python 3 unavailable for manifest validation" >&2
+    exit 1
+  }
+  # Validate before overriding launcher configuration. Do not edit the main
+  # manifest, and never select a snapshot manifest on ordinary startup.
+  if ! restore_sets="$("$snapshot_python" "$SCRIPT_DIR/bin/custom_node_snapshot.py" restore-sets --manifest "$local_snapshot_manifest" --inventory "$local_snapshot_inventory" --launcher-sets "${CUSTOM_NODE_SETS:-}")"; then
+    echo "[snapshot-restore] Custom-node manifest validation failed." >&2
+    exit 1
+  fi
+  export CUSTOM_NODES_MANIFEST_URL="$local_snapshot_manifest"
+  export CUSTOM_NODE_SETS="$restore_sets"
+  echo "[snapshot-restore] Manifest: $CUSTOM_NODES_MANIFEST_URL"
+  echo "[snapshot-restore] Sets: default${CUSTOM_NODE_SETS:+,$CUSTOM_NODE_SETS}"
+  if [[ "${INSTALL_CUSTOM_NODES:-true}" == "false" ]]; then
+    echo "[snapshot-restore] WARN: INSTALL_CUSTOM_NODES=false; nodes will not be installed." >&2
+  fi
+fi
+
+#------------------------------------------------------------------------
 section 4 "Install Custom Nodes"
 #------------------------------------------------------------------------
 # Keep this phase free of bulk model downloads. Custom-node pip installs are
