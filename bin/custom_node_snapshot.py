@@ -173,12 +173,26 @@ def discover(base_manifest: dict[str, Any], custom_dir: Path, *,
 
     for entry in _node_dirs(custom_dir):
         record: dict[str, Any] = {"local": entry.name, "status": "unresolved"}
-        # First-party extensions can be symlinked into custom_nodes from pod-runtime.
-        # They are restored with the pod-runtime checkout, not cloned as plugins.
-        if entry.is_symlink():
-            record["status"] = "symlink"
-            inventory.append(record)
-            continue
+        # First-party modules in the pod-runtime checkout are installed by
+        # bootstrap. Other symlinked Git plugins should still be discovered.
+        linked = entry.is_symlink()
+        if linked:
+            try:
+                resolved = entry.resolve(strict=True)
+            except (OSError, RuntimeError):
+                resolved = None
+            runtime_nodes = Path(os.environ.get("POD_RUNTIME_DIR",
+                                               "/workspace/pod-runtime")) / "custom_nodes"
+            if resolved and resolved.is_relative_to(runtime_nodes.resolve()):
+                record["status"] = "builtin-symlink"
+                inventory.append(record)
+                continue
+            if resolved is None or not resolved.is_dir():
+                record["status"] = "dangling-symlink"
+                warnings.append(f"{entry.name}: broken custom-node symlink")
+                inventory.append(record)
+                continue
+            record["linked"] = True
         if entry.is_file():
             if entry.suffix != ".py":
                 continue
@@ -189,6 +203,14 @@ def discover(base_manifest: dict[str, Any], custom_dir: Path, *,
         if not entry.is_dir():
             continue
 
+        # git -C can walk into the parent ComfyUI repository. An unmanaged
+        # directory MUST be an independent Git checkout, not just a subfolder.
+        top_rc, top = git(entry, "rev-parse", "--show-toplevel")
+        if top_rc or not top or Path(top).resolve() != entry.resolve():
+            record["status"] = "non-git"
+            warnings.append(f"{entry.name}: no independent Git checkout; manual restoration required")
+            inventory.append(record)
+            continue
         exit_code, remote_raw = git(entry, "config", "--get", "remote.origin.url")
         commit_rc, commit = git(entry, "rev-parse", "HEAD")
         if exit_code or commit_rc or not COMMIT_RE.fullmatch(commit):
@@ -206,6 +228,8 @@ def discover(base_manifest: dict[str, Any], custom_dir: Path, *,
         record.update(remote=remote, commit=commit.lower(),
                       dirty=bool(dirty) if dirty_rc == 0 else None,
                       installer=prior_status.get(entry.name))
+        if linked:
+            warnings.append(f"{entry.name}: symlinked Git node will be restored as a regular checkout")
         if dirty_rc != 0:
             warnings.append(f"{entry.name}: could not check Git working tree")
         elif dirty:
@@ -270,7 +294,7 @@ def discover(base_manifest: dict[str, Any], custom_dir: Path, *,
             "installed_git": sum(1 for r in inventory if r["status"] in ("managed", "pending")),
             "new_pending": len(new_ids),
             "unresolved": sum(1 for r in inventory if r["status"] in ("non-git", "single-file",
-                                                                       "unsafe-remote", "conflict",
+                                                                       "unsafe-remote", "conflict", "dangling-symlink",
                                                                        "duplicate-remote")),
         },
     }
