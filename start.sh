@@ -181,6 +181,7 @@ git_auth_bootstrap || true
 # Explicit one-shot pod snapshot recreation. Normal launches NEVER select a
 # leftover snapshot-local manifest. Restore before custom node installation.
 #------------------------------------------------------------------------
+snapshot_restore_applied=0
 if [[ -n "${POD_RESTORE_SNAPSHOT:-}" ]]; then
   restore_group="${POD_RESTORE_GROUP:-comfy-workspace}"
   restore_id="${POD_RESTORE_SNAPSHOT}"
@@ -193,6 +194,13 @@ if [[ -n "${POD_RESTORE_SNAPSHOT:-}" ]]; then
     exit 2
   fi
 
+  # Keep the one-shot restore from running again on a restart of the same
+  # container, even if the launcher retains POD_RESTORE_SNAPSHOT.
+  restore_key="$(printf '%s' "$(hostname):$restore_group:$restore_id" | sha256sum | cut -d' ' -f1)"
+  restore_receipt="/workspace/.pod-state/restore-receipts/$restore_key.done"
+  if [[ -f "$restore_receipt" && "${POD_RESTORE_FORCE:-false}" != "true" ]]; then
+    echo "[snapshot-restore] Already applied to this container; using normal launcher manifest."
+  else
   section 3.5 "Restore ComfyUI Workspace Snapshot"
   echo "[snapshot-restore] Restoring ${restore_group}/${restore_id} before custom-node installation"
   if ! "$SCRIPT_DIR/configure-pod" "$restore_group" --snapshot "$restore_id"; then
@@ -224,6 +232,8 @@ if [[ -n "${POD_RESTORE_SNAPSHOT:-}" ]]; then
   if [[ "${INSTALL_CUSTOM_NODES:-true}" == "false" ]]; then
     echo "[snapshot-restore] WARN: INSTALL_CUSTOM_NODES=false; nodes will not be installed." >&2
   fi
+  snapshot_restore_applied=1
+  fi
 fi
 
 #------------------------------------------------------------------------
@@ -234,8 +244,17 @@ section 4 "Install Custom Nodes"
 
 if [[ "${INSTALL_CUSTOM_NODES:-true}" == "true" ]]; then
   echo "Installing custom nodes. Trying ${CUSTOM_NODES_MANIFEST_URL}..."
-  if ! install_custom_nodes; then
+  if install_custom_nodes; then
+    if [[ "$snapshot_restore_applied" == 1 ]]; then
+      mkdir -p "$(dirname "$restore_receipt")"
+      printf 'group=%s\nsnapshot=%s\ncompleted=%s\n' "$restore_group" "$restore_id" "$(date -Is)" > "$restore_receipt"
+      echo "[snapshot-restore] One-shot restoration receipt: $restore_receipt"
+    fi
+  else
     echo "⚠️ install_custom_nodes reported errors; custom-node extras may be incomplete."
+    if [[ "$snapshot_restore_applied" == 1 ]]; then
+      echo "[snapshot-restore] Custom-node install incomplete; no restore receipt written." >&2
+    fi
   fi
   snapshot_custom_nodes_state "after-install_custom_nodes" || true
 else
