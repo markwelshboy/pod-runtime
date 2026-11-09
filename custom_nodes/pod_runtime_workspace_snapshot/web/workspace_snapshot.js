@@ -279,7 +279,7 @@ function openPanel() {
   window.addEventListener("keydown", escapeKey);
   closeButton.onclick = close;
 
-  async function refresh() {
+  async function refresh(preserveStatus = false) {
     const result = await requestJson("/sessions");
     sessions.replaceChildren();
     for (const entry of result.sessions || []) {
@@ -288,7 +288,7 @@ function openPanel() {
       option.textContent = entry.id + " (" + entry.tab_count + " tabs)";
       sessions.appendChild(option);
     }
-    status((result.sessions || []).length + " saved session(s) available.");
+    if (!preserveStatus) status((result.sessions || []).length + " saved session(s) available.");
   }
 
   async function capture(upload) {
@@ -337,7 +337,7 @@ function openPanel() {
             "\nYou can leave this popup open while the pod uploads.");
         }
       }
-      await refresh();
+      await refresh(true);
       sessions.value = local.id;
       notify("success", "Workspace tab checkpoint created.");
     } catch (error) {
