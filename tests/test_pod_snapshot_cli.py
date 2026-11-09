@@ -1,4 +1,5 @@
 import importlib.util
+import tempfile
 import sys
 import unittest
 from datetime import datetime, timezone
@@ -88,6 +89,78 @@ class ParserTests(unittest.TestCase):
             result = pod_snapshot_cli.cmd_configure(["qwen3-captioning", "--dry-run"])
         self.assertEqual(result, 0)
         self.assertEqual(configure.call_args.args[0].snapshot, "")
+
+
+
+class DatasetSnapshotTests(unittest.TestCase):
+    def test_direct_snapshot_parser_and_namespace(self):
+        args = pod_snapshot_cli.snapshot_create_parser().parse_args([
+            "--name", "dataset_simple_vs_radau", "--tag", "to process",
+            "--group", "krea-comparisons", "--paths", "input", "output_gpu0",
+        ])
+        self.assertEqual(args.paths, ["input", "output_gpu0"])
+        self.assertEqual(args.group, "krea-comparisons")
+        self.assertEqual(args.tag, ["to process"])
+
+    def test_resolves_paths_and_rejects_escapes_or_missing_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "input").mkdir()
+            (root / "output_gpu0").mkdir()
+            resolved = pod_snapshot_cli.resolve_snapshot_paths(
+                [str(root / "input"), str(root / "input"), str(root / "output_gpu0")],
+                workspace=root,
+            )
+            self.assertEqual(resolved, [str(root / "input"), str(root / "output_gpu0")])
+            with self.assertRaisesRegex(pod_snapshot_cli.SnapshotCliError, "beneath"):
+                pod_snapshot_cli.resolve_snapshot_paths([str(root)], workspace=root)
+            with self.assertRaisesRegex(pod_snapshot_cli.SnapshotCliError, "beneath"):
+                pod_snapshot_cli.resolve_snapshot_paths([str(root.parent)], workspace=root)
+            with self.assertRaisesRegex(pod_snapshot_cli.SnapshotCliError, "does not exist"):
+                pod_snapshot_cli.resolve_snapshot_paths([str(root / "missing")], workspace=root)
+            (root / "escape").symlink_to(root.parent, target_is_directory=True)
+            with self.assertRaisesRegex(pod_snapshot_cli.SnapshotCliError, "beneath"):
+                pod_snapshot_cli.resolve_snapshot_paths([str(root / "escape")], workspace=root)
+
+    def test_direct_snapshot_uses_inline_repo_free_template(self):
+        paths = ["/workspace/ComfyUI/input", "/workspace/ComfyUI/output_gpu0"]
+        with mock.patch.object(pod_snapshot_cli, "resolve_snapshot_paths", return_value=paths), \
+                mock.patch.object(pod_snapshot_cli, "run_core_snapshot", return_value=None) as run:
+            result = pod_snapshot_cli.cmd_snapshot_create([
+                "--group", "krea-comparisons", "--name", "dataset_simple_vs_radau",
+                "--tag", "to process", "--paths", "input", "output_gpu0", "--dry-run",
+            ])
+        self.assertEqual(result, 0)
+        template = run.call_args.kwargs["inline_template"]
+        self.assertEqual(template["repos"], [])
+        self.assertEqual(template["name"], "krea-comparisons")
+        self.assertEqual(template["snapshot"]["paths"], paths)
+        self.assertEqual(template["snapshot"]["compress"], "none")
+
+    def test_group_or_compress_without_paths_is_rejected(self):
+        with self.assertRaisesRegex(pod_snapshot_cli.SnapshotCliError, "require --paths"):
+            pod_snapshot_cli.cmd_snapshot_create(["qwen3-captioning", "--group", "datasets"])
+        with self.assertRaisesRegex(pod_snapshot_cli.SnapshotCliError, "require --paths"):
+            pod_snapshot_cli.cmd_snapshot_create(["qwen3-captioning", "--compress", "gz"])
+
+    def test_template_and_direct_paths_cannot_mix(self):
+        with self.assertRaisesRegex(pod_snapshot_cli.SnapshotCliError, "cannot be combined"):
+            pod_snapshot_cli.cmd_snapshot_create(["qwen3-captioning", "--paths", "input"])
+
+    def test_invalid_group_is_rejected(self):
+        with self.assertRaisesRegex(pod_snapshot_cli.SnapshotCliError, "--group"):
+            pod_snapshot_cli.group_template("../oops")
+
+    def test_named_group_is_available_for_history_and_restore(self):
+        with mock.patch.object(
+            pod_snapshot_cli.core, "load_template",
+            side_effect=pod_snapshot_cli.core.PodStateError(
+                "template not found: krea-comparisons (looked in /templates)"
+            ),
+        ):
+            template = pod_snapshot_cli.load_template_or_group("krea-comparisons")
+        self.assertEqual(template["name"], "krea-comparisons")
+        self.assertEqual(template["repos"], [])
 
 
 class RetentionTests(unittest.TestCase):
