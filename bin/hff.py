@@ -885,17 +885,78 @@ def cmd_snapshot_create(args) -> None:
     print(sid)
 
 
+def _snapshot_manifests(files: Iterable[str], snapdir: str) -> List[str]:
+    """List manifests under a snapshot namespace, including nested folders."""
+    prefix = normalize_path(snapdir).rstrip("/")
+    path_prefix = f"{prefix}/" if prefix else ""
+    return sorted(
+        (
+            path for path in files
+            if path.startswith(path_prefix)
+            and path.endswith(".manifest.json")
+            and path != path_prefix + ".manifest.json"
+        ),
+        reverse=True,
+    )
+
+
+def _snapshot_relative_id(manifest: str, snapdir: str) -> str:
+    prefix = normalize_path(snapdir).rstrip("/")
+    path_prefix = f"{prefix}/" if prefix else ""
+    return manifest[len(path_prefix):].removesuffix(".manifest.json")
+
+
+def _resolve_snapshot_manifest(files: Iterable[str], snapdir: str, raw_id: str) -> str:
+    """Resolve plain IDs or namespace-relative paths consistently.
+
+    An exact match takes precedence. A bare ID may also match a single
+    nested manifest. Ambiguous IDs require the folder prefix as printed by
+    'hff snapshot list', preventing accidental retrieval/deletion.
+    """
+    wanted = normalize_path(raw_id)
+    prefix = normalize_path(snapdir).rstrip("/")
+    if prefix and wanted.startswith(prefix + "/"):
+        wanted = wanted[len(prefix) + 1:]
+    if wanted.endswith(".manifest.json"):
+        wanted = wanted[:-len(".manifest.json")]
+    if not wanted or any(segment in ("", ".", "..") for segment in wanted.split("/")):
+        die("snapshot: invalid snapshot ID/path", 2)
+    manifests = _snapshot_manifests(files, snapdir)
+    exact = f"{prefix}/{wanted}.manifest.json" if prefix else f"{wanted}.manifest.json"
+    if exact in manifests:
+        return exact
+
+    # Explicit subdirectory selection is never silently redirected.
+    if "/" not in wanted:
+        matches = [p for p in manifests if Path(p).name == f"{wanted}.manifest.json"]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            locations = ", ".join(_snapshot_relative_id(p, snapdir) for p in matches)
+            die(
+                f"snapshot: ID {wanted!r} exists in multiple folders: {locations}. "
+                "Pass the folder-qualified ID shown by 'hff snapshot list'.",
+                1,
+            )
+    die(
+        f"snapshot: not found under {prefix or '<repo root>'}: {wanted}. "
+        "Run 'hff snapshot list' to see available folder-qualified IDs.",
+        1,
+    )
+
+
 def cmd_snapshot_list(args) -> None:
     tok = need_token()
     a = api(tok)
     files = list_files(a, args.repo, args.type)
-    pref = normalize_path(args.snapdir).rstrip("/") + "/"
-    ids = sorted(
-        {Path(f).name[:-len(".manifest.json")] for f in files if f.startswith(pref) and f.endswith(".manifest.json")},
+    # Show namespace-relative paths so every listed ID is directly usable by
+    # get/show/destroy, including snapshots stored in nested directories.
+    for manifest in sorted(
+        _snapshot_manifests(files, args.snapdir),
+        key=lambda p: _snapshot_relative_id(p, args.snapdir),
         reverse=True,
-    )
-    for i in ids:
-        print(i)
+    ):
+        print(_snapshot_relative_id(manifest, args.snapdir))
 
 
 def cmd_snapshot_show(args) -> None:
@@ -903,11 +964,7 @@ def cmd_snapshot_show(args) -> None:
     a = api(tok)
     files = list_files(a, args.repo, args.type)
 
-    pref = normalize_path(args.snapdir).rstrip("/") + "/"
-    sid = args.id
-    mf = f"{pref}{sid}.manifest.json"
-    if mf not in files:
-        die(f"snapshot show: manifest not found: {mf}", 1)
+    mf = _resolve_snapshot_manifest(files, args.snapdir, args.id)
 
     try:
         cached = _hf_download(args.repo, args.type, mf, tok, cache_dir=None)
@@ -924,11 +981,11 @@ def cmd_snapshot_get(args) -> None:
     if not args.id:
         die("snapshot get: id required")
 
-    pref = normalize_path(args.snapdir).rstrip("/")
+    files = list_files(api(tok), args.repo, args.type)
+    mf = _resolve_snapshot_manifest(files, args.snapdir, args.id)
+    manifest_dir = parent_dir(mf)
     extract_dir = Path(args.extract_dir or ".").expanduser()
     extract_dir.mkdir(parents=True, exist_ok=True)
-
-    mf = f"{pref}/{args.id}.manifest.json"
     try:
         mf_cached = _hf_download(args.repo, args.type, mf, tok, cache_dir=args.cache_dir or None)
     except Exception as e:
@@ -937,12 +994,12 @@ def cmd_snapshot_get(args) -> None:
     try:
         meta = json.loads(mf_cached.read_text(encoding="utf-8"))
         tar_base = meta.get("tar", {}).get("basename")
-        if not tar_base:
-            die("snapshot get: manifest missing tar.basename", 1)
+        if not isinstance(tar_base, str) or not tar_base or Path(tar_base).name != tar_base:
+            die("snapshot get: manifest has invalid tar.basename", 1)
     except Exception as e:
         die(f"snapshot get: failed to parse manifest: {e}", 1)
 
-    tar_in_repo = f"{pref}/{tar_base}"
+    tar_in_repo = f"{manifest_dir}/{tar_base}" if manifest_dir else tar_base
     try:
         tar_cached = _hf_download(args.repo, args.type, tar_in_repo, tok, cache_dir=args.cache_dir or None)
     except Exception as e:
@@ -964,10 +1021,13 @@ def cmd_snapshot_destroy(args) -> None:
     if not args.id:
         die("snapshot destroy: id required")
 
-    pref = normalize_path(args.snapdir).rstrip("/") + "/"
-    targets = [f for f in files if f.startswith(pref + args.id + ".")]
-    if not targets:
-        die("snapshot destroy: nothing matched", 1)
+    manifest = _resolve_snapshot_manifest(files, args.snapdir, args.id)
+    folder = parent_dir(manifest)
+    snapshot_id = Path(manifest).name.removesuffix(".manifest.json")
+    snapshot_prefix = f"{folder}/{snapshot_id}." if folder else f"{snapshot_id}."
+    targets = [f for f in files if f.startswith(snapshot_prefix)]
+    if manifest not in targets:
+        die("snapshot destroy: manifest not found", 1)
 
     if not args.yes:
         print("About to DELETE:")
