@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -151,14 +152,14 @@ def install_core_hooks(core: Any) -> None:
     def load_template(name_or_path: str) -> dict[str, Any]:
         template = original_load_template(name_or_path)
         # Dataset snapshots should archive only their requested paths and state manifest.
-        return _append_history_snapshot_path(template) if template.get("repos") else template
+        return _append_history_snapshot_path(template) if template.get("repos", [True]) else template
 
     def find_staged_manifest(staging: Path, template_name: str) -> Path:
         global _pending_template
         path = original_find_manifest(staging, template_name)
         try:
             state = json.loads(path.read_text(encoding="utf-8"))
-            _pending_template = template_name if state.get("repos") else None
+            _pending_template = template_name if state.get("repos", [True]) else None
         except (OSError, ValueError, AttributeError):
             _pending_template = None
         return path
@@ -170,7 +171,7 @@ def install_core_hooks(core: Any) -> None:
 
     def cmd_snapshot(args: Any) -> int:
         template = getattr(args, "inline_template", None) or original_load_template(args.template)
-        if template.get("repos"):
+        if template.get("repos", [True]):
             if not getattr(args, "dry_run", False):
                 capture_history(str(template["name"]))
             else:
