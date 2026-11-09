@@ -89,6 +89,8 @@ def validate_manifest(manifest: Any) -> None:
     for node_id, node in nodes.items():
         if not isinstance(node_id, str) or not isinstance(node, dict) or not isinstance(node.get("remote"), str):
             raise ValueError(f"Invalid node entry: {node_id}")
+        if safe_remote(node["remote"]) is None:
+            raise ValueError(f"Manifest node {node_id} has an unsafe or credential-bearing remote")
         name = node.get("local") or Path(node["remote"].rstrip("/")).name.removesuffix(".git")
         if not isinstance(name, str) or not name or "/" in name or "\\" in name:
             raise ValueError(f"Unsafe node directory for {node_id}")
@@ -268,6 +270,9 @@ def discover(base_manifest: dict[str, Any], custom_dir: Path, *,
         captured_ids.append(node_id)
         inventory.append(record)
 
+    # Do not keep stale pending entries for plugins removed from this pod.
+    # Definitions remain in nodes for historical reference, but aren't selected.
+    pending[:] = [node_id for node_id in dict.fromkeys(pending) if node_id in captured_ids]
     # Do not depend on the launcher's optional-set flags to recover a node:
     # Manager/manual installs may not be represented in those flags.
     manifest["sets"]["snapshot-installed"] = list(dict.fromkeys(captured_ids))
