@@ -171,6 +171,23 @@ class NodeDiscoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing sets"):
             snapshot_nodes.cmd_restore_sets(args)
 
+    def test_existing_pending_node_is_not_selected_after_removal(self):
+        self.manifest["nodes"]["old"] = {
+            "remote": "https://github.com/example/old.git", "local": "OldNode"
+        }
+        self.manifest["sets"]["pending"] = ["old"]
+        captured, report = snapshot_nodes.discover(self.manifest, self.nodes)
+        self.assertIn("old", captured["nodes"])
+        self.assertEqual(captured["sets"]["pending"], [])
+        self.assertEqual(captured["sets"]["snapshot-installed"], [])
+
+    def test_manifest_with_embedded_credentials_is_rejected(self):
+        self.manifest["nodes"]["known"]["remote"] = (
+            "https://user:password@github.com/example/known.git"
+        )
+        with self.assertRaisesRegex(ValueError, "credential-bearing"):
+            snapshot_nodes.validate_manifest(self.manifest)
+
     def test_validate_manifest_rejects_duplicate_directories(self):
         duplicate = json.loads(json.dumps(self.manifest))
         duplicate["nodes"]["second"] = {
