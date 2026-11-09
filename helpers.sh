@@ -114,6 +114,8 @@ custom_node_manifest commands:
   custom_node_manifest from-workflow WORKFLOW.json -o OUTPUT.json [options]
   custom_node_manifest list-sets [--verbose] [--manifest FILE]
   custom_node_manifest show-set SET [--manifest FILE]
+  custom_node_manifest discover [--dry-run]
+  custom_node_manifest promote ID --set SET [--dry-run]
   custom_node_manifest merge SOURCE.json --into TARGET.json --set SET
   custom_node_manifest rename-set OLD NEW [--manifest FILE]
   custom_node_manifest delete-set SET [--manifest FILE]
