@@ -1,3 +1,4 @@
+import argparse
 import importlib.util
 import json
 import subprocess
@@ -27,6 +28,63 @@ class TemplateTests(unittest.TestCase):
             template["repos"][0]["configure"]["scripts"],
             ["./build_workspace.sh", "./build_sam3d_workspace.sh", "./build_vllm_workspace.sh"],
         )
+
+
+    def test_comfy_template_without_repositories(self):
+        template = pod_state.load_template(str(
+            Path(__file__).resolve().parents[1] / "snapshot-templates" / "comfy-io.yaml"
+        ))
+        self.assertEqual(template["repos"], [])
+        self.assertIn("/workspace/ComfyUI/output_gpu0", template["snapshot"]["paths"])
+
+    def test_repo_free_template_requires_snapshot_paths(self):
+        template = {"version": 1, "name": "empty", "workspace": "/workspace", "repos": [],
+                    "snapshot": {"paths": []}}
+        with self.assertRaisesRegex(pod_state.PodStateError, "repo or snapshot path"):
+            pod_state.validate_template(template)
+
+    def test_missing_repos_defaults_to_empty_for_dataset_template(self):
+        template = {"version": 1, "name": "dataset", "workspace": "/workspace",
+                    "snapshot": {"paths": ["/workspace/ComfyUI/input"]}}
+        pod_state.validate_template(template)
+        self.assertEqual(template["repos"], [])
+
+    def test_repo_free_snapshot_dry_run_never_uses_git(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "input"
+            path.mkdir()
+            args = argparse.Namespace(
+                template=None,
+                inline_template={"name": "ad-hoc", "repos": [],
+                                 "snapshot": {"paths": [str(path)], "compress": "none"}},
+                name="", force=False, dry_run=True,
+            )
+            with mock.patch.object(pod_state, "run", side_effect=AssertionError("Git must not run")), \
+                    mock.patch.object(pod_state, "state_manifest_path",
+                                      return_value=Path(tmp) / "manifest.json"):
+                self.assertEqual(pod_state.cmd_snapshot(args), 0)
+
+    def test_repo_free_restore_does_not_clone_repositories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            template = {"name": "ad-hoc", "workspace": str(Path(tmp) / "workspace"),
+                        "repos": [], "snapshot": {"paths": []}}
+
+            def fake_hff(argv, **kwargs):
+                if "get" in argv:
+                    staging = Path(argv[argv.index("--extract-dir") + 1])
+                    manifest = staging / "workspace/.pod-state/ad-hoc/manifest.json"
+                    manifest.parent.mkdir(parents=True)
+                    manifest.write_text(json.dumps({"template": "ad-hoc", "repos": []}))
+                return ""
+
+            args = argparse.Namespace(
+                template=None, inline_template=template, snapshot="snapshot-id", dry_run=False
+            )
+            with mock.patch.object(pod_state, "run_hff", side_effect=fake_hff), \
+                    mock.patch.object(pod_state, "hydrate_staging") as hydrate, \
+                    mock.patch.object(pod_state, "ensure_repo", side_effect=AssertionError("no repos")):
+                self.assertEqual(pod_state.cmd_configure(args), 0)
+            hydrate.assert_called_once()
 
     def test_builtin_template_loads_without_pyyaml(self):
         path = Path(__file__).resolve().parents[1] / "snapshot-templates" / "qwen3-captioning.yaml"
