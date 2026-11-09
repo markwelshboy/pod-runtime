@@ -192,7 +192,28 @@ def clone_node(item: tuple[str, dict], custom_dir: Path, log_dir: Path) -> tuple
         else:
             rc = run_command(["git", "clone", *options, node["remote"], str(destination)], log=log)
         if rc == 0 and node.get("ref"):
-            rc = run_command(["git", "-C", str(destination), "checkout", str(node["ref"])], log=log)
+            ref = str(node["ref"])
+            rc = run_command(["git", "-C", str(destination), "checkout", ref], log=log)
+            # Snapshot manifests pin exact commits. A future shallow clone may
+            # not have that commit when upstream HEAD has moved. Fetch only
+            # after an initial checkout failure, leaving normal installs fast.
+            if rc and re.fullmatch(r"[0-9a-fA-F]{40}", ref):
+                rc_fetch = run_command(
+                    ["git", "-C", str(destination), "fetch", "--depth=1", "origin", ref],
+                    log=log,
+                )
+                if rc_fetch:
+                    shallow = run_command(
+                        ["git", "-C", str(destination), "rev-parse", "--is-shallow-repository"],
+                        log=log,
+                    )
+                    if shallow == 0:
+                        rc_fetch = run_command(
+                            ["git", "-C", str(destination), "fetch", "--unshallow", "origin"],
+                            log=log,
+                        )
+                if rc_fetch == 0:
+                    rc = run_command(["git", "-C", str(destination), "checkout", ref], log=log)
         return node_id, rc, git_commit(destination) if rc == 0 else ""
 
 
