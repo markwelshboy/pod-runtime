@@ -250,7 +250,8 @@ def install_core_hooks(core: Any) -> None:
 
     def write_state_manifest(template: dict[str, Any], repo_states: list[dict[str, Any]], paths: list[str]) -> Path:
         path = original_write_manifest(template, repo_states, paths)
-        _add_overlay_to_manifest(path)
+        if template.get("repos"):
+            _add_overlay_to_manifest(path)
         return path
 
     def find_staged_manifest(staging: Path, template_name: str) -> Path:
@@ -260,21 +261,30 @@ def install_core_hooks(core: Any) -> None:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise core.PodStateError(f"could not read snapshot environment state: {exc}") from exc
-        _pending_overlay = _normalized_overlay(data.get("environment") if isinstance(data, dict) else None)
+        # Dataset snapshots carry no environment overlay; leave existing pod
+        # environment alone when extracting their files.
+        _pending_overlay = (
+            _normalized_overlay(data["environment"])
+            if isinstance(data, dict) and "environment" in data
+            else None
+        )
         return path
 
     def hydrate_staging(staging: Path) -> None:
         original_hydrate(staging)
-        overlay = apply_environment_overlay(_pending_overlay)
-        _info(f"restored {len(overlay['set'])} exported environment variable(s)")
+        if _pending_overlay is not None:
+            overlay = apply_environment_overlay(_pending_overlay)
+            _info(f"restored {len(overlay['set'])} exported environment variable(s)")
 
     def cmd_snapshot(args: Any) -> int:
         if getattr(args, "dry_run", False):
-            overlay = environment_overlay()
-            _info(
-                f"would capture {len(overlay['set'])} exported environment variable(s) "
-                f"({overlay['mode']})"
-            )
+            template = getattr(args, "inline_template", None) or core.load_template(args.template)
+            if template.get("repos"):
+                overlay = environment_overlay()
+                _info(
+                    f"would capture {len(overlay['set'])} exported environment variable(s) "
+                    f"({overlay['mode']})"
+                )
         return original_cmd_snapshot(args)
 
     def cmd_configure(args: Any) -> int:

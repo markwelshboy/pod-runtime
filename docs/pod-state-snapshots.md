@@ -205,3 +205,71 @@ snapshot-pod --template qwen3-captioning
 ```
 
 Use `--dry-run` on configure or snapshot creation to inspect the underlying project-state plan without changing project state or creating a snapshot.
+
+
+## ComfyUI datasets and ad-hoc directory snapshots
+
+Use `--paths` for a quick, repository-free snapshot of existing files or
+directories beneath `/workspace`. Relative paths are resolved from the current
+directory, so you can run this from `/workspace/ComfyUI`:
+
+```bash
+snapshot-pod --name dataset_simple_vs_radau \
+  --tag "to process" --paths input output_gpu0
+```
+
+By default, these are saved under `snapshot/pods/ad-hoc/` in the configured HFF
+repository. To separate different experiments, use `--group`:
+
+```bash
+snapshot-pod --group krea-comparisons \
+  --name dataset_simple_vs_radau --tag "to process" \
+  --paths input output_gpu0
+
+snapshot-pod list krea-comparisons
+snapshot-pod show krea-comparisons latest
+configure-snapshot krea-comparisons latest --tag reviewed
+```
+
+You can restore the files on a new pod without cloning a Git repository:
+
+```bash
+configure-pod krea-comparisons --snapshot latest
+```
+
+Restoring copies the saved files into their original `/workspace` locations.
+Existing files with the same paths may be overwritten; unrelated files are not
+automatically deleted. Run `configure-pod krea-comparisons --snapshot latest --dry-run`
+to preview the restore setup (without downloading or extracting the archive).
+
+Direct-path snapshots default to `--compress none` (suitable for JPEG/PNG/WebP).
+Use `--compress gz` if the dataset is mostly compressible text. The underlying HFF
+snapshot implementation still constructs a temporary archive, so ensure the
+pod has enough free temporary disk space for a copy of the selected data.
+
+Paths must already exist and stay beneath `/workspace`, including after
+resolving symlinks. A path outside `/workspace` or a missing path is rejected.
+The only automatic archive addition is the small `/workspace/.pod-state`
+manifest, which records the snapshot's path list. Dataset-only snapshots do not
+capture Git repositories, shell history, or environment overlays.
+
+For a reusable collection, create a template with `"repos": []` and a nonempty
+`snapshot.paths` list. The built-in `comfy-io` template includes ComfyUI's
+`input`, `output`, and `output_gpu0` directories:
+
+```bash
+snapshot-pod comfy-io --name dataset_simple_vs_radau --tag "to process"
+snapshot-pod comfy-io --dry-run
+```
+
+Template snapshots keep their normal `snapshot.retention` settings. Ad-hoc
+groups use the default manual-prune policy (5 recent, 7 daily, 4 weekly,
+72-hour grace); no snapshots are automatically pruned. If desired:
+
+```bash
+snapshot-pod prune krea-comparisons --dry-run
+```
+
+`--paths` cannot be combined with a template; `--group` and `--compress`
+only apply to direct-path snapshot creation. Existing Git-project snapshots,
+including their source-safety checks, are unchanged.

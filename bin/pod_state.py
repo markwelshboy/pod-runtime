@@ -93,9 +93,10 @@ def validate_template(template: dict[str, Any], path: Path | None = None) -> Non
         raise PodStateError(f"template name is required{where}")
     if not isinstance(template.get("workspace"), str) or not template["workspace"].startswith("/workspace"):
         raise PodStateError(f"workspace must be /workspace or beneath it{where}")
-    repos = template.get("repos")
-    if not isinstance(repos, list) or not repos:
-        raise PodStateError(f"at least one repo is required{where}")
+    # Dataset-only templates may have no Git repositories.
+    repos = template.setdefault("repos", [])
+    if not isinstance(repos, list):
+        raise PodStateError(f"repos must be a list{where}")
     seen: set[str] = set()
     for repo in repos:
         if not isinstance(repo, dict):
@@ -121,6 +122,8 @@ def validate_template(template: dict[str, Any], path: Path | None = None) -> Non
     paths = snapshot.get("paths", [])
     if not isinstance(paths, list) or not all(isinstance(p, str) and p.startswith("/workspace/") for p in paths):
         raise PodStateError(f"snapshot.paths must be beneath /workspace{where}")
+    if not repos and not paths:
+        raise PodStateError(f"at least one repo or snapshot path is required{where}")
     compress = snapshot.get("compress", "gz")
     if compress not in {"gz", "none"}:
         raise PodStateError(f"snapshot.compress must be 'gz' or 'none'{where}")
@@ -289,7 +292,7 @@ def run_configure_scripts(repo_cfg: dict[str, Any], dry_run: bool = False) -> No
 
 
 def cmd_snapshot(args: argparse.Namespace) -> int:
-    template = load_template(args.template)
+    template = getattr(args, "inline_template", None) or load_template(args.template)
     repo_states: list[dict[str, Any]] = []
     for repo_cfg in template["repos"]:
         repo_path = Path(repo_cfg["path"])
@@ -319,6 +322,8 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
             existing_paths.append(raw)
         else:
             warn(f"snapshot path does not exist; skipping: {raw}")
+    if not repo_states and not existing_paths:
+        raise PodStateError("no existing snapshot paths found for repository-free snapshot")
     manifest = state_manifest_path(template["name"])
     if args.dry_run:
         info(f"would write state manifest: {manifest}")
@@ -345,13 +350,15 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     info(f"snapshot: {sid}")
     if unsafe:
         warn("snapshot was forced with source-state safety issues; code may not be fully recoverable")
-    else:
+    elif repo_states:
         info("snapshot verified; source commit(s) are recoverable from their upstreams")
+    else:
+        info("snapshot verified; no Git repositories were required")
     return 0
 
 
 def cmd_configure(args: argparse.Namespace) -> int:
-    template = load_template(args.template)
+    template = getattr(args, "inline_template", None) or load_template(args.template)
     Path(template["workspace"]).mkdir(parents=True, exist_ok=True) if not args.dry_run else None
     recorded_by_name: dict[str, dict[str, Any]] = {}
     staging_cm = None

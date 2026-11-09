@@ -1,0 +1,50 @@
+name: Pod snapshot tests
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - snapshot-pod
+      - bin/snapshot-pod
+      - bin/pod_state.py
+      - bin/pod_snapshot_cli.py
+      - bin/pod_env_state.py
+      - bin/pod_history_state.py
+      - snapshot-templates/**
+      - tests/test_pod_state.py
+      - tests/test_pod_snapshot_cli.py
+      - tests/test_snapshot_entrypoint.py
+      - .github/workflows/snapshot-tests.yml
+  pull_request:
+    paths:
+      - snapshot-pod
+      - bin/snapshot-pod
+      - bin/pod_state.py
+      - bin/pod_snapshot_cli.py
+      - bin/pod_env_state.py
+      - bin/pod_history_state.py
+      - snapshot-templates/**
+      - tests/test_pod_state.py
+      - tests/test_pod_snapshot_cli.py
+      - tests/test_snapshot_entrypoint.py
+      - .github/workflows/snapshot-tests.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Python syntax
+        run: |
+          python3 -m py_compile snapshot-pod bin/snapshot-pod bin/pod_state.py bin/pod_snapshot_cli.py bin/pod_env_state.py bin/pod_history_state.py
+      - name: Run pod snapshot tests
+        run: |
+          python3 -m unittest discover -s tests -p 'test_pod_state.py' -v
+          python3 -m unittest discover -s tests -p 'test_pod_snapshot_cli.py' -v
+          python3 -m unittest discover -s tests -p 'test_snapshot_entrypoint.py' -v
+          python3 -m unittest discover -s tests -p 'test_pod_env_state.py' -v
+          python3 -m unittest discover -s tests -p 'test_pod_history_state.py' -v
+          python3 -m unittest discover -s tests -p 'test_pod_snapshot_display.py' -v

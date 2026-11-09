@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "comfy-io",
+  "workspace": "/workspace/ComfyUI",
+  "repos": [],
+  "snapshot": {
+    "compress": "none",
+    "paths": [
+      "/workspace/ComfyUI/input",
+      "/workspace/ComfyUI/output",
+      "/workspace/ComfyUI/output_gpu0"
+    ],
+    "retention": {
+      "recent": 5,
+      "daily": 7,
+      "weekly": 4,
+      "grace_hours": 72,
+      "auto_prune_after_snapshot": false
+    }
+  }
+}
