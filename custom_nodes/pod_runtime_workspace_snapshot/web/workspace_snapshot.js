@@ -231,6 +231,7 @@ function openPanel() {
     workflows: checkRow("Saved workflows", true),
     tab_manager: checkRow("Tab Manager layout", true),
     settings: checkRow("ComfyUI settings", true),
+    custom_nodes: checkRow("Custom-node environment + pending set", true),
   };
   const checks = make("div", "", "ws-snapshot-grid");
   Object.values(selected).forEach((entry) => checks.appendChild(entry.wrap));
