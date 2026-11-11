@@ -564,6 +564,10 @@
     "comfyui-prompt-library": {
       "remote": "https://github.com/markwelshboy/ComfyUI-PromptLibrary.git",
       "local": "ComfyUI-PromptLibrary"
+    },
+    "comfyui-segs-detailer-hook": {
+      "remote": "https://github.com/markwelshboy/ComfyUI-SEGS-Detailer-Hook.git",
+      "local": "ComfyUI-SEGS-Detailer-Hook"
     }
   },
   "sets": {
@@ -610,7 +614,8 @@
       "comfyui-loraplotnode",
       "comfyui-tab-manager",
       "comfyui-hAI_prompt_library",
-      "comfyui-prompt-library"
+      "comfyui-prompt-library",
+      "comfyui-segs-detailer-hook"
     ],
     "default-extras": [
       "comfyui-vrgamedevgirl",
