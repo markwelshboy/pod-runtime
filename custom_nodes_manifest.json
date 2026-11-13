@@ -619,7 +619,8 @@
       "comfyui-tab-manager",
       "comfyui-hAI_prompt_library",
       "comfyui-prompt-library",
-      "comfyui-segs-detailer-hook"
+      "comfyui-segs-detailer-hook",
+      "comfyui-image-utils"
     ],
     "default-extras": [
       "comfyui-vrgamedevgirl",
