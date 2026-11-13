@@ -565,6 +565,10 @@
       "remote": "https://github.com/markwelshboy/ComfyUI-PromptLibrary.git",
       "local": "ComfyUI-PromptLibrary"
     },
+    "comfyui-image-utils": {
+      "remote": "https://github.com/markwelshboy/ComfyUI-Image-Utils.git",
+      "local": "ComfyUI-Image-Utils"
+    },
     "comfyui-segs-detailer-hook": {
       "remote": "https://github.com/markwelshboy/ComfyUI-SEGS-Detailer-Hook.git",
       "local": "ComfyUI-SEGS-Detailer-Hook"
