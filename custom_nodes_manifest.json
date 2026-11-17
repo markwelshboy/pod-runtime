@@ -576,6 +576,14 @@
     "comfyui-pixlstash": {
       "remote": "https://github.com/Pikselkroken/ComfyUI-PixlStash.git",
       "local": "ComfyUI-PixlStash"
+    },
+    "comfyui-inpaint-canvas": {
+      "remote": "https://github.com/DenRakEiw/ComfyUI-InpaintCanvas.git",
+      "local": "ComfyUI-InpaintCanvas"
+    },
+    "comfyui-raykostudio": {
+      "remote": "https://github.com/Raykosan/ComfyUI_RaykoStudio.git",
+      "local": "ComfyUI-RaykoStudio"
     }
   },
   "sets": {
@@ -639,7 +647,9 @@
       "comfyui-mobile-frontend",
       "comfyui-sequential-image-loader",
       "comfyui-clean-freak",
-      "comfyui-pixlstash"
+      "comfyui-pixlstash",
+      "comfyui-inpaint-canvas",
+      "comfyui-raykostudio"
     ],
     "imagedit": [
       "comfyui-inpaint-cropandstitch",
