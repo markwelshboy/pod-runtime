@@ -91,11 +91,11 @@ def v2_request(
             return json.loads(raw.decode("utf-8")) if raw else None
     except urllib.error.HTTPError as exc:
         raise core.RunPodError(
-            f"RunPod API v2 {method} {path} failed: HTTP {exc.code}: {_decode_error(exc)}",
+            f"RunPod API v2 {method} {url} failed: HTTP {exc.code}: {_decode_error(exc)}",
             status_code=exc.code,
         ) from exc
     except urllib.error.URLError as exc:
-        raise core.RunPodError(f"RunPod API v2 {method} {path} failed: {exc.reason}") from exc
+        raise core.RunPodError(f"RunPod API v2 {method} {url} failed: {exc.reason}") from exc
 
 
 def _graphql_request(api_key: str, query: str, variables: dict[str, Any]) -> dict[str, Any]:
@@ -301,6 +301,38 @@ def normalize_v2_pod(pod: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def list_v2_pods(api_key: str, *, timeout: float = core.DEFAULT_API_TIMEOUT) -> list[dict[str, Any]]:
+    """Return every page of the REST v2 Pod collection.
+
+    The compatibility hook deliberately returns a v1-shaped list to existing
+    callers; returning only the first v2 page could make --kill-all or name
+    resolution silently miss paid Pods.
+    """
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    cursor: str | None = None
+    while True:
+        path = "/pods"
+        if cursor is not None:
+            path += "?" + urllib.parse.urlencode({"cursor": cursor})
+        result = v2_request(api_key, "GET", path, timeout=timeout)
+        page = result.get("pods") if isinstance(result, dict) else None
+        pagination = result.get("pagination") if isinstance(result, dict) else None
+        if not isinstance(page, list) or not isinstance(pagination, dict):
+            raise core.RunPodError(f"unexpected paginated REST v2 pods response: {result!r}")
+        rows.extend(normalize_v2_pod(row) for row in page if isinstance(row, dict))
+        if not pagination.get("hasNextPage"):
+            return rows
+        next_cursor = pagination.get("nextCursor")
+        if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen:
+            raise core.RunPodError(
+                "REST v2 Pod pagination is incomplete or looping; "
+                "refusing to return a partial Pod list"
+            )
+        seen.add(next_cursor)
+        cursor = next_cursor
+
+
 def _legacy_path(path: str) -> tuple[str, str | None] | None:
     parsed = urllib.parse.urlsplit(path)
     clean = parsed.path
@@ -338,11 +370,7 @@ def install_core_hooks() -> None:
                 raise core.RunPodError("Pod create payload must be an object")
             return _create_pod(api_key, payload)
         if verb == "GET" and pod_id is None:
-            obj = v2_request(api_key, "GET", "/pods", timeout=timeout)
-            rows = obj.get("pods") if isinstance(obj, dict) else None
-            if not isinstance(rows, list):
-                raise core.RunPodError(f"unexpected API v2 pods response: {obj!r}")
-            return [normalize_v2_pod(row) for row in rows if isinstance(row, dict)]
+            return list_v2_pods(api_key, timeout=timeout)
         if verb == "GET" and pod_id:
             obj = v2_request(
                 api_key,

@@ -23,6 +23,13 @@ opener.addheaders = [("User-Agent", USER_AGENT)]
 urllib.request.install_opener(opener)
 
 import rent_pod as core  # noqa: E402
+import rent_pod_api_v2 as api_v2  # noqa: E402
+
+# rent-pod_entry installs this REST v2 bridge, but rpods is a standalone entry
+# point. Without this hook, core.api_request still targets the retired REST v1
+# host (rest.runpod.io), which now fails DNS resolution.
+api_v2.install_core_hooks()
+
 import rent_pod_lifecycle as lifecycle  # noqa: E402
 import rent_pod_manage as manage  # noqa: E402
 
@@ -44,7 +51,7 @@ class PodChoice:
     def connectable(self) -> bool:
         if not self.public_ip or not self.ssh_port:
             return False
-        return self.stage.upper() not in {"EXITED", "STOPPED", "TERMINATED"}
+        return self.stage.upper() not in {"EXITED", "STOPPED", "TERMINATED", "ERROR", "FAILED"}
 
 
 def format_age(seconds: float | int | None) -> str:
@@ -75,7 +82,7 @@ def _gpu_runtime_uptime(gql_pod: dict[str, Any] | None) -> float | None:
     runtime = (gql_pod or {}).get("runtime")
     if not isinstance(runtime, dict):
         return None
-    value = runtime.get("uptimeInSeconds")
+    value = runtime.get("uptime", runtime.get("uptimeInSeconds"))
     try:
         return float(value) if value is not None else None
     except (TypeError, ValueError):
@@ -96,7 +103,10 @@ def choice_from_pod(
     except (TypeError, ValueError):
         ssh_port = None
 
-    uptime = _gpu_runtime_uptime(gql_pod)
+    # REST v2 exposes live uptime directly; keep GraphQL as an optional fallback.
+    uptime = _gpu_runtime_uptime(pod)
+    if uptime is None:
+        uptime = _gpu_runtime_uptime(gql_pod)
     if uptime is None:
         uptime = lifecycle.pod_age_seconds(pod)
 
