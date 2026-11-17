@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-API_BASE = os.environ.get("RUNPOD_API_BASE", "https://rest.runpod.io/v1").rstrip("/")
+API_BASE = os.environ.get("RUNPOD_API_BASE", "https://api.runpod.io/v2").rstrip("/")
 DEFAULT_API_TIMEOUT = 30.0
 CLEANUP_API_TIMEOUT = 8.0
 CLEANUP_DELETE_ATTEMPTS = 3
@@ -97,24 +97,32 @@ def api_request(
         ) from exc
 
 
-def create_pod(api_key: str, args: argparse.Namespace, attempt: int) -> dict[str, Any]:
+def pod_create_payload(args: argparse.Namespace, attempt: int) -> dict[str, Any]:
+    """Build the RunPod REST v2 request; template supplies image, ports and mounts.
+
+    REST v2 no longer supports server-side network/disk bandwidth or public-IP
+    host filters. Qualification still checks real HF/PyPI networking after SSH.
+    """
     slug = re.sub(r"[^a-z0-9]+", "-", args.gpu_alias.lower()).strip("-") or "gpu"
-    payload: dict[str, Any] = {
+    return {
         "name": args.name or f"podlet-{slug}-{int(time.time())}-a{attempt}",
         "templateId": args.template,
-        "gpuTypeIds": [args.gpu],
-        "gpuCount": 1,
-        "gpuTypePriority": "availability",
-        "supportPublicIp": True,
-        "minDownloadMbps": args.min_download,
-        "minUploadMbps": args.min_upload,
-        "cloudType": args.cloud,
+        "gpu": {"id": args.gpu, "count": 1},
+        "cloud": args.cloud,
+        "startSsh": True,
     }
-    if args.min_disk is not None:
-        payload["minDiskBandwidthMBps"] = args.min_disk
-    result = api_request(api_key, "POST", "/pods", payload)
+
+
+def create_pod(api_key: str, args: argparse.Namespace, attempt: int) -> dict[str, Any]:
+    result = api_request(api_key, "POST", "/pods", pod_create_payload(args, attempt))
     if not isinstance(result, dict):
         raise RunPodError(f"unexpected create response: {result!r}")
+    # v2 can return a queued request when explicitly using the queue option.
+    if result.get("status") == "QUEUED" and not result.get("podId"):
+        raise RunPodError(
+            "RunPod queued the request but did not allocate a pod; "
+            "rent-pod requires immediate allocation for its SSH qualification"
+        )
     return result
 
 
@@ -127,7 +135,7 @@ def get_pod(
     result = api_request(
         api_key,
         "GET",
-        f"/pods/{urllib.parse.quote(pod_id)}?includeMachine=true",
+        f"/pods/{urllib.parse.quote(pod_id, safe='')}",
         timeout=timeout,
     )
     if not isinstance(result, dict):
@@ -144,7 +152,7 @@ def delete_pod(
     api_request(
         api_key,
         "DELETE",
-        f"/pods/{urllib.parse.quote(pod_id)}",
+        f"/pods/{urllib.parse.quote(pod_id, safe='')}",
         timeout=timeout,
     )
 
@@ -240,28 +248,59 @@ def cleanup_inflight_pod(
 
 
 def pod_identity(pod: dict[str, Any]) -> dict[str, Any]:
+    """Normalize v2 direct-SSH, GPU, price and datacenter fields.
+
+    A direct SSH mapping is required by rent-pod/rpods, because provision and
+    remote workflows depend on the externally mapped root SSH port.
+    """
     machine = pod.get("machine") or {}
+    ssh = pod.get("ssh") or {}
+    direct = ssh.get("direct") or {} if isinstance(ssh, dict) else {}
+    runtime = pod.get("runtime") or {}
+    gpu = pod.get("gpu") or {}
     mappings = pod.get("portMappings") or {}
-    ssh_port = mappings.get("22")
+
+    public_ip = direct.get("host")
+    ssh_port = direct.get("port")
+    # A running pod may expose its runtime port before ssh.direct populates.
+    if isinstance(runtime, dict) and (not public_ip or not ssh_port):
+        for port in runtime.get("ports") or []:
+            if not isinstance(port, dict):
+                continue
+            private = port.get("private", port.get("privatePort"))
+            kind = str(port.get("type") or "tcp").lower()
+            if str(private) == "22" and kind == "tcp":
+                public_ip = public_ip or port.get("ip")
+                ssh_port = ssh_port or port.get("public", port.get("publicPort"))
+                if public_ip and ssh_port:
+                    break
+
+    public_ip = public_ip or pod.get("publicIp")
     if ssh_port is None:
-        ssh_port = mappings.get(22)
+        ssh_port = mappings.get("22", mappings.get(22))
+
     return {
         "pod_id": pod.get("id"),
+        # v2 exposes dataCenterId but no machine/host identifier or bandwidth.
         "machine_id": pod.get("machineId"),
-        "data_center_id": machine.get("dataCenterId"),
+        "data_center_id": pod.get("dataCenterId") or machine.get("dataCenterId"),
         "location": machine.get("location"),
-        "public_ip": pod.get("publicIp"),
+        "public_ip": public_ip,
         "ssh_port": ssh_port,
         "gpu": (
-            (pod.get("gpu") or {}).get("displayName")
-            or machine.get("gpuDisplayName")
-            or machine.get("gpuTypeId")
+            (gpu.get("id") or gpu.get("displayName")) if isinstance(gpu, dict)
+            else str(gpu) if gpu else None
+        ) or machine.get("gpuDisplayName") or machine.get("gpuTypeId"),
+        "cost_per_hr": (
+            pod.get("cost") if pod.get("cost") is not None
+            else pod.get("adjustedCostPerHr")
+            if pod.get("adjustedCostPerHr") is not None
+            else pod.get("costPerHr")
         ),
-        "cost_per_hr": pod.get("adjustedCostPerHr") or pod.get("costPerHr"),
         "max_download_mbps": machine.get("maxDownloadSpeedMbps"),
         "max_upload_mbps": machine.get("maxUploadSpeedMbps"),
         "disk_throughput_mbps": machine.get("diskThroughputMBps"),
-        "desired_status": pod.get("desiredStatus"),
+        "desired_status": pod.get("status") or pod.get("desiredStatus"),
     }
 
 
@@ -500,6 +539,14 @@ def main() -> int:
         print("ERROR: --attempts must be >= 1", file=sys.stderr)
         return 2
 
+    if args.min_disk is not None:
+        print(
+            "ERROR: --min-disk is unsupported by RunPod REST v2; "
+            "the API no longer exposes disk-bandwidth placement constraints.",
+            file=sys.stderr,
+        )
+        return 2
+
     args.gpu = resolve_gpu(args.gpu_alias)
     args.ssh_key = str(Path(args.ssh_key).expanduser())
     api_key = os.environ.get("RUNPOD_API_KEY", "").strip()
@@ -514,24 +561,13 @@ def main() -> int:
     print(f"[rent-pod] Template:            {args.template}")
     print(f"[rent-pod] GPU:                 {args.gpu}")
     print(f"[rent-pod] Cloud:               {args.cloud}")
-    print(f"[rent-pod] Min advertised down: {args.min_download} Mbps")
-    print(f"[rent-pod] Min advertised up:   {args.min_upload} Mbps")
+    print("[rent-pod] REST v2 has no advertised bandwidth/public-IP placement filters.")
+    print("[rent-pod] Actual network qualification remains part of provisioning.")
     print(f"[rent-pod] Attempts:            {args.attempts}")
 
     if args.dry_run:
-        preview = {
-            "name": args.name or "podlet-<gpu>-<timestamp>-a1",
-            "templateId": args.template,
-            "gpuTypeIds": [args.gpu],
-            "gpuCount": 1,
-            "gpuTypePriority": "availability",
-            "supportPublicIp": True,
-            "minDownloadMbps": args.min_download,
-            "minUploadMbps": args.min_upload,
-            "cloudType": args.cloud,
-        }
-        if args.min_disk is not None:
-            preview["minDiskBandwidthMBps"] = args.min_disk
+        preview = pod_create_payload(args, 1)
+        preview["name"] = args.name or "podlet-<gpu>-<timestamp>-a1"
         print(json.dumps(preview, indent=2, sort_keys=True))
         return 0
 
