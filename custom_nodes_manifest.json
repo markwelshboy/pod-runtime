@@ -572,6 +572,10 @@
     "comfyui-segs-detailer-hook": {
       "remote": "https://github.com/markwelshboy/ComfyUI-SEGS-Detailer-Hook.git",
       "local": "ComfyUI-SEGS-Detailer-Hook"
+    },
+    "comfyui-pixlstash": {
+      "remote": "https://github.com/Pikselkroken/ComfyUI-PixlStash.git",
+      "local": "ComfyUI-PixlStash"
     }
   },
   "sets": {
@@ -634,7 +638,8 @@
       "comfyui-telegramsender",
       "comfyui-mobile-frontend",
       "comfyui-sequential-image-loader",
-      "comfyui-clean-freak"
+      "comfyui-clean-freak",
+      "comfyui-pixlstash"
     ],
     "imagedit": [
       "comfyui-inpaint-cropandstitch",
