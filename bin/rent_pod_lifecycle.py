@@ -159,36 +159,29 @@ def build_snapshot(
     gql_pod: dict[str, Any] | None,
     probe_error: str | None = None,
 ) -> dict[str, Any]:
-    """Interpret REST v2's status, direct SSH and runtime.
-
-    GraphQL-shaped fallback remains for older callers/tests, but management
-    and rental no longer make GraphQL requests to obtain lifecycle details.
-    """
     identity = core.pod_identity(rest_pod)
     gql_pod = gql_pod or {}
-    rest_runtime = rest_pod.get("runtime")
-    gql_runtime = gql_pod.get("runtime")
-    runtime = rest_runtime if isinstance(rest_runtime, dict) else gql_runtime
+    runtime = gql_pod.get("runtime")
     runtime_present = isinstance(runtime, dict)
-    gql_ip, gql_ssh_port = _runtime_ssh(gql_runtime)
+    gql_ip, gql_ssh_port = _runtime_ssh(runtime)
 
-    public_ip = _first(identity.get("public_ip"), gql_ip, _runtime_public_ip(gql_runtime))
-    ssh_port = _first(identity.get("ssh_port"), gql_ssh_port)
+    # Prefer live runtime connection data when GraphQL has it. REST's
+    # portMappings can lag or churn during startup; RunPod's own CLI resolves
+    # live SSH connection info from the GraphQL runtime ports for this reason.
+    public_ip = _first(gql_ip, _runtime_public_ip(runtime), identity.get("public_ip"))
+    ssh_port = _first(gql_ssh_port, identity.get("ssh_port"))
     desired = str(
-        _first(rest_pod.get("status"), gql_pod.get("desiredStatus"),
-               rest_pod.get("desiredStatus"), "UNKNOWN")
+        _first(gql_pod.get("desiredStatus"), rest_pod.get("desiredStatus"), "UNKNOWN")
     )
     last_event = _event_text(
-        _first(rest_pod.get("lastStatusChange"), gql_pod.get("lastStatusChange"))
+        _first(gql_pod.get("lastStatusChange"), rest_pod.get("lastStatusChange"))
     )
-    uptime = _first(runtime.get("uptime"), runtime.get("uptimeInSeconds")) if runtime_present else None
+    uptime = runtime.get("uptimeInSeconds") if runtime_present else None
 
-    status_upper = desired.upper()
-    if status_upper in {"EXITED", "STOPPED", "TERMINATED", "ERROR", "FAILED"}:
-        stage = status_upper
-    elif status_upper in {"QUEUED", "PROVISIONING", "STARTING"}:
-        stage = status_upper
-    elif public_ip and ssh_port:
+    desired_upper = desired.upper()
+    if desired_upper in {"EXITED", "STOPPED", "TERMINATED"}:
+        stage = desired_upper
+    elif runtime_present and public_ip and ssh_port:
         stage = "NETWORK"
     elif runtime_present:
         stage = "CONTAINER"
@@ -235,10 +228,13 @@ def _parse_created_at(value: Any) -> datetime | None:
 
 
 def pod_started_at(rest_pod: dict[str, Any]) -> datetime | None:
-    """Return the Pod's start timestamp (v2 startedAt, v1 fallbacks)."""
+    """Return the Pod's last start timestamp from the RunPod REST surface.
+
+    RunPod's current Pod schema exposes lastStartedAt. Keep createdAt as a
+    compatibility fallback for older/alternate payloads that may still carry it.
+    """
     return _parse_created_at(
         _first(
-            rest_pod.get("startedAt"),
             rest_pod.get("lastStartedAt"),
             rest_pod.get("createdAt"),
         )
@@ -346,7 +342,13 @@ def lifecycle_print_identity(identity: dict[str, Any]) -> None:
 
 def _fetch_snapshot(api_key: str, pod_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
     rest_pod = core.get_pod(api_key, pod_id)
-    return rest_pod, build_snapshot(rest_pod, None)
+    gql: dict[str, Any] | None = None
+    probe_error: str | None = None
+    try:
+        gql = graphql_pod(api_key, pod_id)
+    except core.RunPodError as exc:
+        probe_error = str(exc)
+    return rest_pod, build_snapshot(rest_pod, gql, probe_error)
 
 
 def _identity_with_endpoint(rest_pod: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -420,7 +422,7 @@ def wait_for_ssh(
             last_signature = signature
             next_heartbeat = now + HEARTBEAT_SECONDS
 
-        if str(snapshot.get("stage") or "").upper() in {"EXITED", "STOPPED", "TERMINATED", "ERROR", "FAILED"}:
+        if str(snapshot.get("stage") or "").upper() in {"EXITED", "STOPPED", "TERMINATED"}:
             return identity, f"pod-{str(snapshot['stage']).lower()}"
 
         time.sleep(max(1, poll_s))
