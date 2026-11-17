@@ -86,39 +86,39 @@ class PixlStashTunnelTests(unittest.TestCase):
                 pix.discover_pixlstash_port(61234)
 
     def test_environment_override(self):
-        with mock.patch.dict("os.environ", {"PIXLSTASH_API_PORT": "61234"}), \\
+        with mock.patch.dict("os.environ", {"PIXLSTASH_API_PORT": "61234"}), \
              mock.patch.object(pix, "_is_pixlstash", return_value=True):
             self.assertEqual(pix.discover_pixlstash_port(), 61234)
 
     def test_autodiscovery_uses_windows_listeners_and_checks_identity(self):
-        with mock.patch.dict("os.environ", {}, clear=True), \\
-             mock.patch.object(pix, "_windows_listening_ports", return_value=[61111, 61234]), \\
-             mock.patch.object(pix, "_linux_listening_ports", return_value=[]), \\
+        with mock.patch.dict("os.environ", {}, clear=True), \
+             mock.patch.object(pix, "_windows_listening_ports", return_value=[61111, 61234]), \
+             mock.patch.object(pix, "_linux_listening_ports", return_value=[]), \
              mock.patch.object(pix, "_is_pixlstash", side_effect=lambda p: p == 61234):
             self.assertEqual(pix.discover_pixlstash_port(), 61234)
 
     def test_ambiguous_autodiscovery_rejected(self):
-        with mock.patch.dict("os.environ", {}, clear=True), \\
-             mock.patch.object(pix, "_windows_listening_ports", return_value=[61111, 61234]), \\
-             mock.patch.object(pix, "_linux_listening_ports", return_value=[]), \\
+        with mock.patch.dict("os.environ", {}, clear=True), \
+             mock.patch.object(pix, "_windows_listening_ports", return_value=[61111, 61234]), \
+             mock.patch.object(pix, "_linux_listening_ports", return_value=[]), \
              mock.patch.object(pix, "_is_pixlstash",
                                side_effect=lambda p: p in {61111, 61234}):
             with self.assertRaisesRegex(ValueError, "More than one"):
                 pix.discover_pixlstash_port()
 
     def test_failed_autodiscovery_has_override_help(self):
-        with mock.patch.dict("os.environ", {}, clear=True), \\
-             mock.patch.object(pix, "_windows_listening_ports", return_value=[]), \\
-             mock.patch.object(pix, "_linux_listening_ports", return_value=[]), \\
+        with mock.patch.dict("os.environ", {}, clear=True), \
+             mock.patch.object(pix, "_windows_listening_ports", return_value=[]), \
+             mock.patch.object(pix, "_linux_listening_ports", return_value=[]), \
              mock.patch.object(pix, "_is_pixlstash", return_value=False):
             with self.assertRaisesRegex(ValueError, "--pixlstash-port"):
                 pix.discover_pixlstash_port()
 
     def test_windows_ports_are_parsed_without_needing_admin_process_lookup(self):
         output = SimpleNamespace(
-            returncode=0, stdout="61234\\r\\n64404\\r\\nnope\\r\\n80\\r\\n",
+            returncode=0, stdout="61234\r\n64404\r\nnope\r\n80\r\n",
         )
-        with mock.patch.object(pix.shutil, "which", return_value="powershell.exe"), \\
+        with mock.patch.object(pix.shutil, "which", return_value="powershell.exe"), \
              mock.patch.object(pix.subprocess, "run", return_value=output) as run:
             self.assertEqual(pix._windows_listening_ports(), [61234, 64404])
         self.assertIn("Get-NetTCPConnection", run.call_args.args[0][-1])
@@ -145,10 +145,10 @@ class PixlStashTunnelTests(unittest.TestCase):
         fake = mock.Mock()
         fake.poll.return_value = None
         fake.wait.side_effect = [KeyboardInterrupt, 0]
-        with mock.patch.object(pix, "discover_pixlstash_port", return_value=61234), \\
-             mock.patch.object(pix, "_comfy_responds", return_value=True), \\
-             mock.patch.object(pix, "_remote_pixlstash_responds", return_value=True), \\
-             mock.patch.object(pix.subprocess, "Popen", return_value=fake) as launched, \\
+        with mock.patch.object(pix, "discover_pixlstash_port", return_value=61234), \
+             mock.patch.object(pix, "_comfy_responds", return_value=True), \
+             mock.patch.object(pix, "_remote_pixlstash_responds", return_value=True), \
+             mock.patch.object(pix.subprocess, "Popen", return_value=fake) as launched, \
              mock.patch("sys.stdout"):
             self.assertEqual(pix.run_tunnel(self.base), 130)
         fake.terminate.assert_called_once()
