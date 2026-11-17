@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 import sys
-import urllib.parse
 import time
 from typing import Any
 
@@ -90,35 +89,10 @@ def parse_management_args(argv: list[str]) -> dict[str, Any] | None:
 
 
 def list_pods(api_key: str) -> list[dict[str, Any]]:
-    """Retrieve all RunPod REST v2 pages; never mistake a partial list for all pods.
-
-    This matters for --kill-all and for finding a pod by name: v2's response is
-    wrapped in {pods, pagination}, rather than the v1 bare list.
-    """
-    pods: list[dict[str, Any]] = []
-    seen_cursors: set[str] = set()
-    cursor: str | None = None
-    while True:
-        path = "/pods"
-        if cursor is not None:
-            path += "?" + urllib.parse.urlencode({"cursor": cursor})
-        result = core.api_request(api_key, "GET", path)
-        if not isinstance(result, dict) or not isinstance(result.get("pods"), list):
-            raise core.RunPodError(f"unexpected REST v2 pods response: {result!r}")
-        pods.extend(pod for pod in result["pods"] if isinstance(pod, dict))
-        pagination = result.get("pagination")
-        if not isinstance(pagination, dict):
-            raise core.RunPodError("REST v2 list pods response lacks pagination metadata")
-        if not pagination.get("hasNextPage"):
-            return pods
-        next_cursor = pagination.get("nextCursor")
-        if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen_cursors:
-            raise core.RunPodError(
-                "REST v2 pagination says another page exists but supplies "
-                "no new cursor; refusing to return a partial pod list"
-            )
-        seen_cursors.add(next_cursor)
-        cursor = next_cursor
+    result = core.api_request(api_key, "GET", "/pods")
+    if not isinstance(result, list):
+        raise core.RunPodError(f"unexpected pods response: {result!r}")
+    return [pod for pod in result if isinstance(pod, dict)]
 
 
 def resolve_pod_selector(api_key: str, selector: str) -> tuple[str, dict[str, Any]]:
@@ -178,8 +152,9 @@ def pod_row(
     runtime = pod.get("runtime") or {}
     mappings = pod.get("portMappings") or {}
 
-    # v2 includes the live direct SSH mapping and runtime in the REST pod itself.
-    snapshot = lifecycle.build_snapshot(pod, gql_pod)
+    # The live GraphQL runtime ports are the authoritative connection surface
+    # used by RunPod's own CLI. REST portMappings may lag/churn during startup.
+    snapshot = lifecycle.build_snapshot(pod, gql_pod) if gql_pod else None
     public_ip = snapshot.get("public_ip") if snapshot else None
     ssh_port = snapshot.get("ssh_port") if snapshot else None
     public_ip = _first(public_ip, identity.get("public_ip"), pod.get("publicIp"))
@@ -191,10 +166,7 @@ def pod_row(
         machine.get("gpuDisplayName"),
         machine.get("gpuTypeId"),
     )
-    gpu_count = _first(
-        (pod.get("gpu") or {}).get("count") if isinstance(pod.get("gpu"), dict) else None,
-        pod.get("gpuCount"), runtime.get("gpuCount")
-    )
+    gpu_count = _first(pod.get("gpuCount"), runtime.get("gpuCount"))
     if gpu_count and gpu_count != 1 and gpu:
         gpu = f"{gpu_count}x {gpu}"
 
@@ -207,7 +179,7 @@ def pod_row(
     elif public_ip:
         endpoint = str(public_ip)
 
-    status = str(pod.get("status") or pod.get("desiredStatus") or "-")
+    status = str(pod.get("desiredStatus") or pod.get("status") or "-")
     if snapshot:
         status = str(snapshot.get("stage") or status)
 
@@ -228,13 +200,23 @@ def show_pods(api_key: str) -> int:
         print("[rent-pod] No pods found.")
         return 0
 
-    # REST v2 provides runtime uptime and the direct SSH mapping natively.
-    # Do not depend on the GraphQL service slated for retirement in early 2027.
+    # One account-wide GraphQL request gives us the same live runtime/SSH view
+    # used by --status/--watch. If it fails, degrade to REST-only listing.
+    gql_by_id: dict[str, dict[str, Any]] = {}
+    try:
+        gql_by_id = {
+            str(pod.get("id") or ""): pod
+            for pod in lifecycle.graphql_pods(api_key)
+            if pod.get("id")
+        }
+    except core.RunPodError as exc:
+        print(f"[rent-pod] WARNING: live runtime probe unavailable: {exc}", file=sys.stderr)
+
     rows: list[dict[str, str]] = []
     for pod in pods:
         detailed = enriched_pod(api_key, pod)
         pod_id = str(detailed.get("id") or pod.get("id") or "")
-        rows.append(pod_row(detailed))
+        rows.append(pod_row(detailed, gql_by_id.get(pod_id)))
 
     print(f"[rent-pod] Your RunPod pods: {len(rows)}")
     print()
