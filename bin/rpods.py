@@ -16,8 +16,8 @@ USER_AGENT = os.environ.get(
     "pod-runtime-rpods/1.0 (Linux; Python)",
 )
 
-# Identify these management requests consistently rather than using urllib's
-# default User-Agent.
+# Match rent-pod's explicit HTTP identity so Cloudflare sees these management
+# requests as the same client family rather than Python-urllib's default agent.
 opener = urllib.request.build_opener()
 opener.addheaders = [("User-Agent", USER_AGENT)]
 urllib.request.install_opener(opener)
@@ -44,7 +44,7 @@ class PodChoice:
     def connectable(self) -> bool:
         if not self.public_ip or not self.ssh_port:
             return False
-        return self.stage.upper() not in {"EXITED", "STOPPED", "TERMINATED", "ERROR", "FAILED"}
+        return self.stage.upper() not in {"EXITED", "STOPPED", "TERMINATED"}
 
 
 def format_age(seconds: float | int | None) -> str:
@@ -75,7 +75,7 @@ def _gpu_runtime_uptime(gql_pod: dict[str, Any] | None) -> float | None:
     runtime = (gql_pod or {}).get("runtime")
     if not isinstance(runtime, dict):
         return None
-    value = runtime.get("uptime", runtime.get("uptimeInSeconds"))
+    value = runtime.get("uptimeInSeconds")
     try:
         return float(value) if value is not None else None
     except (TypeError, ValueError):
@@ -96,9 +96,7 @@ def choice_from_pod(
     except (TypeError, ValueError):
         ssh_port = None
 
-    uptime = _gpu_runtime_uptime(pod)
-    if uptime is None:
-        uptime = _gpu_runtime_uptime(gql_pod)
+    uptime = _gpu_runtime_uptime(gql_pod)
     if uptime is None:
         uptime = lifecycle.pod_age_seconds(pod)
 
@@ -121,10 +119,24 @@ def collect_choices(api_key: str) -> list[PodChoice]:
     if not pods:
         return []
 
+    gql_by_id: dict[str, dict[str, Any]] = {}
+    try:
+        gql_by_id = {
+            str(pod.get("id") or ""): pod
+            for pod in lifecycle.graphql_pods(api_key)
+            if pod.get("id")
+        }
+    except core.RunPodError as exc:
+        print(
+            f"[rpods] WARNING: live runtime probe unavailable; using REST mappings: {exc}",
+            file=sys.stderr,
+        )
+
     choices: list[PodChoice] = []
     for pod in pods:
         detailed = manage.enriched_pod(api_key, pod)
-        choices.append(choice_from_pod(detailed))
+        pod_id = str(detailed.get("id") or pod.get("id") or "")
+        choices.append(choice_from_pod(detailed, gql_by_id.get(pod_id)))
 
     # Most recently started pods first. Unknown ages go last.
     choices.sort(
