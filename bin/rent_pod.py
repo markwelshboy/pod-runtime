@@ -69,6 +69,11 @@ def api_request(
     *,
     timeout: float = DEFAULT_API_TIMEOUT,
 ) -> Any:
+    if urllib.parse.urlsplit(API_BASE).hostname == "rest.runpod.io":
+        raise RunPodError(
+            "RUNPOD_API_BASE points to retired RunPod REST v1 "
+            f"({API_BASE}); unset it or set https://api.runpod.io/v2"
+        )
     url = f"{API_BASE}{path}"
     data = None
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -88,12 +93,12 @@ def api_request(
         except Exception:
             detail = body.strip() or str(exc.reason)
         raise RunPodError(
-            f"RunPod API {method} {path} failed: HTTP {exc.code}: {detail}",
+            f"RunPod API {method} {url} failed: HTTP {exc.code}: {detail}",
             status_code=exc.code,
         ) from exc
     except urllib.error.URLError as exc:
         raise RunPodError(
-            f"RunPod API {method} {path} failed: {exc.reason}"
+            f"RunPod API {method} {url} failed: {exc.reason}"
         ) from exc
 
 
@@ -512,9 +517,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--template", default=DEFAULT_TEMPLATE_ID)
     parser.add_argument("--attempts", type=int, default=1)
-    parser.add_argument("--min-download", type=float, default=500)
-    parser.add_argument("--min-upload", type=float, default=100)
-    parser.add_argument("--min-disk", type=float, default=None)
+    parser.add_argument(
+        "--min-download", type=float, default=500,
+        help="legacy advertised-bandwidth preference (v2 cannot filter by this)",
+    )
+    parser.add_argument(
+        "--min-upload", type=float, default=100,
+        help="legacy advertised-bandwidth preference (v2 cannot filter by this)",
+    )
+    parser.add_argument(
+        "--min-disk", type=float, default=None,
+        help="removed in REST v2; specifying this fails with an explanation",
+    )
     parser.add_argument(
         "--cloud",
         choices=["SECURE", "COMMUNITY"],
