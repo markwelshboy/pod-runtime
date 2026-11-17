@@ -32,6 +32,7 @@ api_v2.install_core_hooks()
 
 import rent_pod_lifecycle as lifecycle  # noqa: E402
 import rent_pod_manage as manage  # noqa: E402
+import rpods_pixlstash as pixlstash_tunnel  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -255,6 +256,26 @@ def connect(choice: PodChoice, ssh_key: str) -> None:
     os.execvp(argv[0], argv)
 
 
+def _tcp_port(value: str) -> int:
+    try:
+        return pixlstash_tunnel.valid_port(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def connect_or_tunnel(choice: PodChoice, ssh_key: str, args: argparse.Namespace) -> int:
+    if args.tunnel == "pixlstash":
+        return pixlstash_tunnel.run_tunnel(
+            ssh_argv(choice, ssh_key),
+            local_comfy_port=args.local_port,
+            remote_comfy_port=args.comfy_port,
+            pixlstash_port=args.pixlstash_port,
+            remote_pixlstash_port=args.pixlstash_remote_port,
+        )
+    connect(choice, ssh_key)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Quickly reconnect to SSH-ready rent-pod/RunPod machines."
@@ -281,11 +302,34 @@ def build_parser() -> argparse.ArgumentParser:
         default=manage.management_ssh_key(),
         help="SSH private key (default: RENT_POD_SSH_KEY/RUNPOD_SSH_KEY/rent-pod default)",
     )
+    parser.add_argument(
+        "--tunnel", choices=["pixlstash"],
+        help="keep a bidirectional SSH tunnel open instead of starting a shell",
+    )
+    parser.add_argument(
+        "--local-port", type=_tcp_port, default=47960, metavar="PORT",
+        help="local ComfyUI port for PixlStash (default: 47960, preserves your saved URL)",
+    )
+    parser.add_argument(
+        "--comfy-port", type=_tcp_port, default=8288, metavar="PORT",
+        help="ComfyUI port on RunPod (default: 8288, GPU0; use 8188 for primary)",
+    )
+    parser.add_argument(
+        "--pixlstash-port", type=_tcp_port, metavar="PORT",
+        help="local PixlStash API port (default: detect the running Electron API)",
+    )
+    parser.add_argument(
+        "--pixlstash-remote-port", type=_tcp_port, default=64404, metavar="PORT",
+        help="port saved in ComfyUI's PixlStash node settings (default: 64404)",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.list and args.tunnel:
+        parser.error("--list cannot be combined with --tunnel")
     api_key = os.environ.get("RUNPOD_API_KEY", "").strip()
     if not api_key:
         print("ERROR: RUNPOD_API_KEY is required.", file=sys.stderr)
@@ -311,7 +355,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.selector:
             try:
                 selected = select_choice(args.selector, choices, numbered)
-                connect(selected, ssh_key)
+                return connect_or_tunnel(selected, ssh_key, args)
             except ValueError as exc:
                 print(f"ERROR: {exc}", file=sys.stderr)
                 return 2
@@ -361,7 +405,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         try:
-            connect(selected, ssh_key)
+            return connect_or_tunnel(selected, ssh_key, args)
         except ValueError as exc:
             print(f"[rpods] {exc}", file=sys.stderr)
             print()
