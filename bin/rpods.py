@@ -23,6 +23,13 @@ opener.addheaders = [("User-Agent", USER_AGENT)]
 urllib.request.install_opener(opener)
 
 import rent_pod as core  # noqa: E402
+import rent_pod_api_v2 as api_v2  # noqa: E402
+
+# rent-pod_entry installs this REST v2 bridge, but rpods is a standalone entry
+# point. Without this hook, core.api_request still targets the retired REST v1
+# host (rest.runpod.io), which now fails DNS resolution.
+api_v2.install_core_hooks()
+
 import rent_pod_lifecycle as lifecycle  # noqa: E402
 import rent_pod_manage as manage  # noqa: E402
 
