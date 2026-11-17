@@ -1,12 +1,10 @@
-"""Offline regression tests for the RunPod REST v2 migration.
+"""Offline regression checks for the existing RunPod REST v2 compatibility bridge.
 
-These use representative response shapes from RunPod's v2 documentation.
-They do not rent or terminate any actual Pods.
+No test in this module contacts RunPod or creates/deletes a real GPU pod.
+Run with: python3 -m unittest discover -s tests -p test_runpod_rest_v2.py
 """
 from __future__ import annotations
 
-import argparse
-import os
 import sys
 import unittest
 from datetime import datetime, timezone
@@ -15,131 +13,129 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "bin"))
 
+import rpods  # Imports and installs the REST v2 compatibility bridge.
 import rent_pod as core
+import rent_pod_api_v2 as api_v2
 import rent_pod_lifecycle as lifecycle
 import rent_pod_manage as manage
-import rpods
 
 
-POD = {
+V2_POD = {
     "id": "pod123",
     "name": "podlet-5090",
     "status": "RUNNING",
-    "cloud": "COMMUNITY",
     "dataCenterId": "US-XX-1",
     "gpu": {"id": "NVIDIA GeForce RTX 5090", "count": 1},
     "cost": 0.79,
     "startedAt": "2026-11-16T09:00:00Z",
-    "runtime": {
-        "uptime": 83,
-        "ports": [{"private": 22, "public": 33123, "type": "tcp", "ip": "10.20.30.40"}],
-    },
-    "ssh": {
-        "direct": {"host": "10.20.30.40", "port": 33123, "username": "root"},
-        "proxy": {"host": "ssh.runpod.io", "port": 22, "username": "pod-user"},
-    },
+    "runtime": {"uptime": 83},
+    "ssh": {"direct": {"host": "192.0.2.10", "port": 33123, "username": "root"}},
 }
 
 
-class V2ApiTests(unittest.TestCase):
-    def test_base_url_is_v2_by_default(self):
-        # This test assumes RUNPOD_API_BASE was not overridden in the runner.
-        if not os.environ.get("RUNPOD_API_BASE"):
-            self.assertEqual(core.API_BASE, "https://api.runpod.io/v2")
+def page(pods, has_next=False, cursor=None):
+    return {
+        "pods": pods,
+        "pagination": {"hasNextPage": has_next, "nextCursor": cursor},
+    }
 
-    def test_create_payload_preserves_template_and_gpu_without_removed_filters(self):
-        args = argparse.Namespace(
-            gpu_alias="5090", gpu="NVIDIA GeForce RTX 5090",
-            name="test-pod", template="template123", cloud="COMMUNITY",
-            min_download=500, min_upload=100, min_disk=None,
-        )
-        payload = core.pod_create_payload(args, 1)
-        self.assertEqual(payload["templateId"], "template123")
-        self.assertEqual(payload["gpu"], {"id": "NVIDIA GeForce RTX 5090", "count": 1})
-        self.assertEqual(payload["cloud"], "COMMUNITY")
-        self.assertTrue(payload["startSsh"])
-        for old in ("gpuTypeIds", "gpuTypePriority", "supportPublicIp",
-                    "cloudType", "minDownloadMbps", "minUploadMbps"):
-            self.assertNotIn(old, payload)
-        # No port/mount override: template must keep its image and exposed services.
-        self.assertNotIn("ports", payload)
-        self.assertNotIn("mounts", payload)
 
-    def test_get_pod_uses_v2_route_without_ignored_query_flags(self):
-        with mock.patch.object(core, "api_request", return_value=POD) as api:
-            self.assertEqual(core.get_pod("fake", "pod123")["id"], "pod123")
-        api.assert_called_once_with("fake", "GET", "/pods/pod123", timeout=30.0)
+class RunPodV2BridgeTests(unittest.TestCase):
+    def test_rpods_bootstraps_the_existing_v2_bridge(self):
+        with mock.patch.object(api_v2, "v2_request", return_value=page([V2_POD])) as req:
+            pods = manage.list_pods("fake-key")
+        self.assertEqual(len(pods), 1)
+        self.assertEqual(pods[0]["id"], "pod123")
+        self.assertEqual(pods[0]["publicIp"], "192.0.2.10")
+        self.assertEqual(pods[0]["portMappings"]["22"], 33123)
+        req.assert_called_once_with("fake-key", "GET", "/pods", timeout=core.DEFAULT_API_TIMEOUT)
 
-    def test_pod_identity_uses_v2_ssh_and_gpu(self):
-        ident = core.pod_identity(POD)
-        self.assertEqual(ident["public_ip"], "10.20.30.40")
-        self.assertEqual(ident["ssh_port"], 33123)
-        self.assertEqual(ident["data_center_id"], "US-XX-1")
-        self.assertEqual(ident["gpu"], "NVIDIA GeForce RTX 5090")
-        self.assertEqual(ident["cost_per_hr"], 0.79)
-        self.assertIsNone(ident["machine_id"])
-
-    def test_runtime_ports_fallback_if_ssh_direct_not_yet_populated(self):
-        pod = dict(POD, ssh={"direct": None})
-        ident = core.pod_identity(pod)
-        self.assertEqual((ident["public_ip"], ident["ssh_port"]), ("10.20.30.40", 33123))
-
-    def test_list_all_pages(self):
-        pages = [
-            {"pods": [{"id": "a", "name": "first"}],
-             "pagination": {"hasNextPage": True, "nextCursor": "opaque/==" }},
-            {"pods": [{"id": "b", "name": "second"}],
-             "pagination": {"hasNextPage": False, "nextCursor": None}},
-        ]
-        with mock.patch.object(core, "api_request", side_effect=pages) as api:
-            pods = manage.list_pods("fake")
+    def test_all_cursor_pages_are_collected(self):
+        with mock.patch.object(api_v2, "v2_request", side_effect=[
+            page([{"id": "a"}], has_next=True, cursor="opaque/=="),
+            page([{"id": "b"}]),
+        ]) as req:
+            pods = manage.list_pods("fake-key")
         self.assertEqual([p["id"] for p in pods], ["a", "b"])
-        self.assertEqual(api.call_args_list[0].args, ("fake", "GET", "/pods"))
-        self.assertEqual(
-            api.call_args_list[1].args,
-            ("fake", "GET", "/pods?cursor=opaque%2F%3D%3D"),
-        )
+        self.assertEqual(req.call_args_list[1].args, (
+            "fake-key", "GET", "/pods?cursor=opaque%2F%3D%3D",
+        ))
 
-    def test_broken_pagination_fails_closed(self):
-        with mock.patch.object(core, "api_request", return_value={
-            "pods": [{"id": "a"}],
-            "pagination": {"hasNextPage": True, "nextCursor": None},
-        }):
+    def test_missing_cursor_fails_closed(self):
+        with mock.patch.object(api_v2, "v2_request", return_value=page(
+            [{"id": "a"}], has_next=True, cursor=None,
+        )):
             with self.assertRaises(core.RunPodError):
-                manage.list_pods("fake")
+                manage.list_pods("fake-key")
 
-    def test_lifecycle_snapshot_no_longer_needs_graphql(self):
-        with mock.patch.object(core, "get_pod", return_value=POD), \
-             mock.patch.object(lifecycle, "graphql_pod", side_effect=AssertionError("GraphQL call")):
-            rest, snapshot = lifecycle._fetch_snapshot("fake", "pod123")
-        self.assertEqual(rest["id"], "pod123")
-        self.assertEqual(snapshot["stage"], "NETWORK")
+    def test_repeated_cursor_fails_closed(self):
+        with mock.patch.object(api_v2, "v2_request", side_effect=[
+            page([{"id": "a"}], has_next=True, cursor="stuck"),
+            page([{"id": "b"}], has_next=True, cursor="stuck"),
+        ]):
+            with self.assertRaises(core.RunPodError):
+                manage.list_pods("fake-key")
+
+    def test_pod_details_are_normalized_without_v1_network_access(self):
+        with mock.patch.object(api_v2, "v2_request", return_value=V2_POD) as req:
+            pod = core.get_pod("fake-key", "pod123")
+        self.assertEqual(pod["gpu"]["displayName"], "NVIDIA GeForce RTX 5090")
+        self.assertEqual(pod["publicIp"], "192.0.2.10")
+        self.assertEqual(pod["desiredStatus"], "RUNNING")
+        self.assertEqual(pod["machine"]["dataCenterId"], "US-XX-1")
+        req.assert_called_once_with("fake-key", "GET", "/pods/pod123", timeout=core.DEFAULT_API_TIMEOUT)
+
+    def test_delete_routes_to_v2(self):
+        with mock.patch.object(api_v2, "v2_request", return_value=None) as req:
+            core.delete_pod("fake-key", "pod123")
+        req.assert_called_once_with("fake-key", "DELETE", "/pods/pod123",
+                                    timeout=core.DEFAULT_API_TIMEOUT)
+
+    def test_graphql_create_retains_selection_constraints(self):
+        payload = {
+            "name": "test-5090", "gpuTypeIds": ["NVIDIA GeForce RTX 5090"],
+            "gpuCount": 1, "cloudType": "COMMUNITY", "supportPublicIp": True,
+            "minDownloadMbps": 500, "minUploadMbps": 100,
+            "minDiskBandwidthMBps": 42, "templateId": "template123",
+        }
+        converted = api_v2.graphql_create_input(payload, "13.0")
+        self.assertEqual(converted["gpuTypeId"], "NVIDIA GeForce RTX 5090")
+        self.assertEqual(converted["minDownload"], 500)
+        self.assertEqual(converted["minUpload"], 100)
+        self.assertEqual(converted["minDisk"], 42)
+        self.assertEqual(converted["minCudaVersion"], "13.0")
+        self.assertEqual(converted["templateId"], "template123")
+        self.assertTrue(converted["startSsh"])
+
+    def test_rest_started_at_and_uptime_work_without_graphql(self):
+        normalized = api_v2.normalize_v2_pod(V2_POD)
+        snapshot = lifecycle.build_snapshot(normalized, None)
         self.assertEqual(snapshot["uptime"], 83)
-        self.assertEqual(lifecycle.pod_started_at(POD),
+        self.assertEqual(snapshot["public_ip"], "192.0.2.10")
+        self.assertEqual(snapshot["ssh_port"], 33123)
+        self.assertEqual(snapshot["stage"], "NETWORK")
+        self.assertEqual(lifecycle.pod_started_at(normalized),
                          datetime(2026, 11, 16, 9, 0, tzinfo=timezone.utc))
 
-    def test_rpods_connectable_without_graphql(self):
-        with mock.patch.object(manage, "list_pods", return_value=[POD]), \
-             mock.patch.object(manage, "enriched_pod", return_value=POD), \
-             mock.patch.object(lifecycle, "graphql_pods",
-                               side_effect=AssertionError("GraphQL call")):
-            choices = rpods.collect_choices("fake")
+    def test_rpods_recovers_from_graphql_retirement(self):
+        with mock.patch.object(api_v2, "v2_request", side_effect=[
+            page([V2_POD]), V2_POD
+        ]), mock.patch.object(
+            lifecycle, "graphql_pods",
+            side_effect=core.RunPodError("retired GraphQL endpoint")
+        ):
+            choices = rpods.collect_choices("fake-key")
         self.assertEqual(len(choices), 1)
-        self.assertTrue(choices[0].connectable)
+        self.assertEqual(choices[0].pod_id, "pod123")
         self.assertEqual(choices[0].uptime_seconds, 83)
         self.assertEqual(choices[0].gpu, "NVIDIA GeForce RTX 5090")
+        self.assertTrue(choices[0].connectable)
 
-    def test_error_status_is_terminal(self):
-        snapshot = lifecycle.build_snapshot(dict(POD, status="ERROR"), None)
-        self.assertEqual(snapshot["stage"], "ERROR")
-        choice = rpods.choice_from_pod(dict(POD, status="ERROR"))
+    def test_rpods_disallows_error_status_for_ssh(self):
+        choice = rpods.choice_from_pod(
+            api_v2.normalize_v2_pod(dict(V2_POD, status="ERROR"))
+        )
         self.assertFalse(choice.connectable)
-
-    def test_min_disk_rejected_not_silently_dropped(self):
-        with mock.patch.object(sys, "argv",
-                               ["rent-pod", "5090", "--min-disk", "100", "--dry-run"]), \
-             mock.patch("sys.stderr"):
-            self.assertEqual(core.main(), 2)
 
 
 if __name__ == "__main__":
