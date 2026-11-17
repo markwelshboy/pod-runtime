@@ -161,9 +161,12 @@ def build_snapshot(
 ) -> dict[str, Any]:
     identity = core.pod_identity(rest_pod)
     gql_pod = gql_pod or {}
-    runtime = gql_pod.get("runtime")
+    gql_runtime = gql_pod.get("runtime")
+    rest_runtime = rest_pod.get("runtime")
+    # REST v2 carries runtime telemetry itself; GraphQL is a fallback only.
+    runtime = rest_runtime if isinstance(rest_runtime, dict) else gql_runtime
     runtime_present = isinstance(runtime, dict)
-    gql_ip, gql_ssh_port = _runtime_ssh(runtime)
+    gql_ip, gql_ssh_port = _runtime_ssh(gql_runtime)
 
     # Prefer live runtime connection data when GraphQL has it. REST's
     # portMappings can lag or churn during startup; RunPod's own CLI resolves
@@ -176,7 +179,10 @@ def build_snapshot(
     last_event = _event_text(
         _first(gql_pod.get("lastStatusChange"), rest_pod.get("lastStatusChange"))
     )
-    uptime = runtime.get("uptimeInSeconds") if runtime_present else None
+    uptime = (
+        runtime.get("uptime", runtime.get("uptimeInSeconds"))
+        if runtime_present else None
+    )
 
     desired_upper = desired.upper()
     if desired_upper in {"EXITED", "STOPPED", "TERMINATED"}:
@@ -228,13 +234,10 @@ def _parse_created_at(value: Any) -> datetime | None:
 
 
 def pod_started_at(rest_pod: dict[str, Any]) -> datetime | None:
-    """Return the Pod's last start timestamp from the RunPod REST surface.
-
-    RunPod's current Pod schema exposes lastStartedAt. Keep createdAt as a
-    compatibility fallback for older/alternate payloads that may still carry it.
-    """
+    """Return the Pod's start timestamp from v2 or legacy REST fields."""
     return _parse_created_at(
         _first(
+            rest_pod.get("startedAt"),
             rest_pod.get("lastStartedAt"),
             rest_pod.get("createdAt"),
         )
