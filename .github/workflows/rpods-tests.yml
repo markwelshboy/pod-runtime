@@ -1,0 +1,37 @@
+name: rpods and PixlStash tunnel tests
+
+on:
+  pull_request:
+    paths:
+      - 'bin/rpods.py'
+      - 'bin/rpods_pixlstash.py'
+      - 'bin/rent_pod_api_v2.py'
+      - 'bin/rent_pod_lifecycle.py'
+      - 'tests/test_rpods*.py'
+      - '.github/workflows/rpods-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bin/rpods.py'
+      - 'bin/rpods_pixlstash.py'
+      - 'bin/rent_pod_api_v2.py'
+      - 'bin/rent_pod_lifecycle.py'
+      - 'tests/test_rpods*.py'
+      - '.github/workflows/rpods-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test rpods, REST v2 and PixlStash tunnels (offline)
+        run: |
+          python -m unittest discover -s tests -p 'test_rpods.py' -v
+          python -m unittest discover -s tests -p 'test_runpod_rest_v2.py' -v
+          python -m unittest discover -s tests -p 'test_rpods_pixlstash.py' -v
