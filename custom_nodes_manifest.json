@@ -592,6 +592,10 @@
     "comfyui-eclipse-nova": {
       "remote": "https://github.com/r-vage/ComfyUI_Eclipse_Nova.git",
       "local": "ComfyUI-Eclipse-Nova"
+    },
+    "comfyui-ttp-toolset": {
+      "remote": "https://github.com/TTPlanetPig/Comfyui_TTP_Toolset.git",
+      "local": "ComfyUI-TTP-Toolset"
     }
   },
   "sets": {
@@ -659,7 +663,8 @@
       "comfyui-pixlstash",
       "comfyui-inpaint-canvas",
       "comfyui-raykostudio",
-      "comfyui-eclipse-nova"
+      "comfyui-eclipse-nova",
+      "comfyui-ttp-toolset"
     ],
     "imagedit": [
       "comfyui-inpaint-cropandstitch",
