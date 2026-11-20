@@ -584,6 +584,14 @@
     "comfyui-raykostudio": {
       "remote": "https://github.com/Raykosan/ComfyUI_RaykoStudio.git",
       "local": "ComfyUI-RaykoStudio"
+    },
+    "comfyui-smart-guides": {
+      "remote": "https://github.com/nomadoor/ComfyUI-Smart-Guides.git",
+      "local": "ComfyUI-Smart-Guides"
+    },
+    "comfyui-eclipse-nova": {
+      "remote": "https://github.com/r-vage/ComfyUI_Eclipse_Nova.git",
+      "local": "ComfyUI-Eclipse-Nova"
     }
   },
   "sets": {
@@ -632,7 +640,8 @@
       "comfyui-hAI_prompt_library",
       "comfyui-prompt-library",
       "comfyui-segs-detailer-hook",
-      "comfyui-image-utils"
+      "comfyui-image-utils",
+      "comfyui-smart-guides"
     ],
     "default-extras": [
       "comfyui-vrgamedevgirl",
@@ -649,7 +658,8 @@
       "comfyui-clean-freak",
       "comfyui-pixlstash",
       "comfyui-inpaint-canvas",
-      "comfyui-raykostudio"
+      "comfyui-raykostudio",
+      "comfyui-eclipse-nova"
     ],
     "imagedit": [
       "comfyui-inpaint-cropandstitch",
