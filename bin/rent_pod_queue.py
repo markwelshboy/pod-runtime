@@ -381,7 +381,11 @@ def show_queue(state_file: Path = DEFAULT_STATE_FILE) -> int:
         probe = request.get("probe") or {}
         gpu = str(probe.get("gpu_label") or probe.get("gpu_id") or "-")
         status = str(request.get("status") or "-")
-        remaining = "-" if status in FINAL_STATES else _format_remaining(str(request["expires_at"]))
+        expires_at = request.get("expires_at")
+        remaining = (
+            "-" if status in FINAL_STATES or not expires_at
+            else _format_remaining(str(expires_at))
+        )
         window = str(request.get("window") or "any")
         last = str(request.get("last_error") or request.get("pod_id") or "-")
         print(
