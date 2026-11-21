@@ -53,6 +53,15 @@ FINAL_STATES = {
     "terminated",
     "legacy",
 }
+# A finished request can be purged safely without hiding a potentially live Pod.
+# "launched" and "attention" are terminal *queue* states but may still own a
+# running/billable Pod; preserve them in the default cleanup.
+COMPLETED_HISTORY_STATES = {"terminated", "cancelled", "expired", "failed", "legacy"}
+QUEUE_CLEAR_FLAGS = {
+    "--clear-terminated": "terminated",
+    "--clear-complete": "complete",
+    "--clear-all": "all",
+}
 # These patterns intentionally match only the explicit failure diagnostic and
 # the aligned identity row. In particular they must never interpret the human
 # sentence "[rent-pod] Pod rented." as a Pod ID.
@@ -500,14 +509,133 @@ def cancel_request(request_id: str, state_file: Path = DEFAULT_STATE_FILE) -> in
     return 0
 
 
+def _launch_pid_recorded(request: dict[str, Any]) -> bool:
+    """A cancellation can race an active launch; don't discard its audit record."""
+    return str(request.get("launch_pid") or "").strip() not in {"", "0"}
+
+
+def _clear_backup_path(state_file: Path) -> Path:
+    return state_file.with_name(state_file.name + ".before-clear.json")
+
+
+def _archive_queue_before_clear(state: dict[str, Any], state_file: Path) -> Path:
+    """Back up the complete pre-clear queue while holding the usual state lock."""
+    backup = _clear_backup_path(state_file)
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    temp = backup.with_name(backup.name + ".tmp")
+    temp.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temp.replace(backup)
+    return backup
+
+
+def clear_queue_history(
+    mode: str,
+    state_file: Path = DEFAULT_STATE_FILE,
+    *,
+    dry_run: bool = False,
+    yes: bool = False,
+) -> int:
+    """Prune queue HISTORY only. Never stop, delete or interact with a RunPod Pod.
+
+    --clear-all deliberately refuses while the queue has pending/launching jobs,
+    while a cancelled job's subprocess remains recorded, or when unknown status
+    values appear. This prevents discarding the worker's live bookkeeping.
+    """
+    if mode not in {"terminated", "complete", "all"}:
+        raise ValueError(f"unknown queue cleanup mode: {mode}")
+
+    if mode == "all" and not (yes or dry_run):
+        if not sys.stdin.isatty():
+            raise ValueError("--clear-all requires --yes in non-interactive mode")
+        answer = input("[rent-pod] Type CLEAR ALL to erase all queue history (Pods are untouched): ")
+        if answer != "CLEAR ALL":
+            print("[rent-pod] Queue cleanup cancelled; nothing changed.")
+            return 0
+
+    with state_lock(state_file):
+        state = load_state(state_file)
+        requests = state["requests"]
+        # All decisions are made under the lock; no worker can update between
+        # picking removable requests and saving the filtered state.
+        if mode == "all":
+            unsafe = [
+                r for r in requests
+                if not isinstance(r, dict)
+                or r.get("status") in ACTIVE_STATES
+                or _launch_pid_recorded(r)
+                or r.get("status") not in (ACTIVE_STATES | FINAL_STATES)
+            ]
+            if unsafe:
+                raise ValueError(
+                    f"--clear-all refused: {len(unsafe)} active/unfinished/unknown "
+                    "request(s) still need tracking. Cancel pending requests with "
+                    "--cancel-queued ID and wait for any launch to settle; "
+                    "no queue records were removed."
+                )
+
+        def removable(request: Any) -> bool:
+            if not isinstance(request, dict):
+                return False
+            status = request.get("status")
+            if mode == "all":
+                return True
+            if _launch_pid_recorded(request):
+                return False
+            if mode == "terminated":
+                return status == "terminated"
+            return status in COMPLETED_HISTORY_STATES
+
+        removed = [request for request in requests if removable(request)]
+        kept = [request for request in requests if not removable(request)]
+        if dry_run:
+            print(
+                f"[rent-pod] Preview: would remove {len(removed)} queue record(s) "
+                f"({mode}); {len(kept)} would remain. No changes made."
+            )
+            return 0
+        if removed:
+            backup = _archive_queue_before_clear(state, state_file)
+            state["requests"] = kept
+            save_state(state, state_file)
+            print(
+                f"[rent-pod] Cleared {len(removed)} queue record(s) ({mode}); "
+                f"{len(kept)} retained."
+            )
+            print(f"[rent-pod] Previous queue backed up to: {backup}")
+        else:
+            print(f"[rent-pod] No matching queue records to clear ({mode}).")
+    # No worker spawn or Pod API call: this is a local history operation only.
+    return 0
+
+
 def handle_queue_meta_command(
     argv: list[str],
     environ: Mapping[str, str] | None = None,
 ) -> int | None:
     env = environ if environ is not None else os.environ
     if "--queued" in argv:
-        if argv != ["--queued"]:
-            raise ValueError("--queued cannot be combined with other options")
+        if argv.count("--queued") != 1:
+            raise ValueError("--queued may only be specified once")
+        flags = [arg for arg in argv if arg in QUEUE_CLEAR_FLAGS]
+        if len(flags) > 1:
+            raise ValueError("Choose only one of --clear-terminated, --clear-complete or --clear-all")
+        extras = [
+            arg for arg in argv if arg not in (
+                {"--queued", "--yes", "-y", "--force", "--dry-run"} | set(QUEUE_CLEAR_FLAGS)
+            )
+        ]
+        if extras:
+            raise ValueError(f"--queued cannot be combined with: {', '.join(extras)}")
+        confirmed = any(arg in argv for arg in ("--yes", "-y", "--force"))
+        preview = "--dry-run" in argv
+        if not flags and (confirmed or preview):
+            raise ValueError("--yes/--dry-run require a --queued cleanup option")
+        if flags:
+            mode = QUEUE_CLEAR_FLAGS[flags[0]]
+            rc = clear_queue_history(mode, dry_run=preview, yes=confirmed)
+            if rc or preview:
+                return rc
+            return show_queue()
         with state_lock(DEFAULT_STATE_FILE):
             active = any(
                 request.get("status") in ACTIVE_STATES
