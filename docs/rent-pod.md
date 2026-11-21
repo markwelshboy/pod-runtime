@@ -74,6 +74,61 @@ The command uses RunPod's GraphQL `myself` account fields and reports:
 
 `runway` is `balance / currentSpendPerHr`. If RunPod reports no current spend, it is shown as `∞ (no current spend)`. `--balance` is read-only, requires only `RUNPOD_API_KEY`, and cannot be combined with rental options.
 
+## Queue history cleanup
+
+`rent-pod --queued` shows persistent local records for availability requests,
+including completed Pod rentals, cancellations and confirmed terminations.
+These entries are **local history**, not a list of all currently rented Pods.
+Removing a queue record does **not** delete a RunPod Pod or alter billing.
+
+You can now prune that history without editing the JSON by hand:
+
+```bash
+# Preview which records would be removed (does not write anything):
+rent-pod --queued --clear-complete --dry-run
+
+# Recommended: remove finished history and keep live/unfinished requests:
+rent-pod --queued --clear-complete
+
+# More selective: remove only confirmed terminated entries:
+rent-pod --queued --clear-terminated
+
+# Clear all queue history after explicitly settling pending/launching jobs:
+rent-pod --queued --clear-all --yes
+```
+
+Cleanup behavior:
+
+| Mode | Removes | Keeps |
+| --- | --- | --- |
+| `--clear-terminated` | `terminated` | Everything else |
+| `--clear-complete` | `terminated`, `cancelled`, `expired`, `failed`, `legacy` | `pending`, `launching`, `launched`, `attention`, unknown statuses |
+| `--clear-all` | All queue records | Nothing, **but refuses while active/unfinished records exist** |
+
+A cancellation can race an active launch. Completed-only cleanup therefore
+retains entries with a recorded `launch_pid` until the subprocess settles.
+`--clear-all` also refuses records with an unresolved launch PID or unknown
+status, even with `--yes`. It never silently cancels an active worker. Use
+`rent-pod --cancel-queued REQUEST_ID` to cancel pending/launching requests;
+wait for any launch to finish before clearing everything.
+
+Without `--yes`, `--clear-all` requires typing `CLEAR ALL` interactively.
+`-y` and `--force` are accepted aliases. `--dry-run` previews cleanup
+without modifying the queue or requiring confirmation.
+
+All cleanup is protected by the same `flock` lock as the queue worker and
+uses the existing atomic state-file replacement. Before a nonempty cleanup,
+the full prior queue is backed up to
+`~/.cache/pod-runtime/rent-pod-queue.json.before-clear.json`
+(or `<RENT_POD_QUEUE_FILE>.before-clear.json`). Each subsequent nonempty
+cleanup replaces that backup; a no-op does not. The command reports counts
+and then prints the updated queue.
+
+If you accidentally remove an important history record, stop any worker
+that is updating the state, and restore the backup only after verifying it
+is safe to overwrite the current queue. This backup is only queue metadata,
+not the Pods themselves.
+
 ## Pod management
 
 Show every Pod currently on the RunPod account:
