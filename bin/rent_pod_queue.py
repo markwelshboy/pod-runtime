@@ -632,10 +632,12 @@ def handle_queue_meta_command(
             raise ValueError("--yes/--dry-run require a --queued cleanup option")
         if flags:
             mode = QUEUE_CLEAR_FLAGS[flags[0]]
-            rc = clear_queue_history(mode, dry_run=preview, yes=confirmed)
+            rc = clear_queue_history(
+                mode, DEFAULT_STATE_FILE, dry_run=preview, yes=confirmed
+            )
             if rc or preview:
                 return rc
-            return show_queue()
+            return show_queue(DEFAULT_STATE_FILE)
         with state_lock(DEFAULT_STATE_FILE):
             active = any(
                 request.get("status") in ACTIVE_STATES
@@ -643,7 +645,7 @@ def handle_queue_meta_command(
             )
         if active:
             spawn_worker(DEFAULT_STATE_FILE, DEFAULT_LOG_FILE, env)
-        return show_queue()
+        return show_queue(DEFAULT_STATE_FILE)
 
     cancel_value: str | None = None
     extras: list[str] = []
