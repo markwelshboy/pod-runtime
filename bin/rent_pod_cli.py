@@ -37,6 +37,9 @@ Usage:
   rent-pod [GPU] [options]
   rent-pod [GPU] --when-available [queue options] [rental options]
   rent-pod --queued
+  rent-pod --queued --clear-terminated [--dry-run]
+  rent-pod --queued --clear-complete [--dry-run]
+  rent-pod --queued --clear-all [--yes] [--dry-run]
   rent-pod --cancel-queued REQUEST_ID
   rent-pod --list [\"GPU GPU ...\"] [selection options]
   rent-pod --list-all [\"GPU GPU ...\"] [selection options]
@@ -84,7 +87,23 @@ Deploy when available:
   --queued                 Show current and recent availability requests. If active
                            requests exist, also restart a missing detached worker.
   --cancel-queued ID       Cancel one pending availability request.
+  --queued --clear-terminated
+                           Remove only terminated queue-history records.
+  --queued --clear-complete
+                           Remove terminated, cancelled, expired, failed and
+                           legacy records. Preserve pending/launching requests
+                           and launched/attention records that may own live Pods.
+                           A cancelled record with a registered launch PID is
+                           also preserved until the launch settles.
+  --queued --clear-all     Remove ALL queue history (including launched/attention)
+                           only when no active or unfinished launches exist.
+                           Interactive confirmation required, or pass --yes.
+  --queued --clear-* --dry-run
+                           Preview cleanup counts without changing the queue.
+                           Cleanup never deletes RunPod Pods or stops jobs.
 
+Queue cleanup backs up the previous state to
+<queue-state-file>.before-clear.json (overwritten by the next real cleanup).
 Queue state is stored in ~/.cache/pod-runtime/rent-pod-queue.json and worker
 output in ~/.cache/pod-runtime/rent-pod-queue.log. Override with
 RENT_POD_QUEUE_FILE / RENT_POD_QUEUE_LOG. The current approval policy is automatic;

@@ -1,0 +1,30 @@
+name: rent-pod queue history tests
+
+on:
+  pull_request:
+    paths:
+      - 'bin/rent_pod_queue.py'
+      - 'bin/rent_pod_cli.py'
+      - 'tests/test_rent_pod_queue.py'
+      - '.github/workflows/rent-pod-queue-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'bin/rent_pod_queue.py'
+      - 'bin/rent_pod_cli.py'
+      - 'tests/test_rent_pod_queue.py'
+      - '.github/workflows/rent-pod-queue-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-unittests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Exercise queued request behavior and history pruning
+        run: python -m unittest discover -s tests -p 'test_rent_pod_queue.py' -v

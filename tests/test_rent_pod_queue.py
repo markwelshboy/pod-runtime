@@ -332,5 +332,187 @@ class RentPodQueueTests(unittest.TestCase):
             self.assertIn("deletion", stored["last_error"])
 
 
+    def _queue_for_cleanup(self, path):
+        records = [
+            {"id": "t", "status": "terminated", "pod_id": "deleted-pod", "launch_pid": None},
+            {"id": "c", "status": "cancelled", "launch_pid": None},
+            {"id": "e", "status": "expired", "launch_pid": None},
+            {"id": "f", "status": "failed", "launch_pid": None},
+            {"id": "l", "status": "legacy", "launch_pid": None},
+            {"id": "live", "status": "launched", "pod_id": "still-running", "launch_pid": None},
+            {"id": "attention", "status": "attention", "pod_id": "inspect-me", "launch_pid": None},
+            {"id": "pending", "status": "pending", "launch_pid": None},
+            {"id": "launching", "status": "launching", "launch_pid": 7654321},
+            {"id": "cancel-inflight", "status": "cancelled", "launch_pid": 55555},
+        ]
+        queue.save_state({"requests": records}, path)
+        return records
+
+    def test_clear_complete_removes_only_safe_history_and_preserves_live_requests(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            original = self._queue_for_cleanup(path)
+            with mock.patch.object(queue, "spawn_worker") as worker, mock.patch.object(
+                queue, "_signal_launch_pid"
+            ) as kill_pid, mock.patch("builtins.print"):
+                rc = queue.clear_queue_history("complete", path)
+            self.assertEqual(rc, 0)
+            worker.assert_not_called()
+            kill_pid.assert_not_called()
+            remaining = queue.load_state(path)["requests"]
+            self.assertEqual(
+                [r["id"] for r in remaining],
+                ["live", "attention", "pending", "launching", "cancel-inflight"],
+            )
+            backup = queue._clear_backup_path(path)
+            self.assertTrue(backup.exists())
+            self.assertEqual(json.loads(backup.read_text())["requests"], original)
+
+    def test_clear_terminated_is_narrower(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            self._queue_for_cleanup(path)
+            with mock.patch("builtins.print"):
+                rc = queue.clear_queue_history("terminated", path)
+            self.assertEqual(rc, 0)
+            self.assertNotIn("t", [r["id"] for r in queue.load_state(path)["requests"]])
+            self.assertIn("c", [r["id"] for r in queue.load_state(path)["requests"]])
+
+    def test_preview_does_not_write_or_back_up(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            self._queue_for_cleanup(path)
+            original = path.read_bytes()
+            with mock.patch("builtins.print") as output:
+                self.assertEqual(queue.clear_queue_history("complete", path, dry_run=True), 0)
+            self.assertEqual(path.read_bytes(), original)
+            self.assertFalse(queue._clear_backup_path(path).exists())
+            self.assertIn("would remove 5", " ".join(str(c) for c in output.call_args_list))
+
+    def test_second_clear_is_noop_without_overwriting_prior_backup(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            self._queue_for_cleanup(path)
+            with mock.patch("builtins.print"):
+                queue.clear_queue_history("complete", path)
+            before = queue._clear_backup_path(path).read_bytes()
+            with mock.patch("builtins.print"):
+                queue.clear_queue_history("complete", path)
+            self.assertEqual(queue._clear_backup_path(path).read_bytes(), before)
+
+    def test_clear_all_refuses_pending_or_launching_even_with_yes(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            self._queue_for_cleanup(path)
+            original = path.read_bytes()
+            with self.assertRaisesRegex(ValueError, "active/unfinished"):
+                queue.clear_queue_history("all", path, yes=True)
+            self.assertEqual(path.read_bytes(), original)
+            self.assertFalse(queue._clear_backup_path(path).exists())
+
+    def test_clear_all_refuses_uncleared_inflight_pid_and_unknown_status(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            for records in (
+                [{"id": "cancelled", "status": "cancelled", "launch_pid": 9876}],
+                [{"id": "future", "status": "new-running-state", "launch_pid": None}],
+            ):
+                queue.save_state({"requests": records}, path)
+                with self.assertRaisesRegex(ValueError, "active/unfinished"):
+                    queue.clear_queue_history("all", path, yes=True)
+                self.assertEqual(queue.load_state(path)["requests"], records)
+
+    def test_clear_all_requires_confirm_and_never_calls_runpod(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            queue.save_state({"requests": [
+                {"id": "live", "status": "launched", "pod_id": "pod-is-not-deleted"},
+                {"id": "old", "status": "terminated"},
+            ]}, path)
+            with mock.patch("builtins.print"), mock.patch.object(
+                queue, "spawn_worker"
+            ) as worker, mock.patch.object(queue, "_signal_launch_pid") as kill_pid:
+                self.assertEqual(queue.clear_queue_history("all", path, yes=True), 0)
+            worker.assert_not_called()
+            kill_pid.assert_not_called()
+            self.assertEqual(queue.load_state(path)["requests"], [])
+            self.assertEqual(
+                json.loads(queue._clear_backup_path(path).read_text())["requests"][0]["pod_id"],
+                "pod-is-not-deleted",
+            )
+
+    def test_clear_all_confirmation_and_decline(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            queue.save_state({"requests": [{"id": "old", "status": "terminated"}]}, path)
+            with mock.patch.object(queue.sys.stdin, "isatty", return_value=True), mock.patch(
+                "builtins.input", return_value="no"
+            ), mock.patch("builtins.print"):
+                self.assertEqual(queue.clear_queue_history("all", path), 0)
+            self.assertEqual(len(queue.load_state(path)["requests"]), 1)
+            with mock.patch.object(queue.sys.stdin, "isatty", return_value=True), mock.patch(
+                "builtins.input", return_value="CLEAR ALL"
+            ), mock.patch("builtins.print"):
+                self.assertEqual(queue.clear_queue_history("all", path), 0)
+            self.assertEqual(queue.load_state(path)["requests"], [])
+
+    def test_clear_all_requires_yes_without_a_tty(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            queue.save_state({"requests": [{"id": "old", "status": "terminated"}]}, path)
+            with mock.patch.object(queue.sys.stdin, "isatty", return_value=False):
+                with self.assertRaisesRegex(ValueError, "requires --yes"):
+                    queue.clear_queue_history("all", path)
+
+    def test_queued_cleanup_cli_handler_preserves_pending_and_does_not_spawn(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            self._queue_for_cleanup(path)
+            with mock.patch.object(queue, "DEFAULT_STATE_FILE", path), mock.patch.object(
+                queue, "spawn_worker"
+            ) as worker, mock.patch("builtins.print"):
+                self.assertEqual(
+                    queue.handle_queue_meta_command(["--queued", "--clear-complete"]), 0
+                )
+            worker.assert_not_called()
+            self.assertIn("pending", [r["id"] for r in queue.load_state(path)["requests"]])
+
+    def test_queued_plain_command_still_restarts_worker_for_active_jobs(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            self._queue_for_cleanup(path)
+            with mock.patch.object(queue, "DEFAULT_STATE_FILE", path), mock.patch.object(
+                queue, "spawn_worker"
+            ) as worker, mock.patch("builtins.print"):
+                self.assertEqual(queue.handle_queue_meta_command(["--queued"]), 0)
+            worker.assert_called_once()
+
+    def test_queued_cleanup_rejects_invalid_mixed_flags(self):
+        for args in (
+            ["--queued", "--clear-complete", "--clear-all"],
+            ["--queued", "--clear-all", "--cancel-queued", "abc"],
+            ["--queued", "--yes"],
+            ["--queued", "--dry-run"],
+            ["--queued", "--clear-complete", "--when-available"],
+            ["--queued", "--queued"],
+        ):
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                queue.handle_queue_meta_command(args, {})
+
+    def test_queued_cleanup_preview_accepts_yes_and_no_api_key(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "queue.json"
+            queue.save_state({"requests": [{"id": "old", "status": "terminated"}]}, path)
+            with mock.patch.object(queue, "DEFAULT_STATE_FILE", path), mock.patch(
+                "builtins.print"
+            ) as output:
+                rc = queue.handle_queue_meta_command(
+                    ["--queued", "--clear-complete", "--dry-run"], {}
+                )
+            self.assertEqual(rc, 0)
+            self.assertIn("would remove 1", " ".join(str(c) for c in output.call_args_list))
+            self.assertEqual(len(queue.load_state(path)["requests"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
