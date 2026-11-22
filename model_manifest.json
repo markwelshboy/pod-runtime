@@ -22,7 +22,8 @@
     "TEXT_COND_DIR": "{MODELS_DIR}/text_cond",
     "RMBG_DIR": "{MODELS_DIR}/RMBG",
     "BIREFNET_DIR": "{MODELS_DIR}/RMBG/BiRefNet",
-    "SDMATTE_DIR": "{MODELS_DIR}/RMBG/SDMatte"
+    "SDMATTE_DIR": "{MODELS_DIR}/RMBG/SDMatte",
+    "ULTRALYTICS_DIR": "{MODELS_DIR}/ultralytics"
   },
   "sections": {
     "rmbg_base": [
@@ -773,6 +774,42 @@
         ],
         "strip_prefix": "models/loras/krea2",
         "path": "{LORAS_DIR}/Krea-2"
+      },
+      {
+        "id": "krea2-models-ultralytics-segmentation-segm",
+        "mode": "tree",
+        "repo_id": "markwelshboyx/diffusionetc",
+        "repo_type": "model",
+        "revision": "main",
+        "include": [
+          "models/ultralytics/segm/*.pt"
+        ],
+        "strip_prefix": "models/ultralytics/segm",
+        "path": "{ULTRALYTICS_DIR}/segm"
+      },
+      {
+        "id": "krea2-models-ultralytics-segmentation-bbox",
+        "mode": "tree",
+        "repo_id": "markwelshboyx/diffusionetc",
+        "repo_type": "model",
+        "revision": "main",
+        "include": [
+          "models/ultralytics/bbox/*.pt"
+        ],
+        "strip_prefix": "models/ultralytics/bbox",
+        "path": "{ULTRALYTICS_DIR}/bbox"
+      },
+      {
+        "id": "krea2-models-ultralytics-segmentation-bbox-juicy",
+        "mode": "tree",
+        "repo_id": "markwelshboyx/diffusionetc",
+        "repo_type": "model",
+        "revision": "main",
+        "include": [
+          "models/ultralytics/bbox/juicy/*.pt"
+        ],
+        "strip_prefix": "models/ultralytics/bbox/juicy",
+        "path": "{ULTRALYTICS_DIR}/bbox/juicy"
       },
       {
         "url": "https://huggingface.co/conradlocke/krea2-identity-edit/resolve/main/krea2_identity_edit_v1_1.safetensors",
