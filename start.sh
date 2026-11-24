@@ -485,13 +485,23 @@ section 11 "VLM: install Ollama once and download optional model assets"
 if [[ "${ENABLE_VLM:-false}" == "true" ]]; then
   echo " == Provisioning local-only ComfyUI VLM services =="
 
+  # The live pod layout may place start.sh next to the copied bin helpers,
+  # while a full checkout keeps these scripts under pod-runtime/bin.
+  # Support BOTH without relying on an untracked copy of the installer.
+  VLM_BIN_DIR="${SCRIPT_DIR}"
+  if [[ ! -f "${VLM_BIN_DIR}/install_comfy_vlm.sh" &&
+        -f "${SCRIPT_DIR}/bin/install_comfy_vlm.sh" ]]; then
+    VLM_BIN_DIR="${SCRIPT_DIR}/bin"
+  fi
+
   # Installer owns the single instruct-model pull and optional gaze
   # weights. Avoid pulling Qwen twice or hiding installer errors.
-  if [[ -f "${SCRIPT_DIR}/install_comfy_vlm.sh" &&
-        -f "${SCRIPT_DIR}/vlm_skill.py" ]]; then
+  if [[ -f "${VLM_BIN_DIR}/install_comfy_vlm.sh" &&
+        -f "${VLM_BIN_DIR}/vlm_skill.py" &&
+        -f "${VLM_BIN_DIR}/vlm_worker.py" ]]; then
     mkdir -p /workspace/comfy-vlm-kit
-    install -m 755 "${SCRIPT_DIR}/install_comfy_vlm.sh" /workspace/comfy-vlm-kit/
-    install -m 755 "${SCRIPT_DIR}/vlm_skill.py" /workspace/comfy-vlm-kit/
+    install -m 755 "${VLM_BIN_DIR}/install_comfy_vlm.sh" /workspace/comfy-vlm-kit/
+    install -m 755 "${VLM_BIN_DIR}/vlm_skill.py" /workspace/comfy-vlm-kit/
 
     vlm_args=(--model "${VLM_MODEL:-qwen3-vl:8b-instruct}")
     [[ "${VLM_INSTALL_GAZE:-true}" != "true" ]] || vlm_args+=(--with-gaze)
@@ -518,7 +528,7 @@ if [[ "${ENABLE_VLM:-false}" == "true" ]]; then
       fi
 
       if [[ "${VLM_ENABLE_WORKER:-true}" == "true" ]]; then
-        install -m 755 "${SCRIPT_DIR}/vlm_worker.py" /usr/local/bin/vlm-worker
+        install -m 755 "${VLM_BIN_DIR}/vlm_worker.py" /usr/local/bin/vlm-worker
         mkdir -p /workspace/logs /workspace/vlm-worker/uploads
         if ! curl -fsS --max-time 3 http://127.0.0.1:8765/health >/dev/null 2>&1; then
           nohup /usr/bin/python3 /usr/local/bin/vlm-worker \
