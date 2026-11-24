@@ -479,7 +479,7 @@ else
 fi
 
 #------------------------------------------------------------------------
-section 11 "Pull my model repo from Hugging Face and symlink into ComfyUI"
+section 11 "Install VLM skill and entrypoint wrapper"
 #------------------------------------------------------------------------
 
 if [[ "${ENABLE_VLM:-false}" == "true" ]]; then
