@@ -479,19 +479,31 @@ else
 fi
 
 #------------------------------------------------------------------------
-section 10 "Pull my model repo from Hugging Face and symlink into ComfyUI"
+section 11 "Pull my model repo from Hugging Face and symlink into ComfyUI"
 #------------------------------------------------------------------------
 
 if [[ "${ENABLE_VLM:-false}" == "true" ]]; then
 
-  bash "${SCRIPT_DIR}/vlm_setup.sh" || true
+  echo " == Installing ComfyUI VLM skill and entrypoint wrapper =="
 
-  ollama pull qwen3-vl:8b-instruct
+  mkdir -p /workspace/comfy-vlm-kit
+  install -m 755 "${SCRIPT_DIR}/install_comfy_vlm.sh" /workspace/comfy-vlm-kit
+  install -m 755 "${SCRIPT_DIR}/vlm_skill.py" /workspace/comfy-vlm-kit
+  bash "/workspace/comfy-vlm-kit/install_comfy_vlm.sh" || true
+
+  if curl -s -f http://127.0.0.1:11434 > /dev/null
+  then
+    tg "Ollama is alive!" || true
+    echo " == Downloading instruct model and gaze models =="
+    ollama pull qwen3-vl:8b-instruct || true
+  else
+    tg "Ollama is down." || true
+  fi
 
   mkdir -p /workspace/models/gaze
   hf download py-feat/l2cs \
     l2cs_gaze360_resnet50.safetensors \
-    --local-dir /workspace/models/gaze
+    --local-dir /workspace/models/gaze  || true
 
 fi
 
