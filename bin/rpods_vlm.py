@@ -138,28 +138,54 @@ def is_ollama(port: int) -> bool:
         return False
 
 
+def is_worker(port: int) -> bool:
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", valid_port(port), timeout=0.7)
+        try:
+            conn.request("GET", "/health")
+            result = conn.getresponse()
+            if result.status != 200:
+                return False
+            data = json.loads(result.read(4096))
+            return isinstance(data, dict) and data.get("service") == "image-playground-vlm-worker"
+        finally:
+            conn.close()
+    except (OSError, ValueError, http.client.HTTPException):
+        return False
+
+
 def tunnel_argv(ssh_base: list[str], *, local_ollama_port: int = 47961,
-                remote_ollama_port: int = 11434) -> list[str]:
+                remote_ollama_port: int = 11434, local_worker_port: int = 47962,
+                remote_worker_port: int = 8765) -> list[str]:
     if not ssh_base or ssh_base[0] != "ssh" or not ssh_base[-1].startswith("root@"):
         raise ValueError("Expected an SSH command ending in root@<pod>.")
     local_ollama_port = valid_port(local_ollama_port)
     remote_ollama_port = valid_port(remote_ollama_port)
+    local_worker_port = valid_port(local_worker_port)
+    remote_worker_port = valid_port(remote_worker_port)
+    if local_worker_port == local_ollama_port:
+        raise ValueError("Ollama and VLM worker local ports must differ.")
     return [*ssh_base[:-1], "-N", "-T",
             "-o", "ExitOnForwardFailure=yes",
             "-o", "ServerAliveInterval=30",
             "-o", "ServerAliveCountMax=3",
             "-L", f"127.0.0.1:{local_ollama_port}:127.0.0.1:{remote_ollama_port}",
+            "-L", f"127.0.0.1:{local_worker_port}:127.0.0.1:{remote_worker_port}",
             ssh_base[-1]]
 
 
 def run_tunnel(ssh_base: list[str], *, local_ollama_port: int = 47961,
-               remote_ollama_port: int = 11434) -> int:
+               remote_ollama_port: int = 11434, local_worker_port: int = 47962,
+               remote_worker_port: int = 8765) -> int:
     command = tunnel_argv(
         ssh_base, local_ollama_port=local_ollama_port,
-        remote_ollama_port=remote_ollama_port)
+        remote_ollama_port=remote_ollama_port,
+        local_worker_port=local_worker_port, remote_worker_port=remote_worker_port)
     print(f"[rpods] Pod Ollama -> local: http://127.0.0.1:{local_ollama_port}"
           f" (pod 127.0.0.1:{remote_ollama_port})")
-    print("[rpods] Ollama is bound to local loopback only. Ctrl+C to close.")
+    print(f"[rpods] Pod VLM worker -> local: http://127.0.0.1:{local_worker_port}"
+          f" (pod 127.0.0.1:{remote_worker_port})")
+    print("[rpods] All services bind to local loopback only. Ctrl+C to close.")
     sys.stdout.flush()
     try:
         process = subprocess.Popen(command)
@@ -182,6 +208,11 @@ def run_tunnel(ssh_base: list[str], *, local_ollama_port: int = 47961,
         else:
             print("[rpods] WARNING: Ollama did not answer through SSH. "
                   "On the pod run 'start-ollama'.", file=sys.stderr)
+        if is_worker(local_worker_port):
+            print("[rpods] VLM worker forward: OK (/health)")
+        else:
+            print("[rpods] WARNING: VLM worker unavailable; check "
+                  "/workspace/logs/vlm-worker.log on the pod.", file=sys.stderr)
         print("[rpods] Tunnel active; leave this terminal open. Ctrl+C to stop.")
         sys.stdout.flush()
         return process.wait()

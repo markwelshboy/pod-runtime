@@ -504,6 +504,38 @@ if [[ "${ENABLE_VLM:-false}" == "true" ]]; then
       else
         _sync_warn "[vlm] Installer returned success but Ollama API is not answering."
       fi
+
+      if [[ "${VLM_INSTALL_GEOMETRY_MODEL:-true}" == "true" ]]; then
+        mkdir -p /workspace/models/mediapipe
+        if [[ ! -s /workspace/models/mediapipe/face_landmarker.task ]]; then
+          curl -fL --retry 2 --connect-timeout 15 --max-time 120 \
+            'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task' \
+            -o /workspace/models/mediapipe/face_landmarker.task.tmp &&
+            mv /workspace/models/mediapipe/face_landmarker.task.tmp \
+               /workspace/models/mediapipe/face_landmarker.task ||
+            _sync_warn "[vlm] Optional MediaPipe task download failed."
+        fi
+      fi
+
+      if [[ "${VLM_ENABLE_WORKER:-true}" == "true" ]]; then
+        install -m 755 "${SCRIPT_DIR}/vlm_worker.py" /usr/local/bin/vlm-worker
+        mkdir -p /workspace/logs /workspace/vlm-worker/uploads
+        if ! curl -fsS --max-time 3 http://127.0.0.1:8765/health >/dev/null 2>&1; then
+          nohup /usr/bin/python3 /usr/local/bin/vlm-worker \
+            --root /workspace/vlm-worker --port 8765 \
+            >> /workspace/logs/vlm-worker.log 2>&1 < /dev/null &
+          for _vlm_start in {1..30}; do
+            if curl -fsS --max-time 2 http://127.0.0.1:8765/health >/dev/null 2>&1; then
+              echo "[vlm] Analysis worker ready on pod-local 127.0.0.1:8765"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -fsS --max-time 3 http://127.0.0.1:8765/health >/dev/null 2>&1; then
+            _sync_warn "[vlm] Worker did not start; see /workspace/logs/vlm-worker.log."
+          fi
+        fi
+      fi
     else
       _sync_warn "[vlm] Installer failed. Check /workspace/logs/ollama.log and provisioning logs."
       tg "WARNING: VLM provisioning failed" || true

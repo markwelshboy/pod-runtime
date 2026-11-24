@@ -278,6 +278,8 @@ def connect_or_tunnel(choice: PodChoice, ssh_key: str, args: argparse.Namespace)
             remote_pixlstash_port=args.pixlstash_remote_port,
             ollama_local_port=args.ollama_local_port,
             ollama_remote_port=args.ollama_port,
+            worker_local_port=args.worker_local_port,
+            worker_remote_port=args.worker_port,
         )
     if selected == {"pixlstash"}:
         return pixlstash_tunnel.run_tunnel(
@@ -292,6 +294,8 @@ def connect_or_tunnel(choice: PodChoice, ssh_key: str, args: argparse.Namespace)
             ssh,
             local_ollama_port=args.ollama_local_port,
             remote_ollama_port=args.ollama_port,
+            local_worker_port=args.worker_local_port,
+            remote_worker_port=args.worker_port,
         )
     if args.skills_zip:
         return 0
@@ -339,6 +343,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="remote Ollama port on the pod (default: 11434)",
     )
     parser.add_argument(
+        "--worker-local-port", type=_tcp_port, default=47962, metavar="PORT",
+        help="local VLM worker port (default: 47962, loopback only)",
+    )
+    parser.add_argument(
+        "--worker-port", type=_tcp_port, default=8765, metavar="PORT",
+        help="VLM worker port on the pod (default: 8765)",
+    )
+    parser.add_argument(
         "--skills-zip", type=str, metavar="ZIP",
         help="upload an Image Playground analysis ZIP into /workspace/vlm-skills "
              "via the selected pod's SSH credentials; without --tunnel, upload and exit",
@@ -372,6 +384,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.tunnel and "pixlstash" in args.tunnel and "vlm" in args.tunnel:
         if args.local_port == args.ollama_local_port:
             parser.error("local ComfyUI and Ollama tunnel ports must differ")
+    if args.tunnel and "vlm" in args.tunnel:
+        busy = {args.ollama_local_port, args.worker_local_port}
+        if len(busy) != 2 or ("pixlstash" in args.tunnel and args.local_port in busy):
+            parser.error("local ComfyUI, Ollama and worker ports must all differ")
     api_key = os.environ.get("RUNPOD_API_KEY", "").strip()
     if not api_key:
         print("ERROR: RUNPOD_API_KEY is required.", file=sys.stderr)

@@ -244,3 +244,94 @@ install_comfy_vlm.sh have been removed.
 Ollama remains on pod loopback 127.0.0.1:11434. Provisioning checks
 /api/version after installation and reports installer failures explicitly,
 rather than silently ignoring them. The installer stays idempotent.
+
+
+## Image Playground: remote batch worker and hybrid image transport
+
+With ENABLE_VLM=true and VLM_ENABLE_WORKER=true (default), pod-runtime
+starts the standalone VLM worker on **127.0.0.1:8765**, beside the existing
+Ollama server. No custom ComfyUI node or ComfyUI process is involved.
+
+One SSH connection now contains four loopback-only mappings:
+
+| Channel | Local (DdraigPC) | RunPod |
+| --- | --- | --- |
+| ComfyUI | 127.0.0.1:47960 | 127.0.0.1:8288 |
+| Ollama | 127.0.0.1:47961 | 127.0.0.1:11434 |
+| Analysis worker | **127.0.0.1:47962** | **127.0.0.1:8765** |
+| PixlStash reverse | current desktop API | fixed 127.0.0.1:64404 |
+
+Connection:
+
+~~~bash
+rpods --tunnel pixlstash vlm
+~~~
+
+Or omit PixlStash entirely:
+
+~~~bash
+rpods --tunnel vlm
+~~~
+
+Check:
+
+~~~bash
+curl -fsS http://127.0.0.1:47962/health
+curl -fsS http://127.0.0.1:47961/api/version
+~~~
+
+Image Playground → Refine → AI Suggestions now has Analyze selected and
+Analyze all kept. Choose transfer mode Auto, Direct, or VCP/Hugging Face,
+the VCP target, and whether geometry is enabled. The original images and
+sidecars are never modified.
+
+1. Image Playground downsizes selected originals to JPEG 1024px long edge,
+   retaining exact mappings and SHA256 digests locally. That is a speed/
+   quality tradeoff for analysis, not a substitute for original pixels.
+2. For **fewer than 80 images AND under 24 MiB of staged previews**, Auto
+   sends one ZIP over the SSH tunnel. No per-image HTTP requests.
+3. At **80+ images OR 24+ MiB**, Auto uses the existing named-target VCP
+   controller: **DdraigPC → Hugging Face scratch → RunPod**. The worker
+   accepts the ZIP in /workspace/vlm-worker/uploads/. VCP's HF scratch
+   cleanup runs after successful transfer. The local app requires a
+   configured VCP target and rejects a known pod-ID mismatch with the
+   worker tunnel. If VCP is unconfigured, Auto falls back to direct
+   transfer with a visible warning; explicit VCP mode fails instead.
+4. The worker runs /usr/local/bin/vlm-skill (Qwen3-VL V3), followed
+   optionally by MediaPipe head pose, L2CS gaze and fusion if corresponding
+   models/dependencies are available. If geometry cannot run, Qwen
+   condition suggestions still return.
+5. Worker status/progress is returned via GET /jobs/<id>, and the final
+   **small JSON** via GET /jobs/<id>/results (no large RunPod→home transfer).
+   Image Playground saves results in its local
+   DATA_DIR/vlm_jobs/<id>/results.json then imports them as **pending
+   suggestions**. Previously accepted tags or suggestions are not
+   overwritten.
+6. Review/correct/accept tags in Image Playground. Only accepted tags
+   go into ComfyUI sidecars. No automatic detailer launch.
+
+If the pod uses an older pod-runtime, update the runtime and restart the
+pod or start the worker explicitly (assuming installed):
+
+~~~bash
+/usr/bin/python3 /usr/local/bin/vlm-worker --root /workspace/vlm-worker --port 8765
+~~~
+
+The worker is stdlib-only; geometry tools run under /opt/venv/bin/python
+when installed. It loads the skills ZIP from /workspace/vlm-skills,
+uploaded via rpods --skills-zip. Active skill:
+image-detailer-analysis (V3). MediaPipe task model:
+ /workspace/models/mediapipe/face_landmarker.task
+L2CS SafeTensors checkpoint:
+ /workspace/models/gaze/l2cs_gaze360_resnet50.safetensors
+
+**HF privacy caution:** VCP stages images to the configured HF scratch
+dataset. Use a PRIVATE scratch repository with access controls, and
+verify retention/cleanup. Interrupted transfers may leave a scratch
+artifact needing manual deletion. Confirm that the named VCP target
+points to the same pod as the tunnel; pod-ID comparison is performed
+when both sides report IDs.
+
+Image Playground retains local results across pod replacements.
+Pod-side /workspace/vlm-worker survives only if backed by persistent
+storage. Interrupted jobs are marked interrupted on worker startup.

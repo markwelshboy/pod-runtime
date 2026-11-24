@@ -6,11 +6,13 @@ on:
       - 'bin/rpods.py'
       - 'bin/rpods_pixlstash.py'
       - 'bin/rpods_vlm.py'
+      - 'bin/vlm_worker.py'
       - 'bin/install_comfy_vlm.sh'
       - 'start.sh'
       - 'bin/rent_pod_api_v2.py'
       - 'bin/rent_pod_lifecycle.py'
       - 'tests/test_rpods*.py'
+      - 'tests/test_vlm_worker.py'
       - 'docs/rpods.md'
       - '.github/workflows/rpods-tests.yml'
   push:
@@ -19,11 +21,13 @@ on:
       - 'bin/rpods.py'
       - 'bin/rpods_pixlstash.py'
       - 'bin/rpods_vlm.py'
+      - 'bin/vlm_worker.py'
       - 'bin/install_comfy_vlm.sh'
       - 'start.sh'
       - 'bin/rent_pod_api_v2.py'
       - 'bin/rent_pod_lifecycle.py'
       - 'tests/test_rpods*.py'
+      - 'tests/test_vlm_worker.py'
       - 'docs/rpods.md'
       - '.github/workflows/rpods-tests.yml'
 
@@ -44,5 +48,6 @@ jobs:
           python -m unittest discover -s tests -p 'test_runpod_rest_v2.py' -v
           python -m unittest discover -s tests -p 'test_rpods_pixlstash.py' -v
           python -m unittest discover -s tests -p 'test_rpods_vlm.py' -v
-          python -m py_compile bin/rpods.py bin/rpods_pixlstash.py bin/rpods_vlm.py
+          python -m unittest discover -s tests -p 'test_vlm_worker.py' -v
+          python -m py_compile bin/rpods.py bin/rpods_pixlstash.py bin/rpods_vlm.py bin/vlm_worker.py
           bash -n start.sh bin/install_comfy_vlm.sh
