@@ -269,13 +269,43 @@ def check_skills_zip(path: str | Path) -> bytes:
     return payload
 
 
+def skills_remote_command() -> str:
+    """Choose a real Python >=3.10 on the pod; never assume SSH's PATH.
+
+    Remote SSH commands run in a noninteractive shell. ComfyUI GPU images
+    often have /opt/venv/bin/python without a globally installed python3.
+    The interpreter reads the ZIP bytes on stdin via REMOTE_INSTALL.
+    """
+    return ("""set -eu
+py=''
+for candidate in /opt/venv/bin/python /opt/venv/bin/python3 /usr/bin/python3 /usr/local/bin/python3 /workspace/venv/bin/python /usr/bin/python /usr/local/bin/python; do
+    if [ -x "$candidate" ] && "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
+        py="$candidate"
+        break
+    fi
+done
+if [ -z "$py" ]; then
+    for executable in python3 python; do
+        candidate="$(command -v "$executable" 2>/dev/null || true)"
+        if [ -n "$candidate" ] && "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
+            py="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$py" ]; then
+    echo '[rpods] ERROR: No usable Python >=3.10 on pod. Expected /opt/venv/bin/python or an OS Python.' >&2
+    exit 127
+fi
+exec "$py" -c """ + shlex.quote(REMOTE_INSTALL))
+
+
 def push_skills_zip(ssh_base: list[str], path: str | Path) -> None:
     """Stream validated bytes over ordinary pod SSH, no public upload port."""
     if not ssh_base or ssh_base[0] != "ssh" or not ssh_base[-1].startswith("root@"):
         raise ValueError("Expected an SSH command ending in root@<pod>.")
     payload = check_skills_zip(path)
-    cmd = [*ssh_base[:-1], "-T", ssh_base[-1],
-           "python3 -c " + shlex.quote(REMOTE_INSTALL)]
+    cmd = [*ssh_base[:-1], "-T", ssh_base[-1], skills_remote_command()]
     print(f"[rpods] Uploading VLM skills ZIP ({len(payload):,} bytes) via pod SSH...")
     sys.stdout.flush()
     try:

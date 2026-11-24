@@ -71,7 +71,28 @@ rm -rf /var/lib/apt/lists/*
 
 command -v curl >/dev/null || { echo 'curl is required' >&2; exit 1; }
 command -v git >/dev/null || { echo 'git is required to install the optional ComfyUI node' >&2; exit 1; }
-command -v python3 >/dev/null || { echo 'python3 is required' >&2; exit 1; }
+# Minimal GPU/ComfyUI images may provide only /opt/venv/bin/python.
+# Select one interpreter for both the standalone CLI and the VLM worker.
+# The CLI is invoked directly from terminals, which may not have python3 on PATH.
+VLM_PYTHON_BIN=''
+for candidate in "${VLM_PYTHON:-}" /opt/venv/bin/python /opt/venv/bin/python3 \
+                 /usr/bin/python3 /usr/local/bin/python3 /workspace/venv/bin/python \
+                 /usr/bin/python /usr/local/bin/python python3 python; do
+  [[ -n "$candidate" ]] || continue
+  if [[ "$candidate" != */* ]]; then
+    candidate="$(command -v "$candidate" 2>/dev/null || true)"
+  fi
+  if [[ -n "$candidate" && -x "$candidate" ]] &&
+     "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
+    VLM_PYTHON_BIN="$candidate"
+    break
+  fi
+done
+if [[ -z "$VLM_PYTHON_BIN" ]]; then
+  echo 'ERROR: Python >= 3.10 required; expected /opt/venv/bin/python or system Python.' >&2
+  exit 1
+fi
+echo "== VLM Python: $VLM_PYTHON_BIN ($("$VLM_PYTHON_BIN" --version 2>&1)) =="
 mkdir -p "$MODEL_DIR" /workspace/logs
 
 if ! command -v ollama >/dev/null 2>&1; then
@@ -142,6 +163,9 @@ EOF
 chmod +x /usr/local/bin/entrypoint-with-vlm
 
 install -m 755 "${DIR}/vlm_skill.py" /usr/local/bin/vlm-skill
+# The source uses an env python3 shebang, which fails on venv-only pods.
+# Install the CLI with an explicit interpreter without modifying the source.
+sed -i "1s|^#!/usr/bin/env python3$|#!${VLM_PYTHON_BIN}|" /usr/local/bin/vlm-skill
 
 if ((INSTALL_NODE)); then
   echo '== Installing AB Simple Ollama node (no pip requirements) =='

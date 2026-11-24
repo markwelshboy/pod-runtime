@@ -314,7 +314,7 @@ If the pod uses an older pod-runtime, update the runtime and restart the
 pod or start the worker explicitly (assuming installed):
 
 ~~~bash
-/usr/bin/python3 /usr/local/bin/vlm-worker --root /workspace/vlm-worker --port 8765
+/opt/venv/bin/python /usr/local/bin/vlm-worker --root /workspace/vlm-worker --port 8765
 ~~~
 
 The worker is stdlib-only; geometry tools run under /opt/venv/bin/python
@@ -335,3 +335,34 @@ when both sides report IDs.
 Image Playground retains local results across pod replacements.
 Pod-side /workspace/vlm-worker survives only if backed by persistent
 storage. Interrupted jobs are marked interrupted on worker startup.
+
+### Python interpreter selection on venv-only GPU containers
+
+ComfyUI GPU images often provide `/opt/venv/bin/python` without a
+`python3` executable on the SSH command PATH. The skills-ZIP uploader
+now probes an executable Python >=3.10, preferring
+`/opt/venv/bin/python` and falling back to common system interpreters.
+Neither `rpods --skills-zip` nor the remote unpacker needs a globally
+installed `python3`.
+
+The VLM installer uses the same preference and patches the *installed*
+`/usr/local/bin/vlm-skill` shebang to that interpreter, so the CLI
+also works when invoked directly. The standalone worker uses that
+validated interpreter for its service process and its Qwen subprocess;
+geometry uses `/opt/venv/bin/python` by default. You can explicitly set
+`VLM_PYTHON` for the installer or `VLM_WORKER_PYTHON` for the worker
+when your image uses a different interpreter. Both must be Python >=3.10.
+
+To check an existing pod before restarting the VLM worker:
+
+~~~bash
+/opt/venv/bin/python --version
+head -n 1 /usr/local/bin/vlm-skill
+curl -fsS http://127.0.0.1:8765/health
+~~~
+
+If the installed runner still uses an `env python3` shebang, re-run the
+updated VLM installer; the current pod's automatic provision/start phase
+may have run before this fix. For immediate recovery, launch the worker
+with the explicit venv interpreter as shown above. Never expose its
+unauthenticated HTTP endpoint on a public RunPod port.

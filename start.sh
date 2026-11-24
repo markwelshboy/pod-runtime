@@ -528,21 +528,36 @@ if [[ "${ENABLE_VLM:-false}" == "true" ]]; then
       fi
 
       if [[ "${VLM_ENABLE_WORKER:-true}" == "true" ]]; then
-        install -m 755 "${VLM_BIN_DIR}/vlm_worker.py" /usr/local/bin/vlm-worker
-        mkdir -p /workspace/logs /workspace/vlm-worker/uploads
-        if ! curl -fsS --max-time 3 http://127.0.0.1:8765/health >/dev/null 2>&1; then
-          nohup /usr/bin/python3 /usr/local/bin/vlm-worker \
-            --root /workspace/vlm-worker --port 8765 \
-            >> /workspace/logs/vlm-worker.log 2>&1 < /dev/null &
-          for _vlm_start in {1..30}; do
-            if curl -fsS --max-time 2 http://127.0.0.1:8765/health >/dev/null 2>&1; then
-              echo "[vlm] Analysis worker ready on pod-local 127.0.0.1:8765"
-              break
-            fi
-            sleep 1
-          done
+        # install_comfy_vlm.sh has selected and validated the Python runtime
+        # (typically /opt/venv/bin/python). Its CLI shebang records that
+        # interpreter; never assume an OS-level /usr/bin/python3 exists.
+        VLM_WORKER_PYTHON="${VLM_WORKER_PYTHON:-}"
+        if [[ -z "$VLM_WORKER_PYTHON" && -f /usr/local/bin/vlm-skill ]]; then
+          VLM_WORKER_PYTHON="$(head -n 1 /usr/local/bin/vlm-skill)"
+          VLM_WORKER_PYTHON="${VLM_WORKER_PYTHON#\#!}"
+        fi
+        if [[ "$VLM_WORKER_PYTHON" != /* || ! -x "$VLM_WORKER_PYTHON" ]] ||
+           ! "$VLM_WORKER_PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
+          _sync_warn "[vlm] Cannot launch worker: no valid Python >=3.10 (check /opt/venv/bin/python or VLM_WORKER_PYTHON)."
+        else
+          install -m 755 "${VLM_BIN_DIR}/vlm_worker.py" /usr/local/bin/vlm-worker
+          sed -i "1s|^#!/usr/bin/env python3$|#!${VLM_WORKER_PYTHON}|" /usr/local/bin/vlm-worker
+          echo "[vlm] Worker Python: ${VLM_WORKER_PYTHON}"
+          mkdir -p /workspace/logs /workspace/vlm-worker/uploads
           if ! curl -fsS --max-time 3 http://127.0.0.1:8765/health >/dev/null 2>&1; then
-            _sync_warn "[vlm] Worker did not start; see /workspace/logs/vlm-worker.log."
+            nohup "$VLM_WORKER_PYTHON" /usr/local/bin/vlm-worker \
+              --root /workspace/vlm-worker --port 8765 \
+              >> /workspace/logs/vlm-worker.log 2>&1 < /dev/null &
+            for _vlm_start in {1..30}; do
+              if curl -fsS --max-time 2 http://127.0.0.1:8765/health >/dev/null 2>&1; then
+                echo "[vlm] Analysis worker ready on pod-local 127.0.0.1:8765"
+                break
+              fi
+              sleep 1
+            done
+            if ! curl -fsS --max-time 3 http://127.0.0.1:8765/health >/dev/null 2>&1; then
+              _sync_warn "[vlm] Worker did not start; see /workspace/logs/vlm-worker.log."
+            fi
           fi
         fi
       fi
