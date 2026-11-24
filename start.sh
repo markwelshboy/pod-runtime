@@ -479,6 +479,23 @@ else
 fi
 
 #------------------------------------------------------------------------
+section 10 "Pull my model repo from Hugging Face and symlink into ComfyUI"
+#------------------------------------------------------------------------
+
+if [[ "${ENABLE_VLM:-false}" == "true" ]]; then
+
+  bash "${SCRIPT_DIR}/vlm_setup.sh" || true
+
+  ollama pull qwen3-vl:8b-instruct
+
+  mkdir -p /workspace/models/gaze
+  hf download py-feat/l2cs \
+    l2cs_gaze360_resnet50.safetensors \
+    --local-dir /workspace/models/gaze
+
+fi
+
+#------------------------------------------------------------------------
 section 11 "Disk Watcher"
 #------------------------------------------------------------------------
 
