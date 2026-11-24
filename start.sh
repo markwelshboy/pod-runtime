@@ -479,36 +479,42 @@ else
 fi
 
 #------------------------------------------------------------------------
-section 11 "Install VLM skill and entrypoint wrapper"
+section 11 "VLM: install Ollama once and download optional model assets"
 #------------------------------------------------------------------------
 
 if [[ "${ENABLE_VLM:-false}" == "true" ]]; then
+  echo " == Provisioning local-only ComfyUI VLM services =="
 
-  echo " == Installing ComfyUI VLM skill and entrypoint wrapper =="
+  # Installer owns the single instruct-model pull and optional gaze
+  # weights. Avoid pulling Qwen twice or hiding installer errors.
+  if [[ -f "${SCRIPT_DIR}/install_comfy_vlm.sh" &&
+        -f "${SCRIPT_DIR}/vlm_skill.py" ]]; then
+    mkdir -p /workspace/comfy-vlm-kit
+    install -m 755 "${SCRIPT_DIR}/install_comfy_vlm.sh" /workspace/comfy-vlm-kit/
+    install -m 755 "${SCRIPT_DIR}/vlm_skill.py" /workspace/comfy-vlm-kit/
 
-  mkdir -p /workspace/comfy-vlm-kit
-  install -m 755 "${SCRIPT_DIR}/install_comfy_vlm.sh" /workspace/comfy-vlm-kit
-  install -m 755 "${SCRIPT_DIR}/vlm_skill.py" /workspace/comfy-vlm-kit
-  bash "/workspace/comfy-vlm-kit/install_comfy_vlm.sh" || true
-
-  if curl -s -f http://127.0.0.1:11434 > /dev/null
-  then
-    tg "Ollama is alive!" || true
-    echo " == Downloading instruct model and gaze models =="
-    ollama pull qwen3-vl:8b-instruct || true
+    vlm_args=(--model "${VLM_MODEL:-qwen3-vl:8b-instruct}")
+    [[ "${VLM_INSTALL_GAZE:-true}" != "true" ]] || vlm_args+=(--with-gaze)
+    [[ "${VLM_INSTALL_OPENCODE:-true}" == "true" ]] || vlm_args+=(--no-opencode)
+    [[ "${VLM_INSTALL_NODE:-true}" == "true" ]] || vlm_args+=(--no-node)
+    if bash /workspace/comfy-vlm-kit/install_comfy_vlm.sh "${vlm_args[@]}"; then
+      if curl -fsS --max-time 3 http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+        echo "[vlm] Ollama API ready on pod-local 127.0.0.1:11434"
+        tg "Ollama is alive (SSH only)" || true
+      else
+        _sync_warn "[vlm] Installer returned success but Ollama API is not answering."
+      fi
+    else
+      _sync_warn "[vlm] Installer failed. Check /workspace/logs/ollama.log and provisioning logs."
+      tg "WARNING: VLM provisioning failed" || true
+    fi
   else
-    tg "Ollama is down." || true
+    _sync_warn "[vlm] Missing installer/runner in pod-runtime; skipped ENABLE_VLM."
   fi
-
-  mkdir -p /workspace/models/gaze
-  hf download py-feat/l2cs \
-    l2cs_gaze360_resnet50.safetensors \
-    --local-dir /workspace/models/gaze  || true
-
 fi
 
 #------------------------------------------------------------------------
-section 11 "Disk Watcher"
+section 12 "Disk Watcher"
 #------------------------------------------------------------------------
 
 disk_watch_start --path / --log /workspace/logs/disk_watch.log || true

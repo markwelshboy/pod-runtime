@@ -135,3 +135,112 @@ the reverse-forwarded local PixlStash API, so use Pods you trust.
 
 Normal `rpods`, `rpods --list` and `rpods POD_NAME` retain their usual
 SSH-shell behavior.
+
+
+## Ollama / VLM SSH tunnel (RunPod to DdraigPC)
+
+No RunPod HTTP proxy or public port is needed. Ollama provides an
+unauthenticated HTTP API and **must remain bound to 127.0.0.1 on the pod**.
+The existing rpods SSH connection can forward it to loopback on
+DdraigPC while preserving PixlStash-to-ComfyUI connectivity.
+
+### One combined SSH session
+
+~~~bash
+rpods --tunnel pixlstash vlm
+~~~
+
+Pick the pod as usual. This creates ONE tunnel session with:
+
+| Link | DdraigPC / WSL2 | RunPod |
+| --- | --- | --- |
+| ComfyUI forward | 127.0.0.1:47960 | 127.0.0.1:8288 |
+| Ollama forward | 127.0.0.1:47961 | 127.0.0.1:11434 |
+| PixlStash reverse | Current local PixlStash API (autodiscovered) | Fixed 127.0.0.1:64404 |
+
+For Ollama without PixlStash (no desktop app required):
+
+~~~bash
+rpods --tunnel vlm
+~~~
+
+Target a particular pod without the selector:
+
+~~~bash
+rpods rp-krea2-wait-1 --tunnel pixlstash vlm
+~~~
+
+Customize ports if needed:
+
+~~~bash
+rpods --tunnel pixlstash vlm --ollama-local-port 11500 --ollama-port 11434
+~~~
+
+The Ollama local port defaults to **47961** to avoid collisions with
+a local Ollama on its usual 11434 port. The command tests Ollama's
+/api/version endpoint. If no response, it warns; on the pod, run
+start-ollama. The tunnel remains active until Ctrl+C.
+
+Verify from WSL:
+
+~~~bash
+curl -fsS http://127.0.0.1:47961/api/version
+curl -fsS http://127.0.0.1:47961/api/tags
+~~~
+
+A local Image Playground analyzer can use the base address
+http://127.0.0.1:47961 as long as the tunnel is active. Forwarding the
+API does NOT automatically transfer datasets or start VLM analysis.
+
+### Upload the Image Playground analysis skill ZIP
+
+Download the **VLM + head-pose + gaze benchmark ZIP** from Image Playground
+Refine, then, from WSL, upload that ZIP with the same rpods pod selector:
+
+~~~bash
+rpods --skills-zip "/path/on/ddraigPC/image-detailer-analysis.zip"
+~~~
+
+This uploads and exits. The ZIP is checked locally for known skill and
+benchmark paths, unsafe entries and size limits; it is streamed directly
+over the selected pod's ordinary SSH connection. Remote Python installs
+it under /workspace/vlm-skills. No extra SSH key, public upload endpoint
+or separate SCP/VCP configuration is needed.
+
+You can upload before opening the combined tunnel:
+
+~~~bash
+rpods --tunnel pixlstash vlm \
+  --skills-zip "/path/on/ddraigPC/image-detailer-analysis.zip"
+~~~
+
+The upload runs **once** before the long-running foreground tunnel.
+An upload failure cancels tunnel startup. Existing files at the same
+paths are replaced, but unrelated skill files are left alone.
+Keep using VCP for large image datasets and batch results; the direct
+rpods ZIP operation is deliberately limited to small skill bundles.
+
+**Storage warning:** The installer uses /workspace/models/ollama and
+/workspace/vlm-skills. Those directories are only persistent when backed
+by suitable RunPod storage. Replacing an ephemeral pod may still lose
+model caches, skills, original images and analysis outputs, regardless
+of SSH tunnel settings.
+
+### Provisioning with ENABLE_VLM=true
+
+start.sh now calls the installer **once**. The installer downloads the
+selected instruct model just once, and optionally the Gaze360 checkpoint.
+The duplicate unconditional pulls previously present in start.sh and
+install_comfy_vlm.sh have been removed.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| ENABLE_VLM | false | Install and start VLM stack |
+| VLM_MODEL | qwen3-vl:8b-instruct | Model to pull |
+| VLM_INSTALL_GAZE | true | Optional research-only Gaze360 SafeTensors checkpoint |
+| VLM_INSTALL_OPENCODE | true | Install OpenCode integration |
+| VLM_INSTALL_NODE | true | Install optional ComfyUI Ollama node |
+
+Ollama remains on pod loopback 127.0.0.1:11434. Provisioning checks
+/api/version after installation and reports installer failures explicitly,
+rather than silently ignoring them. The installer stays idempotent.

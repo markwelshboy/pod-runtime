@@ -2,24 +2,26 @@
 # Ollama + OpenCode + optional minimal ComfyUI Ollama node; no PyTorch/Transformers pip changes.
 set -euo pipefail
 
-MODEL="${VLM_MODEL:-qwen3-vl:8b}"
+MODEL="${VLM_MODEL:-qwen3-vl:8b-instruct}"
 COMFY_DIR="${COMFY_DIR:-/workspace/ComfyUI}"
 MODEL_DIR="${OLLAMA_MODELS:-/workspace/models/ollama}"
 INSTALL_OPENCODE=1
 INSTALL_NODE=1
 START=1
 PULL=1
+INSTALL_GAZE=0
 
 usage() {
   cat <<'EOF'
 Usage: bash install_comfy_vlm.sh [OPTIONS]
-  --model NAME       Ollama vision model to pull (default: qwen3-vl:8b)
+  --model NAME       Ollama vision model to pull (default: qwen3-vl:8b-instruct)
   --comfy-dir PATH   ComfyUI checkout (default: /workspace/ComfyUI)
   --models-dir PATH  Persistent Ollama model storage (default: /workspace/models/ollama)
   --no-opencode      Skip OpenCode interactive skill-aware agent
   --no-node          Skip AB Simple Ollama ComfyUI node
   --no-start         Install only; do not start Ollama (for Docker builds)
   --no-pull          Do not download model weights (for Docker builds)
+  --with-gaze        Download optional L2CS gaze checkpoint (research license)
   -h, --help         Show help
 
 Runs as root in Ubuntu 24.04 / NVIDIA CUDA container. Does NOT modify /opt/venv.
@@ -36,6 +38,7 @@ while (($#)); do
     --no-node) INSTALL_NODE=0; shift;;
     --no-start) START=0; shift;;
     --no-pull) PULL=0; shift;;
+    --with-gaze) INSTALL_GAZE=1; shift;;
     -h|--help) usage; exit 0;;
     *) echo "Unknown argument: $1" >&2; usage; exit 2;;
   esac
@@ -180,13 +183,6 @@ if ((INSTALL_OPENCODE)); then
   fi
 fi
 
-ollama pull qwen3-vl:8b-instruct
-
-mkdir -p /workspace/models/gaze
-hf download py-feat/l2cs \
-  l2cs_gaze360_resnet50.safetensors \
-  --local-dir /workspace/models/gaze
-
 # A replaceable example; nothing in an existing user's skills is overwritten.
 EXAMPLE='/workspace/vlm-skills/image-curation'
 mkdir -p "$EXAMPLE/references"
@@ -230,6 +226,19 @@ if ((PULL)); then
   echo "== Pulling ${MODEL} into persistent model store =="
   # The service uses /etc/comfy-vlm.env to set OLLAMA_MODELS.
   ollama pull "$MODEL"
+fi
+if ((INSTALL_GAZE)); then
+  echo "== Downloading optional research-only Gaze360/L2CS checkpoint =="
+  if command -v hf >/dev/null 2>&1; then
+    mkdir -p /workspace/models/gaze
+    if ! hf download py-feat/l2cs \
+       l2cs_gaze360_resnet50.safetensors \
+       --local-dir /workspace/models/gaze; then
+      echo 'WARNING: Optional gaze weight download failed (not fatal).' >&2
+    fi
+  else
+    echo 'WARNING: hf CLI unavailable; skipping optional gaze weights.' >&2
+  fi
 fi
 
 echo

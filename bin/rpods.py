@@ -33,6 +33,7 @@ api_v2.install_core_hooks()
 import rent_pod_lifecycle as lifecycle  # noqa: E402
 import rent_pod_manage as manage  # noqa: E402
 import rpods_pixlstash as pixlstash_tunnel  # noqa: E402
+import rpods_vlm as vlm_tunnel  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -264,14 +265,36 @@ def _tcp_port(value: str) -> int:
 
 
 def connect_or_tunnel(choice: PodChoice, ssh_key: str, args: argparse.Namespace) -> int:
-    if args.tunnel == "pixlstash":
+    ssh = ssh_argv(choice, ssh_key)
+    if args.skills_zip:
+        vlm_tunnel.push_skills_zip(ssh, args.skills_zip)
+    selected = set(args.tunnel or [])
+    if selected == {"pixlstash", "vlm"}:
         return pixlstash_tunnel.run_tunnel(
-            ssh_argv(choice, ssh_key),
+            ssh,
+            local_comfy_port=args.local_port,
+            remote_comfy_port=args.comfy_port,
+            pixlstash_port=args.pixlstash_port,
+            remote_pixlstash_port=args.pixlstash_remote_port,
+            ollama_local_port=args.ollama_local_port,
+            ollama_remote_port=args.ollama_port,
+        )
+    if selected == {"pixlstash"}:
+        return pixlstash_tunnel.run_tunnel(
+            ssh,
             local_comfy_port=args.local_port,
             remote_comfy_port=args.comfy_port,
             pixlstash_port=args.pixlstash_port,
             remote_pixlstash_port=args.pixlstash_remote_port,
         )
+    if selected == {"vlm"}:
+        return vlm_tunnel.run_tunnel(
+            ssh,
+            local_ollama_port=args.ollama_local_port,
+            remote_ollama_port=args.ollama_port,
+        )
+    if args.skills_zip:
+        return 0
     connect(choice, ssh_key)
     return 0
 
@@ -303,8 +326,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="SSH private key (default: RENT_POD_SSH_KEY/RUNPOD_SSH_KEY/rent-pod default)",
     )
     parser.add_argument(
-        "--tunnel", choices=["pixlstash"],
-        help="keep a bidirectional SSH tunnel open instead of starting a shell",
+        "--tunnel", nargs="+", choices=["pixlstash", "vlm"], metavar="MODE",
+        help="one or more SSH tunnels: pixlstash, vlm, or both; "
+             "example: --tunnel pixlstash vlm",
+    )
+    parser.add_argument(
+        "--ollama-local-port", type=_tcp_port, default=47961, metavar="PORT",
+        help="local WSL Ollama port, loopback only (default: 47961)",
+    )
+    parser.add_argument(
+        "--ollama-port", type=_tcp_port, default=11434, metavar="PORT",
+        help="remote Ollama port on the pod (default: 11434)",
+    )
+    parser.add_argument(
+        "--skills-zip", type=str, metavar="ZIP",
+        help="upload an Image Playground analysis ZIP into /workspace/vlm-skills "
+             "via the selected pod's SSH credentials; without --tunnel, upload and exit",
     )
     parser.add_argument(
         "--local-port", type=_tcp_port, default=47960, metavar="PORT",
@@ -328,8 +365,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.list and args.tunnel:
-        parser.error("--list cannot be combined with --tunnel")
+    if args.list and (args.tunnel or args.skills_zip):
+        parser.error("--list cannot be combined with --tunnel or --skills-zip")
+    if args.tunnel and len(args.tunnel) != len(set(args.tunnel)):
+        parser.error("duplicate tunnel modes are not allowed")
+    if args.tunnel and "pixlstash" in args.tunnel and "vlm" in args.tunnel:
+        if args.local_port == args.ollama_local_port:
+            parser.error("local ComfyUI and Ollama tunnel ports must differ")
     api_key = os.environ.get("RUNPOD_API_KEY", "").strip()
     if not api_key:
         print("ERROR: RUNPOD_API_KEY is required.", file=sys.stderr)

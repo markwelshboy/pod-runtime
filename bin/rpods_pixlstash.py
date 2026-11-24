@@ -164,6 +164,8 @@ def tunnel_argv(
     remote_comfy_port: int,
     local_pixlstash_port: int,
     remote_pixlstash_port: int,
+    local_ollama_port: int | None = None,
+    remote_ollama_port: int = 11434,
 ) -> list[str]:
     """Add SSH tunnel options before the final remote destination."""
     if not ssh_base or not ssh_base[-1].startswith("root@"):
@@ -172,6 +174,13 @@ def tunnel_argv(
     remote_comfy_port = valid_port(remote_comfy_port)
     local_pixlstash_port = valid_port(local_pixlstash_port)
     remote_pixlstash_port = valid_port(remote_pixlstash_port)
+    if local_ollama_port is not None:
+        local_ollama_port = valid_port(local_ollama_port)
+        remote_ollama_port = valid_port(remote_ollama_port)
+        if local_ollama_port == local_comfy_port:
+            raise ValueError("Ollama and ComfyUI local tunnel ports must differ.")
+        if remote_ollama_port == remote_pixlstash_port:
+            raise ValueError("Ollama remote port conflicts with PixlStash reverse endpoint.")
     return [
         *ssh_base[:-1],
         "-N", "-T",
@@ -179,6 +188,10 @@ def tunnel_argv(
         "-o", "ServerAliveInterval=30",
         "-o", "ServerAliveCountMax=3",
         "-L", f"127.0.0.1:{local_comfy_port}:127.0.0.1:{remote_comfy_port}",
+        *(
+            ["-L", f"127.0.0.1:{local_ollama_port}:127.0.0.1:{remote_ollama_port}"]
+            if local_ollama_port is not None else []
+        ),
         "-R", f"127.0.0.1:{remote_pixlstash_port}:127.0.0.1:{local_pixlstash_port}",
         ssh_base[-1],
     ]
@@ -222,6 +235,8 @@ def run_tunnel(
     remote_comfy_port: int = 8288,
     pixlstash_port: int | None = None,
     remote_pixlstash_port: int = 64404,
+    ollama_local_port: int | None = None,
+    ollama_remote_port: int = 11434,
 ) -> int:
     """Keep a foreground, self-contained bidirectional SSH tunnel alive."""
     local_port = discover_pixlstash_port(pixlstash_port)
@@ -231,13 +246,18 @@ def run_tunnel(
         remote_comfy_port=remote_comfy_port,
         local_pixlstash_port=local_port,
         remote_pixlstash_port=remote_pixlstash_port,
+        local_ollama_port=ollama_local_port,
+        remote_ollama_port=ollama_remote_port,
     )
     print(f"[rpods] PixlStash API found at 127.0.0.1:{local_port}/version")
     print(f"[rpods] PixlStash -> ComfyUI: http://127.0.0.1:{local_comfy_port}"
           f"  (pod 127.0.0.1:{remote_comfy_port})")
     print(f"[rpods] ComfyUI -> PixlStash: pod 127.0.0.1:{remote_pixlstash_port}"
           f"  (local 127.0.0.1:{local_port})")
-    print("[rpods] Both tunnel endpoints bind to loopback only. Ctrl+C to close.")
+    if ollama_local_port is not None:
+        print(f"[rpods] Pod Ollama -> local: http://127.0.0.1:{ollama_local_port}"
+              f"  (pod 127.0.0.1:{ollama_remote_port})")
+    print("[rpods] All tunnel endpoints bind to loopback only. Ctrl+C to close.")
     sys.stdout.flush()
 
     try:
@@ -279,6 +299,14 @@ def run_tunnel(
                 "The tunnel remains open for diagnosis.",
                 file=sys.stderr,
             )
+        if ollama_local_port is not None:
+            # Lazy import avoids a cycle: rpods_vlm reuses our port validation.
+            from rpods_vlm import is_ollama
+            if is_ollama(ollama_local_port):
+                print("[rpods] Ollama forward: OK (/api/version)")
+            else:
+                print("[rpods] WARNING: Ollama did not answer via forwarded "
+                      "127.0.0.1. Run 'start-ollama' on the pod.", file=sys.stderr)
         print("[rpods] Tunnel active; leave this terminal open. Ctrl+C to stop.")
         sys.stdout.flush()
         return process.wait()

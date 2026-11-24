@@ -29,9 +29,10 @@ class PixlStashTunnelTests(unittest.TestCase):
 
     def test_parser_preserves_existing_rpods_and_adds_pixlstash_mode(self):
         args = rpods.build_parser().parse_args(
-            ["--tunnel", "pixlstash", "rp-krea2-wait-2"]
+            ["rp-krea2-wait-2", "--tunnel", "pixlstash"]
         )
         self.assertEqual(args.selector, "rp-krea2-wait-2")
+        self.assertEqual(args.tunnel, ["pixlstash"])
         self.assertEqual(args.local_port, 47960)
         self.assertEqual(args.comfy_port, 8288)
         self.assertIsNone(args.pixlstash_port)
