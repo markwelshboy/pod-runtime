@@ -33,6 +33,32 @@ def bundle(names=("i000000.jpg",), contents=b"\xff\xd8test\xff\xd9"):
     return dest.getvalue()
 
 
+def dual_bundle(*, include_face=True, bad_digest=False, extra_face=False):
+    preview=b"original-frame-preview"
+    face=b"full-resolution-head-crop"
+    images=[
+        {"id":"i000000.jpg",
+         "sha256":hashlib.sha256(preview).hexdigest(),
+         "face_sha256":hashlib.sha256(face).hexdigest() if include_face else None,
+         "crop":{"status":"face" if include_face else "no-face-full-frame",
+                 "face_count":1 if include_face else 0,
+                 "crop_size":768}},
+        {"id":"i000001.jpg",
+         "sha256":hashlib.sha256(preview).hexdigest(),
+         "face_sha256":None,
+         "crop":{"status":"no-face-full-frame","face_count":0}}
+    ]
+    if bad_digest:images[0]["face_sha256"]="0"*64
+    out=io.BytesIO()
+    with zipfile.ZipFile(out,"w",zipfile.ZIP_STORED) as archive:
+        archive.writestr("manifest.json",json.dumps({
+            "schema":"image-playground-vlm-stage-v2","images":images}))
+        for item in images:archive.writestr("images/"+item["id"],preview)
+        if include_face:archive.writestr("faces/i000000.jpg",face)
+        if extra_face:archive.writestr("faces/i000001.jpg",face)
+    return out.getvalue()
+
+
 class WorkerTests(unittest.TestCase):
     def test_zip_members_are_checked_and_verified(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -51,6 +77,46 @@ class WorkerTests(unittest.TestCase):
                 z.writestr("../unsafe", b"data")
             with self.assertRaisesRegex(ValueError,"Unexpected input"):
                 w.safe_zip(path,root/"unsafe")
+
+    def test_dual_input_crops_and_original_frame_are_separate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            archive=root/"dual.zip"
+            archive.write_bytes(dual_bundle())
+            job="c"*32
+            worker=w.Worker(root/"worker")
+            destination=worker.folder(job)
+            self.assertEqual(w.safe_zip(archive,destination),2)
+            (destination/"state.json").write_text(json.dumps({
+                "job_id":job,"status":"running","total":2}))
+            qwen=worker.prepare_qwen_images(job)
+            self.assertEqual((qwen/"i000000.jpg").read_bytes(),
+                             b"full-resolution-head-crop")
+            self.assertEqual((qwen/"i000001.jpg").read_bytes(),
+                             b"original-frame-preview")
+            self.assertEqual((destination/"images/i000000.jpg").read_bytes(),
+                             b"original-frame-preview")
+            self.assertEqual(worker.state(job)["crop_counts"]["face"],1)
+            self.assertEqual(worker.state(job)["crop_counts"]["no-face-full-frame"],1)
+            (destination/"qwen").mkdir()
+            (destination/"qwen/i000000.jpg.vlm.json").write_text(json.dumps({
+                "data":{"tags":["mouth-closed"]}}))
+            worker.save(job,status="completed")
+            found=worker.results(job)["results"]["i000000.jpg"]
+            self.assertEqual(found["analysis_input"]["crop"]["status"],"face")
+
+    def test_dual_input_rejects_wrong_crops_and_invalid_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            archive=root/"bad.zip"
+            archive.write_bytes(dual_bundle(bad_digest=True))
+            with self.assertRaisesRegex(ValueError,"checksum mismatch"):
+                w.safe_zip(archive,root/"digest-mismatch")
+            archive.write_bytes(dual_bundle(extra_face=True))
+            with self.assertRaisesRegex(ValueError,"do not match manifest"):
+                w.safe_zip(archive,root/"unlisted-face")
+            archive.write_bytes(dual_bundle(include_face=False))
+            self.assertEqual(w.safe_zip(archive,root/"all-fallback"),2)
 
     def test_job_id_rejects_path_injection(self):
         for bad in ("../../../etc/passwd", "b"*33, "hello", "ABC", ""):

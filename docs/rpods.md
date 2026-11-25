@@ -366,3 +366,28 @@ updated VLM installer; the current pod's automatic provision/start phase
 may have run before this fix. For immediate recovery, launch the worker
 with the explicit venv interpreter as shown above. Never expose its
 unauthenticated HTTP endpoint on a public RunPod port.
+
+### Dual-image batch format: original-pixel head crop + full-frame geometry
+
+Updated Image Playground sends a v2 ZIP containing up to two JPEGs
+per opaque image ID. The first, under faces/, is an expanded 768px
+head crop made from ORIGINAL full-resolution source pixels on
+DdraigPC. The second, under images/, is the existing 1024px
+full-scene preview. Qwen3-VL uses faces/ if the head was detected;
+YuNet/MediaPipe and L2CS use the full-scene images/ as before.
+For genuine YuNet misses Qwen uses the same full-scene fallback.
+
+The worker checks each face/full-frame SHA256, rejected unlisted
+members and sizes, and builds qwen_images/ as hardlinks to avoid
+a second disk copy. Legacy v1 single-image ZIPs remain accepted
+and run as before. Per-image crop status is returned as read-only
+analysis_input metadata and crop_counts are available in the worker
+job status. No new ComfyUI node is required.
+
+For upgrades to an already-running pod, update pod-runtime, replace
+/usr/local/bin/vlm-worker and restart its process on loopback port
+8765. This does not modify Ollama or existing stored jobs.
+The VLM worker's dependency remains Python standard library only:
+YuNet/Pillow/OpenCV are used during ORIGINAL-PIXEL staging on
+DdraigPC, while the existing pod geometry scripts keep their
+independent /opt/venv environment.

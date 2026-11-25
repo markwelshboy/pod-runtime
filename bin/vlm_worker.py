@@ -44,7 +44,7 @@ def safe_zip(path, dest):
         files = archive.infolist()
         if len(files) > MAX_FILES + 1:
             raise ValueError("Too many ZIP members.")
-        names, image_files, total = set(), set(), 0
+        names, image_files, face_files, total = set(), set(), set(), 0
         for entry in files:
             name = entry.filename
             if name in names or not name or name.startswith("/") or "\\" in name:
@@ -58,6 +58,9 @@ def safe_zip(path, dest):
             elif name.startswith("images/") and ITEM_RE.fullmatch(name[7:]):
                 cap = MAX_IMAGE_BYTES
                 image_files.add(name[7:])
+            elif name.startswith("faces/") and ITEM_RE.fullmatch(name[6:]):
+                cap = MAX_IMAGE_BYTES
+                face_files.add(name[6:])
             else:
                 raise ValueError("Unexpected input member: " + name)
             if entry.file_size > cap:
@@ -80,6 +83,25 @@ def safe_zip(path, dest):
         if any(not isinstance(x.get("sha256"), str) or
                not re.fullmatch(r"[a-f0-9]{64}", x["sha256"]) for x in items):
             raise ValueError("Missing image digests.")
+        is_dual = manifest.get("schema") == "image-playground-vlm-stage-v2"
+        if not is_dual and face_files:
+            raise ValueError("Face crops require a v2 manifest.")
+        if is_dual:
+            if any(x.get("face_sha256") is not None and (
+                    not isinstance(x["face_sha256"], str) or
+                    not re.fullmatch(r"[a-f0-9]{64}", x["face_sha256"]))
+                   for x in items):
+                raise ValueError("Invalid face crop digest.")
+            if {x["id"] for x in items if x.get("face_sha256")} != face_files:
+                raise ValueError("Face crop files do not match manifest.")
+            for item in items:
+                crop = item.get("crop")
+                if not isinstance(crop, dict) or crop.get("status") not in {
+                        "face", "multiple-faces-largest", "no-face-full-frame"}:
+                    raise ValueError("Invalid face-crop status in manifest.")
+                if (item.get("face_sha256") is None) != (
+                        crop["status"] == "no-face-full-frame"):
+                    raise ValueError("Face-crop fallback does not match the files.")
         dest.mkdir(parents=True, exist_ok=True)
         import hashlib
         for entry in files:
@@ -93,8 +115,10 @@ def safe_zip(path, dest):
                     digest.update(block)
                     out.write(block)
             matching = next(x for x in items if x["id"] == target.name)
-            if digest.hexdigest() != matching["sha256"]:
-                raise ValueError("Image checksum mismatch: " + target.name)
+            expected = (matching.get("face_sha256") if entry.filename.startswith("faces/")
+                        else matching["sha256"])
+            if digest.hexdigest() != expected:
+                raise ValueError("Image checksum mismatch: " + entry.filename)
         (dest / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         return len(items)
 
@@ -245,14 +269,45 @@ class Worker:
             if code:
                 raise RuntimeError(f"{name} exited with status {code}; see worker.log")
 
+    def prepare_qwen_images(self, job_id):
+        """Link per-image face crops or documented full-frame fallbacks.
+
+        Images and faces are on the same job filesystem; hardlinks avoid
+        copies and keep the original Qwen filenames/JSON matching intact.
+        Geometry continues reading images/ (never qwen_images/).
+        """
+        root = self.folder(job_id)
+        manifest = json.loads((root/"manifest.json").read_text(encoding="utf-8"))
+        output = root/"qwen_images"
+        output.mkdir(exist_ok=True)
+        counts = {"face": 0, "multiple-faces-largest": 0,
+                  "no-face-full-frame": 0, "legacy-full-frame": 0}
+        for item in manifest["images"]:
+            name = item["id"]
+            crop = item.get("crop") or {}
+            use_face = (bool(item.get("face_sha256")) and
+                        (root/"faces"/name).is_file())
+            source = (root/"faces"/name) if use_face else (root/"images"/name)
+            if not source.is_file():
+                raise ValueError("Qwen image input missing: " + name)
+            target = output/name
+            if target.exists():
+                target.unlink()
+            os.link(source, target)
+            status = crop.get("status") if manifest.get("schema") == "image-playground-vlm-stage-v2" else "legacy-full-frame"
+            counts[status] = counts.get(status, 0) + 1
+        self.save(job_id, crop_counts=counts)
+        return output
+
     def _run(self, job_id, model, geometry):
         root = self.folder(job_id)
         results = root / "qwen"
         try:
             self.save(job_id, status="running", stage="qwen", message="")
+            qwen_input = self.prepare_qwen_images(job_id)
             script = Path(os.getenv("VLM_RUNNER", "/usr/local/bin/vlm-skill"))
             self._stage(job_id, "qwen",
-                [sys.executable, str(script), "--images", str(root/"images"),
+                [sys.executable, str(script), "--images", str(qwen_input),
                  "--skill", str(self.skills/"image-detailer-analysis"),
                  "--output-dir", str(results), "--model", model, "--json",
                  "--num-ctx", "8192", "--max-image-edge", "768",
@@ -321,6 +376,11 @@ class Worker:
         if state["status"] not in {"completed", "failed", "cancelled", "interrupted"}:
             return {"job": state, "results": {}}
         records = {}
+        manifest_path = root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
+        crop_by_name = {entry.get("id"): entry.get("crop")
+                        for entry in manifest.get("images", [])
+                        if isinstance(entry, dict) and entry.get("crop")}
         # Prefer fused evidence for each image, fall back to Qwen-only if
         # geometry was unavailable or a fusion stage partially failed.
         for folder in (root/"qwen", root/"fused"):
@@ -330,7 +390,11 @@ class Worker:
                 name = path.name[:-len(".vlm.json")]
                 if ITEM_RE.fullmatch(name) and path.stat().st_size < 256*1024:
                     try:
-                        records[name] = json.loads(path.read_text(encoding="utf-8"))
+                        record = json.loads(path.read_text(encoding="utf-8"))
+                        if name in crop_by_name and isinstance(record, dict):
+                            record["analysis_input"] = {"source": "original-pixel-face-crop",
+                                                        "crop": crop_by_name[name]}
+                        records[name] = record
                     except (OSError, ValueError):
                         pass
         return {"job": state, "results": records}
